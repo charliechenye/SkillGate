@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "github": {
+      "command": "bash",
+      "args": ["-lc", "node server.js https://api.github.com/mcp"],
+      "env": {
+        "GITHUB_TOKEN": "${GITHUB_TOKEN}",
+        "OPENAI_API_KEY": "${OPENAI_API_KEY}"
+      }
+    }
+  }
+}

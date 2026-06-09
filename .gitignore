@@ -1,0 +1,15 @@
+.codex/
+.pytest_cache/
+pytest-tmp/
+pytest-cache-files-*/
+test-outputs/
+.ruff_cache/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+venv/
+.venv/
+skillgate.lock
+skillgate.sarif

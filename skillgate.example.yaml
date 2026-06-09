@@ -1,0 +1,26 @@
+version: 1
+
+policy:
+  shell:
+    allow: false
+
+  filesystem:
+    read:
+      - "docs/**"
+    write:
+      - "generated/**"
+
+  network:
+    allow:
+      - "api.github.com"
+      - "github.com"
+
+  secrets:
+    deny:
+      - "*"
+
+  mcp:
+    require_review_on_change: true
+
+  risk_threshold:
+    block: high

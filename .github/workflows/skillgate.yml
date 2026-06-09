@@ -1,0 +1,30 @@
+name: SkillGate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  skillgate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install SkillGate
+        run: python -m pip install .
+      - name: Run SkillGate
+        run: skillgate check . --policy skillgate.example.yaml
+      - name: Generate SARIF
+        if: always()
+        run: skillgate scan . --format sarif --output skillgate.sarif
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: skillgate.sarif
