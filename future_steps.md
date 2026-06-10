@@ -21,7 +21,7 @@ Expand real-world MCP coverage and policy ergonomics.
 - Export a machine-readable JSON Schema for policy files.
 - Add a sourced fixture corpus with attribution metadata for public examples.
 - Expand extraction fixtures across more public skill and MCP ecosystems.
-- Add a social preview image for GitHub sharing.
+- Upload `docs/assets/repo_image.png` as the GitHub repository social preview image.
 - Apply GitHub repository topics and description in the repository settings.
 
 ## Creative Ideas
