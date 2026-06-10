@@ -15,12 +15,11 @@ Expand real-world MCP coverage and policy ergonomics.
 
 ## Practical Product Improvements
 
-- Add richer policy schema validation beyond the MVP section and threshold checks.
-- Add more extraction patterns from real-world Python, Node, shell, and PowerShell examples.
 - Add snapshot update tooling for maintainers.
-- Add machine-readable fixture summary output for benchmark reporting.
 - Add `skillgate fixtures verify` as a contributor-facing command for expected findings.
 - Add `--github-token-env GITHUB_TOKEN` for authenticated GitHub API requests.
+- Add a policy schema reference page with examples for every supported field.
+- Add more real-world extraction fixture cases from public skills and MCP repos.
 
 ## Creative Ideas
 

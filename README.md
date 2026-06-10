@@ -71,6 +71,7 @@ skillgate check . --policy skillgate.example.yaml
 ```
 
 Policy checks can block shell execution, unallowlisted filesystem writes, unallowlisted network hosts, denied secret access, high-risk findings, and MCP capability drift.
+SkillGate validates the MVP policy schema and reports file, line, and column details for YAML and schema errors when available.
 
 ## Baselines and Diffs
 
@@ -144,6 +145,19 @@ SkillGate reports YAML syntax and MVP policy validation errors with file, line, 
 ```text
 Error: skillgate.yaml:4:12: policy.risk_threshold.block must be one of: informational, low, medium, high, critical
 ```
+
+## Benchmark Fixture Summaries
+
+```bash
+skillgate fixtures summary fixtures/benchmark --format json
+skillgate fixtures summary fixtures/benchmark --format text
+```
+
+Fixture summaries compare each `expected-findings.yaml` file with actual scan output. JSON output is intended for benchmark reporting and CI jobs.
+
+## Extraction Notes
+
+SkillGate detects common Python, Node, shell, and PowerShell patterns for shell execution, destructive actions, network egress, and filesystem writes. Extraction stays conservative: when a path or host is not a clear literal value, SkillGate reports the finding without inventing a resource.
 
 ## Roadmap
 

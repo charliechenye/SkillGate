@@ -314,6 +314,70 @@ def test_invalid_policy_threshold_reports_line_and_column() -> None:
     assert "policy.risk_threshold.block must be one of" in result.output
 
 
+@pytest.mark.parametrize(
+    ("name", "content", "expected"),
+    [
+        (
+            "unknown-top-level",
+            "version: 1\nextra: true\npolicy: {}\n",
+            "Unknown top-level key: extra",
+        ),
+        (
+            "bad-version",
+            "version: 2\npolicy: {}\n",
+            "policy schema version must be 1",
+        ),
+        (
+            "unknown-policy-section",
+            "version: 1\npolicy:\n  unknown: {}\n",
+            "Unknown policy key: unknown",
+        ),
+        (
+            "bad-shell-allow",
+            "version: 1\npolicy:\n  shell:\n    allow: nope\n",
+            "policy.shell.allow must be a boolean",
+        ),
+        (
+            "bad-filesystem-write",
+            "version: 1\npolicy:\n  filesystem:\n    write: generated/**\n",
+            "policy.filesystem.write must be a list of strings",
+        ),
+        (
+            "bad-network-allow",
+            "version: 1\npolicy:\n  network:\n    allow: github.com\n",
+            "policy.network.allow must be a list of strings",
+        ),
+        (
+            "bad-secrets-deny",
+            "version: 1\npolicy:\n  secrets:\n    deny: '*'\n",
+            "policy.secrets.deny must be a list of strings",
+        ),
+        (
+            "bad-mcp-review",
+            "version: 1\npolicy:\n  mcp:\n    require_review_on_change: yes please\n",
+            "policy.mcp.require_review_on_change must be a boolean",
+        ),
+    ],
+)
+def test_policy_schema_validation_reports_line_and_column(
+    name: str, content: str, expected: str
+) -> None:
+    workdir = clean_test_dir(name)
+    policy = workdir / "skillgate.yaml"
+    policy.write_text(content, encoding="utf-8")
+    result = runner.invoke(
+        app,
+        ["check", str(FIXTURES / "01-safe-documentation-skill"), "--policy", str(policy)],
+    )
+    assert result.exit_code == 2
+    assert f"Error: {policy}:" in result.output
+    assert expected in result.output
+
+
+def test_example_policy_still_loads() -> None:
+    assert load_policy(ROOT / "skillgate.example.yaml")["version"] == 1
+
+
 def test_richer_filesystem_write_extraction() -> None:
     workdir = clean_test_dir("write-extraction")
     scripts = workdir / "scripts"
@@ -359,6 +423,59 @@ def test_richer_filesystem_write_extraction() -> None:
     } <= resources
 
 
+def test_more_real_world_extraction_patterns() -> None:
+    workdir = clean_test_dir("real-world-extraction")
+    (workdir / "SKILL.md").write_text("Run `patterns.ps1` and `patterns.js`.\n", encoding="utf-8")
+    (workdir / "patterns.ps1").write_text(
+        "\n".join(
+            [
+                "Invoke-RestMethod -Uri https://ps.example.com/api",
+                "Set-Content -Path generated/powershell.txt -Value ok",
+                "Remove-Item generated/cache -Recurse",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (workdir / "patterns.js").write_text(
+        "\n".join(
+            [
+                "got('https://got.example.com/data')",
+                "undici.request('https://undici.example.com/data')",
+                "fs.promises.writeFile('generated/promises.txt', data)",
+                "fs.rmSync('generated/delete-me', { recursive: true })",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    report = scan_repository(workdir)
+    rule_ids = {finding.rule_id for finding in report.findings}
+    hosts = {
+        capability.resource
+        for capability in report.capabilities
+        if capability.type == "network_egress"
+    }
+    write_resources = {
+        capability.resource
+        for capability in report.capabilities
+        if capability.type == "filesystem_write"
+    }
+    assert {"SG002", "SG003", "SG006"} <= rule_ids
+    assert {"ps.example.com", "got.example.com", "undici.example.com"} <= hosts
+    assert {"generated/powershell.txt", "generated/promises.txt"} <= write_resources
+
+
+def test_ambiguous_network_resource_is_not_invented() -> None:
+    workdir = clean_test_dir("ambiguous-network")
+    (workdir / "SKILL.md").write_text("Run `net.py`.\n", encoding="utf-8")
+    (workdir / "net.py").write_text("requests.get(api_url)\n", encoding="utf-8")
+    report = scan_repository(workdir)
+    network_caps = [
+        capability for capability in report.capabilities if capability.type == "network_egress"
+    ]
+    assert network_caps
+    assert all(capability.resource is None for capability in network_caps)
+
+
 def test_safer_host_extraction_from_package_scripts_and_mcp() -> None:
     workdir = clean_test_dir("host-extraction")
     (workdir / "package.json").write_text(
@@ -398,6 +515,40 @@ def test_benchmark_expected_findings_match_actual_summaries() -> None:
             diff, _report = diff_against_baseline(fixture, baseline)
             actual |= {finding.rule_id for finding in diff.findings}
         assert actual == expected, f"{fixture.name} expected {expected}, got {actual}"
+
+
+def test_cli_fixtures_summary_json() -> None:
+    result = runner.invoke(
+        app,
+        ["fixtures", "summary", str(FIXTURES), "--format", "json"],
+    )
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert data["summary"]["failed"] == 0
+    assert data["summary"]["fixtures"] == 12
+    assert all(item["status"] == "pass" for item in data["fixtures"])
+
+
+def test_cli_fixtures_summary_text() -> None:
+    result = runner.invoke(
+        app,
+        ["fixtures", "summary", str(FIXTURES), "--format", "text"],
+    )
+    assert result.exit_code == 0
+    assert "SkillGate fixture summary" in result.output
+    assert "01-safe-documentation-skill" in result.output
+    assert "PASS" in result.output
+
+
+def test_cli_fixtures_summary_malformed_yaml_exits_2() -> None:
+    workdir = clean_test_dir("bad-fixture-summary")
+    fixture = workdir / "case"
+    fixture.mkdir()
+    (fixture / "SKILL.md").write_text("Safe\n", encoding="utf-8")
+    (fixture / "expected-findings.yaml").write_text("findings: SG001\n", encoding="utf-8")
+    result = runner.invoke(app, ["fixtures", "summary", str(workdir), "--format", "json"])
+    assert result.exit_code == 2
+    assert "must contain findings as a list of rule IDs" in result.output
 
 
 def assert_snapshot(name: str, content: str) -> None:

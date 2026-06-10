@@ -12,11 +12,16 @@ SHELL_RE = re.compile(
 )
 DESTRUCTIVE_RE = re.compile(
     r"(?i)(rm\s+-[a-z]*r[a-z]*f|del\s+/s|Remove-Item\s+.*-Recurse\s+.*-Force|"
+    r"Remove-Item\s+.*-Recurse|sudo\s+rm\s+-[a-z]*r[a-z]*f|rm\s+-r\b|"
+    r"shutil\.rmtree|Path\s*\([^)]*\)\.(?:unlink|rmdir)\s*\(|"
+    r"fs\.(?:rm|rmSync|unlink|unlinkSync|rmdir|rmdirSync)\s*\(|"
     r"\bformat\b|\bmkfs\b|drop\s+database|truncate\s+table|git\s+clean\s+-fdx)"
 )
 NETWORK_RE = re.compile(
-    r"(?i)(?:\b(?:curl|wget|Invoke-WebRequest|axios)\b|requests\.(?:get|post)|"
-    r"\bfetch\s*\(|https?\.get|http\.get|https?://[^\s'\"<>]+)"
+    r"(?i)(?:\b(?:curl|wget|Invoke-WebRequest|Invoke-RestMethod|Start-BitsTransfer|"
+    r"axios|got|node-fetch)\b|requests\.(?:get|post)|httpx\.(?:get|post)|"
+    r"aiohttp\.ClientSession|undici\.request|\bfetch\s*\(|https?\.(?:get|request)|"
+    r"https?://[^\s'\"<>]+)"
 )
 URL_RE = re.compile(r"https?://[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]+")
 REMOTE_EXEC_RE = re.compile(
@@ -31,7 +36,8 @@ SECRET_RE = re.compile(
 WRITE_RE = re.compile(
     r"(?i)(?:\b(?:write|append|overwrite)\b|open\s*\([^)]*['\"][wa]['\"]|"
     r"Path\s*\([^)]*\)\.write_(?:text|bytes)\s*\(|"
-    r"fs\.(?:writeFile|appendFile|createWriteStream)|\btee\b|"
+    r"fs\.(?:promises\.)?(?:writeFile|appendFile|createWriteStream)|"
+    r"\b(?:Out-File|Set-Content|Add-Content|New-Item)\b|\btee\b|"
     r"cat\s+>\s*([^\s]+)|>\s*([A-Za-z0-9_./-]+))"
 )
 PY_OPEN_TARGET_RE = re.compile(
@@ -41,16 +47,25 @@ PATH_WRITE_TARGET_RE = re.compile(
     r"""Path\s*\(\s*['"](?P<target>[^'"]+)['"]\s*\)\.write_(?:text|bytes)\s*\("""
 )
 NODE_FS_TARGET_RE = re.compile(
-    r"""fs\.(?:writeFile|appendFile|createWriteStream)\s*\(\s*['"](?P<target>[^'"]+)['"]"""
+    r"""fs\.(?:promises\.)?(?:writeFile|appendFile|createWriteStream)\s*"""
+    r"""\(\s*['"](?P<target>[^'"]+)['"]"""
 )
 TEE_TARGET_RE = re.compile(r"""(?i)\btee(?:\s+-a)?\s+(?P<target>[^\s|;&]+)""")
 REDIRECT_TARGET_RE = re.compile(r"""(?<![0-9])>\s*(?P<target>[A-Za-z0-9_./-]+)""")
 CAT_REDIRECT_TARGET_RE = re.compile(r"""(?i)cat\s+>\s*(?P<target>[^\s|;&]+)""")
+POWERSHELL_WRITE_TARGET_RE = re.compile(
+    r"""(?ix)\b(?:Out-File|Set-Content|Add-Content|New-Item)\b"""
+    r""".*?-(?:FilePath|Path)\s+['"]?(?P<target>[A-Za-z0-9_./\\:-]+)['"]?"""
+)
 NETWORK_CALL_TARGET_RE = re.compile(
-    r"""(?i)(?:requests\.(?:get|post)|fetch|axios(?:\.get|\.post)?|https?\.get)\s*"""
+    r"""(?i)(?:requests\.(?:get|post)|httpx\.(?:get|post)|fetch|"""
+    r"""axios(?:\.get|\.post)?|got|undici\.request|https?\.(?:get|request))\s*"""
     r"""\(\s*['"](?P<target>[^'"]+)['"]"""
 )
-NETWORK_COMMAND_RE = re.compile(r"""(?i)\b(?:curl|wget|Invoke-WebRequest)\b(?P<args>.*)""")
+NETWORK_COMMAND_RE = re.compile(
+    r"""(?i)\b(?:curl|wget|Invoke-WebRequest|Invoke-RestMethod|Start-BitsTransfer)\b(?P<args>.*)"""
+)
+POWERSHELL_URI_RE = re.compile(r"""(?i)-(?:Uri|Source)\s+['"]?(?P<target>[^\s'"]+)""")
 
 
 def line_matches(text: str, pattern: re.Pattern[str]) -> list[tuple[int, str, re.Match[str]]]:
@@ -72,6 +87,11 @@ def extract_host(text: str) -> str | None:
         return host_from_token(call_match.group("target"))
     command_match = NETWORK_COMMAND_RE.search(text)
     if command_match:
+        uri_match = POWERSHELL_URI_RE.search(command_match.group("args"))
+        if uri_match:
+            host = host_from_token(uri_match.group("target"))
+            if host:
+                return host
         for token in command_match.group("args").split():
             host = host_from_token(token)
             if host:
@@ -96,6 +116,7 @@ def extract_write_target(line: str, fallback_match: re.Match[str]) -> str | None
         PATH_WRITE_TARGET_RE,
         NODE_FS_TARGET_RE,
         CAT_REDIRECT_TARGET_RE,
+        POWERSHELL_WRITE_TARGET_RE,
         TEE_TARGET_RE,
         REDIRECT_TARGET_RE,
     ]:

@@ -7,6 +7,12 @@ import typer
 from rich.console import Console
 
 from skillgate.baseline import create_baseline, diff_against_baseline, load_baseline, save_baseline
+from skillgate.fixtures import (
+    FixtureSummaryError,
+    fixture_summary_payload,
+    fixture_summary_text,
+    summarize_fixtures,
+)
 from skillgate.models import SEVERITY_ORDER, severity_at_or_above, stable_json
 from skillgate.policy import evaluate_policy, load_policy
 from skillgate.reporting import (
@@ -23,9 +29,11 @@ from skillgate.sources import SourceError, fetch_github_sparse
 
 app = typer.Typer(help="Trust checks for AI-agent skills and MCP configurations.")
 baseline_app = typer.Typer(help="Create and manage approved SkillGate baselines.")
+fixtures_app = typer.Typer(help="Inspect benchmark fixture expectations.")
 github_app = typer.Typer(help="Scan remote GitHub repositories before installing skills.")
 rules_app = typer.Typer(help="Inspect SkillGate rule documentation.")
 app.add_typer(baseline_app, name="baseline")
+app.add_typer(fixtures_app, name="fixtures")
 app.add_typer(github_app, name="github")
 app.add_typer(rules_app, name="rules")
 console = Console()
@@ -168,6 +176,27 @@ def rules_list(
             f"{rule.title:<58}  {rule.remediation}"
         )
     console.file.write("\n".join(lines) + "\n")
+
+
+@fixtures_app.command("summary")
+def fixtures_summary(
+    path: Annotated[Path, typer.Argument(help="Benchmark fixture directory.")] = Path(
+        "fixtures/benchmark"
+    ),
+    output_format: Annotated[str, typer.Option("--format", help="Output format.")] = "json",
+) -> None:
+    """Summarize benchmark fixture expectations and actual findings."""
+    output_format = validate_format(output_format, {"text", "json"})
+    try:
+        summaries = summarize_fixtures(path)
+    except FixtureSummaryError as exc:
+        console.file.write(f"Error: {exc}\n")
+        raise typer.Exit(2) from exc
+    if output_format == "json":
+        console.file.write(stable_json(fixture_summary_payload(path, summaries)))
+    else:
+        console.file.write(fixture_summary_text(path, summaries))
+    raise typer.Exit(1 if any(summary.status == "fail" for summary in summaries) else 0)
 
 
 @app.command()

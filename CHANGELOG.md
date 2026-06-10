@@ -9,11 +9,15 @@
 - Added a no-install local sample at `samples/scan_installed_skills.py` for scanning installed Codex skills from a source checkout.
 - Added local Codex root discovery for `CODEX_HOME` or the default `.codex` home.
 - Added mocked tests for GitHub URL parsing, sparse fetching, remote scan output, fail-on behavior, cleanup, and local sample behavior.
+- Added richer policy schema validation for known sections, allowed keys, and field types.
+- Added more Python, Node, shell, and PowerShell extraction patterns for filesystem writes, network egress, and destructive actions.
+- Added `skillgate fixtures summary` for machine-readable benchmark fixture reporting.
 
 ### Changed
 
 - Bumped package version to `0.2.0`.
 - Documented local installed-skill scans and remote sparse GitHub pre-install scans.
+- Updated practical improvement tracking to remove completed policy, extraction, and fixture summary items.
 
 ## 0.1.1 - CLI rule documentation and filtering
 
