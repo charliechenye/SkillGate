@@ -23,6 +23,8 @@
 - Updated practical improvement tracking to remove completed policy, extraction, and fixture summary items.
 - Linked the policy schema reference from the README and documented the new public-pattern fixture coverage.
 - Updated package metadata and GitHub Action metadata for repository and package discovery.
+- Updated the project workflow to avoid blocking on intentional benchmark fixtures while still uploading SARIF.
+- Updated workflow actions for Node.js 24 and CodeQL Action v4 compatibility.
 
 ## 0.1.1 - CLI rule documentation and filtering
 

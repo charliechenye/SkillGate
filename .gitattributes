@@ -1,1 +1,17 @@
-* text eol=lf
+# Normalize text files and always check them out using Unix LF endings.
+* text=auto eol=lf
+
+# Image assets: never apply text normalization.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.webp binary
+*.avif binary
+*.ico  binary
+*.bmp  binary
+*.tif  binary
+*.tiff binary
+
+# SVG is XML text internally, but treat it as an immutable image asset.
+*.svg  binary

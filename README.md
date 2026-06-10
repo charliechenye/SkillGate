@@ -1,6 +1,6 @@
 # SkillGate - Static trust checks for AI-agent skills and MCP configurations
 
-[![SkillGate](https://github.com/charliechenye/SkillGate/actions/workflows/skillgate.yml/badge.svg)](https://github.com/charliechenye/SkillGate/actions/workflows/skillgate.yml)
+[![SkillGate CI](https://github.com/charliechenye/SkillGate/actions/workflows/skillgate.yml/badge.svg?branch=master)](https://github.com/charliechenye/SkillGate/actions/workflows/skillgate.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![SARIF 2.1.0](https://img.shields.io/badge/output-SARIF%202.1.0-purple)](https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html)
@@ -64,16 +64,18 @@ Use the included composite action:
 
 ```yaml
 steps:
-  - uses: actions/checkout@v4
-  - uses: actions/setup-python@v5
+  - uses: actions/checkout@v6
+  - uses: actions/setup-python@v6
     with:
       python-version: "3.11"
-  - uses: charliechenye/SkillGate@main
+  - uses: charliechenye/SkillGate@master
     with:
       path: .
       policy: skillgate.example.yaml
       sarif-output: skillgate.sarif
 ```
+
+For repositories that want blocking policy enforcement, run `skillgate check . --policy skillgate.example.yaml` in CI. SkillGate's own workflow scans the full repository nonblocking because `fixtures/benchmark/` intentionally contains risky examples used to test detector behavior. It still runs a passing policy smoke check against a safe fixture and uploads SARIF for visibility.
 
 The repository also includes `.github/workflows/skillgate.yml` as a complete example workflow.
 
