@@ -5,11 +5,39 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "skillgate"
 version = "0.2.0"
-description = "Pre-merge and pre-install trust checks for AI-agent skills and MCP configurations."
+description = "Pre-merge and pre-install trust checks for AI-agent skills and MCP configurations. Scan capabilities, detect risky changes, and block unapproved agent behavior in CI."
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [{name = "OpenEvalGate"}]
+keywords = [
+  "ai-agent-security",
+  "mcp",
+  "model-context-protocol",
+  "security-scanner",
+  "static-analysis",
+  "codex-skills",
+  "claude-skills",
+  "sarif",
+  "policy-as-code",
+  "supply-chain-security",
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Information Technology",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Security",
+  "Topic :: Software Development :: Quality Assurance",
+  "Topic :: Utilities",
+  "Typing :: Typed",
+]
 dependencies = [
   "pydantic>=2.7",
   "PyYAML>=6.0",
@@ -25,6 +53,14 @@ dev = [
 
 [project.scripts]
 skillgate = "skillgate.cli:app"
+
+[project.urls]
+Homepage = "https://github.com/charliechenye/SkillGate"
+Repository = "https://github.com/charliechenye/SkillGate"
+Issues = "https://github.com/charliechenye/SkillGate/issues"
+Changelog = "https://github.com/charliechenye/SkillGate/blob/main/CHANGELOG.md"
+Documentation = "https://github.com/charliechenye/SkillGate#readme"
+Security = "https://github.com/charliechenye/SkillGate/security"
 
 [tool.setuptools.packages.find]
 where = ["src"]

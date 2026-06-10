@@ -14,6 +14,7 @@
 - Added `skillgate fixtures summary` for machine-readable benchmark fixture reporting.
 - Added a policy schema reference page with examples for every supported field.
 - Added reduced public-pattern benchmark fixtures for Python, Node, shell, PowerShell, and MCP extraction cases.
+- Added SEO/AEO-oriented README sections, contributor guidance, security policy, and a focused GitHub pre-install scan documentation page.
 
 ### Changed
 
@@ -21,6 +22,7 @@
 - Documented local installed-skill scans and remote sparse GitHub pre-install scans.
 - Updated practical improvement tracking to remove completed policy, extraction, and fixture summary items.
 - Linked the policy schema reference from the README and documented the new public-pattern fixture coverage.
+- Updated package metadata and GitHub Action metadata for repository and package discovery.
 
 ## 0.1.1 - CLI rule documentation and filtering
 

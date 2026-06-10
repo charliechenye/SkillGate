@@ -1,5 +1,8 @@
 name: SkillGate
-description: Run SkillGate trust checks for AI-agent skills and MCP configurations.
+description: Pre-merge and pre-install trust checks for AI-agent skills and MCP configurations. Scan capabilities, detect risky changes, and block unapproved agent behavior in CI.
+branding:
+  icon: shield
+  color: purple
 inputs:
   path:
     description: Repository path to scan.

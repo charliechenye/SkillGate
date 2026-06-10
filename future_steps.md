@@ -21,6 +21,8 @@ Expand real-world MCP coverage and policy ergonomics.
 - Export a machine-readable JSON Schema for policy files.
 - Add a sourced fixture corpus with attribution metadata for public examples.
 - Expand extraction fixtures across more public skill and MCP ecosystems.
+- Add a social preview image for GitHub sharing.
+- Apply GitHub repository topics and description in the repository settings.
 
 ## Creative Ideas
 
@@ -28,7 +30,7 @@ Expand real-world MCP coverage and policy ergonomics.
 - Add a trust-diff narrative mode that explains capability drift in reviewer-friendly prose.
 - Generate a PR comment summary that groups risks by capability instead of by file.
 - Add a local pre-install gate for downloaded skill/plugin bundles.
-- Add repository badges for "SkillGate baseline present" and "SkillGate policy enforced".
+- Add generated repository badges for "SkillGate baseline present" and "SkillGate policy enforced".
 - Build a public benchmark leaderboard for deterministic agent-safety scanners.
 - Add a sandbox trace runner later, where runtime traces can be promoted into static regression fixtures.
 - Support trace import/export using OpenTelemetry-compatible formats in a future release.
