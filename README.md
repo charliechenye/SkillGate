@@ -5,8 +5,6 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![SARIF 2.1.0](https://img.shields.io/badge/output-SARIF%202.1.0-purple)](https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html)
 
-![SkillGate social preview: static trust checks for AI-agent skills and MCP configurations](docs/assets/repo_image.png)
-
 Pre-merge and pre-install trust checks for AI-agent skills and MCP configurations. Scan capabilities, detect risky changes, and block unapproved agent behavior in CI.
 
 SkillGate is an AI-agent security scanner and MCP security scanner for teams that review Codex skills, Claude skills, Model Context Protocol server configs, agent instruction files, and helper scripts before they are installed or merged.
