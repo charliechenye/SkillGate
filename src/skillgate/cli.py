@@ -19,11 +19,14 @@ from skillgate.reporting import (
 )
 from skillgate.rule_docs import RULE_DOCS, get_rule_doc, rule_doc_to_data, rule_docs_to_data
 from skillgate.scan import filter_report_by_severity, scan_repository
+from skillgate.sources import SourceError, fetch_github_sparse
 
 app = typer.Typer(help="Trust checks for AI-agent skills and MCP configurations.")
 baseline_app = typer.Typer(help="Create and manage approved SkillGate baselines.")
+github_app = typer.Typer(help="Scan remote GitHub repositories before installing skills.")
 rules_app = typer.Typer(help="Inspect SkillGate rule documentation.")
 app.add_typer(baseline_app, name="baseline")
+app.add_typer(github_app, name="github")
 app.add_typer(rules_app, name="rules")
 console = Console()
 
@@ -65,6 +68,14 @@ def scan_failed(report, fail_on: str | None) -> bool:
     return any(severity_at_or_above(finding.severity, fail_on) for finding in report.findings)
 
 
+def render_scan_command_output(report, output_format: str, fail_on: str | None) -> tuple[str, bool]:
+    failed = scan_failed(report, fail_on)
+    content = render_scan(report, output_format)
+    if failed and output_format == "text":
+        content = append_scan_failure_text(content, fail_on or "")
+    return content, failed
+
+
 @app.command()
 def scan(
     path: Annotated[Path, typer.Argument(help="Repository path to scan.")] = Path("."),
@@ -92,12 +103,50 @@ def scan(
     severity = validate_severity(severity)
     fail_on = validate_fail_on(fail_on)
     report = filter_report_by_severity(scan_repository(path), severity)
-    failed = scan_failed(report, fail_on)
-    content = render_scan(report, output_format)
-    if failed and output_format == "text":
-        content = append_scan_failure_text(content, fail_on or "")
+    content, failed = render_scan_command_output(report, output_format, fail_on)
     write_or_print(content, output, console)
     raise typer.Exit(1 if failed else 0)
+
+
+@github_app.command("scan")
+def github_scan(
+    url: Annotated[str, typer.Argument(help="GitHub repository URL to scan.")],
+    ref: Annotated[str | None, typer.Option("--ref", help="Git ref to scan.")] = None,
+    output_format: Annotated[str, typer.Option("--format", help="Output format.")] = "text",
+    severity: Annotated[
+        str | None,
+        typer.Option(
+            "--severity",
+            help="Only show findings at or above this severity.",
+        ),
+    ] = None,
+    fail_on: Annotated[
+        str | None,
+        typer.Option(
+            "--fail-on",
+            help="Exit 1 when displayed findings are at or above this severity.",
+        ),
+    ] = None,
+    output: Annotated[
+        Path | None, typer.Option("--output", "-o", help="Write output to a file.")
+    ] = None,
+) -> None:
+    """Sparse-scan a public GitHub repository before installing skills."""
+    output_format = validate_format(output_format, {"text", "json", "sarif"})
+    severity = validate_severity(severity)
+    fail_on = validate_fail_on(fail_on)
+    try:
+        sparse = fetch_github_sparse(url, ref)
+        report = filter_report_by_severity(scan_repository(sparse.root), severity)
+        content, failed = render_scan_command_output(report, output_format, fail_on)
+        write_or_print(content, output, console)
+        raise typer.Exit(1 if failed else 0)
+    except SourceError as exc:
+        console.file.write(f"Error: {exc}\n")
+        raise typer.Exit(2) from exc
+    finally:
+        if "sparse" in locals():
+            sparse.cleanup()
 
 
 @rules_app.command("list")

@@ -18,6 +18,13 @@ pip install -e .
 skillgate --help
 ```
 
+To scan installed Codex skills from a source checkout without installing SkillGate:
+
+```bash
+python samples/scan_installed_skills.py
+python samples/scan_installed_skills.py --root ~/.codex/skills --fail-on high
+```
+
 ## Threat Model
 
 SkillGate is a deterministic static-analysis tool. It helps detect obvious risks and capability changes. It does not prove that a skill or MCP server is safe. It does not execute scripts. It does not replace sandboxing, runtime monitoring, or security review.
@@ -106,6 +113,18 @@ skillgate scan . --fail-on high
 
 `skillgate scan` exits `0` when findings exist. `skillgate check` exits `1` when policy blocks the repository.
 `skillgate scan --fail-on medium|high|critical` exits `1` when displayed findings meet the threshold.
+
+## GitHub Pre-Install Scans
+
+SkillGate can sparse-scan a public GitHub repository before you install or copy skills from it:
+
+```bash
+skillgate github scan https://github.com/phuryn/pm-skills
+skillgate github scan https://github.com/phuryn/pm-skills --ref main --fail-on high
+skillgate github scan https://github.com/phuryn/pm-skills --format json
+```
+
+Remote scans do not clone the repository or download a full archive. SkillGate fetches GitHub tree metadata, downloads only supported agent files plus referenced local scripts into a temporary sparse mirror, runs static analysis, and deletes the temporary files. It never executes remote repository content.
 
 ## Rule Documentation
 

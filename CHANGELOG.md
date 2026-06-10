@@ -1,5 +1,20 @@
 # Change Log
 
+## 0.2.0 - Local skills and sparse GitHub scans
+
+### Added
+
+- Added `skillgate github scan URL` for sparse pre-install scans of public GitHub repositories.
+- Added sparse GitHub fetching that downloads only relevant agent files and referenced local scripts.
+- Added a no-install local sample at `samples/scan_installed_skills.py` for scanning installed Codex skills from a source checkout.
+- Added local Codex root discovery for `CODEX_HOME` or the default `.codex` home.
+- Added mocked tests for GitHub URL parsing, sparse fetching, remote scan output, fail-on behavior, cleanup, and local sample behavior.
+
+### Changed
+
+- Bumped package version to `0.2.0`.
+- Documented local installed-skill scans and remote sparse GitHub pre-install scans.
+
 ## 0.1.1 - CLI rule documentation and filtering
 
 ### Added
