@@ -25,6 +25,7 @@
 - Updated package metadata and GitHub Action metadata for repository and package discovery.
 - Updated the project workflow to avoid blocking on intentional benchmark fixtures while still uploading SARIF.
 - Updated workflow actions for Node.js 24 and CodeQL Action v4 compatibility.
+- Sanitized the repository social preview PNG by removing a private PNG chunk that could break GitHub preview rendering.
 
 ## 0.1.1 - CLI rule documentation and filtering
 
