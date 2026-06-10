@@ -64,7 +64,7 @@ Supported files include:
 
 ## Policy Example
 
-See [`skillgate.example.yaml`](skillgate.example.yaml).
+See [`skillgate.example.yaml`](skillgate.example.yaml) and the full [policy schema reference](docs/policy-schema.md).
 
 ```bash
 skillgate check . --policy skillgate.example.yaml
@@ -146,6 +146,8 @@ SkillGate reports YAML syntax and MVP policy validation errors with file, line, 
 Error: skillgate.yaml:4:12: policy.risk_threshold.block must be one of: informational, low, medium, high, critical
 ```
 
+The policy schema reference documents every supported field, its type, example YAML, and current enforcement behavior.
+
 ## Benchmark Fixture Summaries
 
 ```bash
@@ -158,6 +160,7 @@ Fixture summaries compare each `expected-findings.yaml` file with actual scan ou
 ## Extraction Notes
 
 SkillGate detects common Python, Node, shell, and PowerShell patterns for shell execution, destructive actions, network egress, and filesystem writes. Extraction stays conservative: when a path or host is not a clear literal value, SkillGate reports the finding without inventing a resource.
+Benchmark fixtures include reduced, nonverbatim cases based on common public skill and MCP repository patterns.
 
 ## Roadmap
 

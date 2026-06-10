@@ -12,12 +12,15 @@
 - Added richer policy schema validation for known sections, allowed keys, and field types.
 - Added more Python, Node, shell, and PowerShell extraction patterns for filesystem writes, network egress, and destructive actions.
 - Added `skillgate fixtures summary` for machine-readable benchmark fixture reporting.
+- Added a policy schema reference page with examples for every supported field.
+- Added reduced public-pattern benchmark fixtures for Python, Node, shell, PowerShell, and MCP extraction cases.
 
 ### Changed
 
 - Bumped package version to `0.2.0`.
 - Documented local installed-skill scans and remote sparse GitHub pre-install scans.
 - Updated practical improvement tracking to remove completed policy, extraction, and fixture summary items.
+- Linked the policy schema reference from the README and documented the new public-pattern fixture coverage.
 
 ## 0.1.1 - CLI rule documentation and filtering
 

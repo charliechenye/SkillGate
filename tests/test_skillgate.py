@@ -525,8 +525,40 @@ def test_cli_fixtures_summary_json() -> None:
     assert result.exit_code == 0
     data = json.loads(result.output)
     assert data["summary"]["failed"] == 0
-    assert data["summary"]["fixtures"] == 12
+    assert data["summary"]["fixtures"] == 15
     assert all(item["status"] == "pass" for item in data["fixtures"])
+
+
+def test_policy_schema_reference_documents_supported_fields() -> None:
+    reference = (ROOT / "docs" / "policy-schema.md").read_text(encoding="utf-8")
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    for field in [
+        "version",
+        "policy.shell.allow",
+        "policy.filesystem.read",
+        "policy.filesystem.write",
+        "policy.network.allow",
+        "policy.secrets.deny",
+        "policy.mcp.require_review_on_change",
+        "policy.risk_threshold.block",
+    ]:
+        assert field in reference
+    assert "docs/policy-schema.md" in readme
+
+
+@pytest.mark.parametrize(
+    ("fixture", "expected"),
+    [
+        ("13-public-pattern-python-node-extraction", {"SG003", "SG006"}),
+        (
+            "14-public-pattern-shell-powershell-extraction",
+            {"SG001", "SG002", "SG003", "SG006"},
+        ),
+        ("15-public-pattern-mcp-remote-config", {"SG003", "SG005", "SG009"}),
+    ],
+)
+def test_public_pattern_fixtures_detect_expected_rule_ids(fixture: str, expected: set[str]) -> None:
+    assert rule_ids(fixture) == expected
 
 
 def test_cli_fixtures_summary_text() -> None:

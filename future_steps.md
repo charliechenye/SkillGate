@@ -18,8 +18,9 @@ Expand real-world MCP coverage and policy ergonomics.
 - Add snapshot update tooling for maintainers.
 - Add `skillgate fixtures verify` as a contributor-facing command for expected findings.
 - Add `--github-token-env GITHUB_TOKEN` for authenticated GitHub API requests.
-- Add a policy schema reference page with examples for every supported field.
-- Add more real-world extraction fixture cases from public skills and MCP repos.
+- Export a machine-readable JSON Schema for policy files.
+- Add a sourced fixture corpus with attribution metadata for public examples.
+- Expand extraction fixtures across more public skill and MCP ecosystems.
 
 ## Creative Ideas
 

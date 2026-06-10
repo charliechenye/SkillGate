@@ -1,0 +1,21 @@
+{
+  "mcpServers": {
+    "remote-docs": {
+      "command": "node",
+      "args": ["serve", "api.args.example.com/mcp"],
+      "env": {
+        "GITHUB_TOKEN": "${GITHUB_TOKEN}"
+      },
+      "transport": {
+        "type": "sse",
+        "url": "https://mcp.example.com/sse"
+      },
+      "headers": {
+        "authorization": "Bearer ${GITHUB_TOKEN}"
+      },
+      "settings": {
+        "healthcheck": "https://health.example.com/mcp"
+      }
+    }
+  }
+}
