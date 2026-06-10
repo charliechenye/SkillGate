@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from yaml.nodes import MappingNode, Node, ScalarNode
 
 from skillgate.models import (
     Capability,
@@ -16,15 +17,96 @@ from skillgate.models import (
 )
 
 
+class PolicyLoadError(ValueError):
+    def __init__(
+        self,
+        message: str,
+        path: Path,
+        line: int | None = None,
+        column: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.message = message
+        self.path = path
+        self.line = line
+        self.column = column
+
+    def __str__(self) -> str:
+        if self.line is not None and self.column is not None:
+            return f"{self.path}:{self.line}:{self.column}: {self.message}"
+        if self.line is not None:
+            return f"{self.path}:{self.line}: {self.message}"
+        return f"{self.path}: {self.message}"
+
+
+def mark_location(node: Node | None) -> tuple[int | None, int | None]:
+    if node is None:
+        return None, None
+    return node.start_mark.line + 1, node.start_mark.column + 1
+
+
+def child_node(mapping: MappingNode | None, key: str) -> Node | None:
+    if mapping is None:
+        return None
+    for key_node, value_node in mapping.value:
+        if isinstance(key_node, ScalarNode) and key_node.value == key:
+            return value_node
+    return None
+
+
+def node_at_path(root: Node | None, path: list[str]) -> Node | None:
+    node = root
+    for part in path:
+        if not isinstance(node, MappingNode):
+            return node
+        node = child_node(node, part)
+    return node
+
+
+def raise_policy_error(message: str, path: Path, node: Node | None = None) -> None:
+    line, column = mark_location(node)
+    raise PolicyLoadError(message, path, line, column)
+
+
 def load_policy(path: Path) -> dict[str, Any]:
     try:
-        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        text = path.read_text(encoding="utf-8")
+        root_node = yaml.compose(text)
+        data = yaml.safe_load(text) or {}
     except OSError as exc:
-        raise ValueError(f"Unable to read policy file: {path}") from exc
+        raise PolicyLoadError("Unable to read policy file", path) from exc
     except yaml.YAMLError as exc:
-        raise ValueError(f"Unable to parse policy file: {path}") from exc
+        mark = getattr(exc, "problem_mark", None)
+        line = mark.line + 1 if mark else None
+        column = mark.column + 1 if mark else None
+        raise PolicyLoadError("Unable to parse YAML policy file", path, line, column) from exc
     if not isinstance(data, dict):
-        raise ValueError("Policy file must contain a YAML mapping.")
+        raise_policy_error("Policy file must contain a YAML mapping", path, root_node)
+    policy = data.get("policy")
+    policy_node = node_at_path(root_node, ["policy"])
+    if policy is not None and not isinstance(policy, dict):
+        raise_policy_error("policy must be a YAML mapping", path, policy_node)
+    if isinstance(policy, dict):
+        for section in ["shell", "filesystem", "network", "secrets", "mcp", "risk_threshold"]:
+            section_value = policy.get(section)
+            section_node = node_at_path(root_node, ["policy", section])
+            if section_value is not None and not isinstance(section_value, dict):
+                raise_policy_error(f"policy.{section} must be a YAML mapping", path, section_node)
+        threshold = policy.get("risk_threshold", {}).get("block")
+        if threshold is not None and threshold not in {
+            "informational",
+            "low",
+            "medium",
+            "high",
+            "critical",
+        }:
+            threshold_node = node_at_path(root_node, ["policy", "risk_threshold", "block"])
+            raise_policy_error(
+                "policy.risk_threshold.block must be one of: "
+                "informational, low, medium, high, critical",
+                path,
+                threshold_node,
+            )
     return data
 
 

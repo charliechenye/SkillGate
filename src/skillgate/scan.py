@@ -5,7 +5,14 @@ from pathlib import Path
 
 from skillgate import __version__
 from skillgate.discovery import discover_paths, scan_file_metadata
-from skillgate.models import SCHEMA_VERSION, Capability, Finding, ScanReport, stable_json
+from skillgate.models import (
+    SCHEMA_VERSION,
+    SEVERITY_ORDER,
+    Capability,
+    Finding,
+    ScanReport,
+    stable_json,
+)
 from skillgate.rules import DEFAULT_RULES
 from skillgate.rules.base import FileContent
 
@@ -47,6 +54,20 @@ def load_file_content(root: Path, path: Path, file_type: str) -> FileContent:
     )
 
 
+def findings_summary(
+    findings: list[Finding], scanned_files: int, capabilities: int
+) -> dict[str, object]:
+    return {
+        "scanned_files": scanned_files,
+        "capabilities": capabilities,
+        "findings": len(findings),
+        "findings_by_severity": {
+            severity: sum(1 for finding in findings if finding.severity == severity)
+            for severity in ["informational", "low", "medium", "high", "critical"]
+        },
+    }
+
+
 def scan_repository(root: Path) -> ScanReport:
     root = root.resolve()
     paths = discover_paths(root)
@@ -63,15 +84,7 @@ def scan_repository(root: Path) -> ScanReport:
             capabilities.extend(result.capabilities)
     findings = unique_findings(findings)
     capabilities = unique_capabilities(capabilities)
-    summary = {
-        "scanned_files": len(scanned_files),
-        "capabilities": len(capabilities),
-        "findings": len(findings),
-        "findings_by_severity": {
-            severity: sum(1 for finding in findings if finding.severity == severity)
-            for severity in ["informational", "low", "medium", "high", "critical"]
-        },
-    }
+    summary = findings_summary(findings, len(scanned_files), len(capabilities))
     return ScanReport(
         schema_version=SCHEMA_VERSION,
         tool_version=__version__,
@@ -80,6 +93,27 @@ def scan_repository(root: Path) -> ScanReport:
         capabilities=capabilities,
         findings=findings,
         summary=summary,
+    )
+
+
+def filter_report_by_severity(report: ScanReport, threshold: str | None) -> ScanReport:
+    if threshold is None:
+        return report
+    if threshold not in SEVERITY_ORDER:
+        raise ValueError(f"Unknown severity: {threshold}")
+    minimum = SEVERITY_ORDER[threshold]
+    findings = [
+        finding for finding in report.findings if SEVERITY_ORDER[finding.severity] >= minimum
+    ]
+    return report.model_copy(
+        update={
+            "findings": findings,
+            "summary": findings_summary(
+                findings,
+                scanned_files=len(report.scanned_files),
+                capabilities=len(report.capabilities),
+            ),
+        }
     )
 
 

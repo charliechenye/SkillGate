@@ -1,2 +1,6 @@
 findings:
+  - SG001
+  - SG003
+  - SG005
+  - SG009
   - SG010

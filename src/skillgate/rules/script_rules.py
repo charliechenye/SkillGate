@@ -30,8 +30,27 @@ SECRET_RE = re.compile(
 )
 WRITE_RE = re.compile(
     r"(?i)(?:\b(?:write|append|overwrite)\b|open\s*\([^)]*['\"][wa]['\"]|"
-    r"fs\.(?:writeFile|appendFile)|\btee\b|cat\s+>\s*([^\s]+)|>\s*([A-Za-z0-9_./-]+))"
+    r"Path\s*\([^)]*\)\.write_(?:text|bytes)\s*\(|"
+    r"fs\.(?:writeFile|appendFile|createWriteStream)|\btee\b|"
+    r"cat\s+>\s*([^\s]+)|>\s*([A-Za-z0-9_./-]+))"
 )
+PY_OPEN_TARGET_RE = re.compile(
+    r"""open\s*\(\s*['"](?P<target>[^'"]+)['"]\s*,\s*['"][^'"]*[wa][^'"]*['"]"""
+)
+PATH_WRITE_TARGET_RE = re.compile(
+    r"""Path\s*\(\s*['"](?P<target>[^'"]+)['"]\s*\)\.write_(?:text|bytes)\s*\("""
+)
+NODE_FS_TARGET_RE = re.compile(
+    r"""fs\.(?:writeFile|appendFile|createWriteStream)\s*\(\s*['"](?P<target>[^'"]+)['"]"""
+)
+TEE_TARGET_RE = re.compile(r"""(?i)\btee(?:\s+-a)?\s+(?P<target>[^\s|;&]+)""")
+REDIRECT_TARGET_RE = re.compile(r"""(?<![0-9])>\s*(?P<target>[A-Za-z0-9_./-]+)""")
+CAT_REDIRECT_TARGET_RE = re.compile(r"""(?i)cat\s+>\s*(?P<target>[^\s|;&]+)""")
+NETWORK_CALL_TARGET_RE = re.compile(
+    r"""(?i)(?:requests\.(?:get|post)|fetch|axios(?:\.get|\.post)?|https?\.get)\s*"""
+    r"""\(\s*['"](?P<target>[^'"]+)['"]"""
+)
+NETWORK_COMMAND_RE = re.compile(r"""(?i)\b(?:curl|wget|Invoke-WebRequest)\b(?P<args>.*)""")
 
 
 def line_matches(text: str, pattern: re.Pattern[str]) -> list[tuple[int, str, re.Match[str]]]:
@@ -45,10 +64,45 @@ def line_matches(text: str, pattern: re.Pattern[str]) -> list[tuple[int, str, re
 
 def extract_host(text: str) -> str | None:
     match = URL_RE.search(text)
-    if not match:
+    if match:
+        parsed = urlparse(match.group(0))
+        return parsed.hostname
+    call_match = NETWORK_CALL_TARGET_RE.search(text)
+    if call_match:
+        return host_from_token(call_match.group("target"))
+    command_match = NETWORK_COMMAND_RE.search(text)
+    if command_match:
+        for token in command_match.group("args").split():
+            host = host_from_token(token)
+            if host:
+                return host
+    return None
+
+
+def host_from_token(token: str) -> str | None:
+    cleaned = token.strip().strip("'\"`,;()[]{}")
+    if not cleaned or cleaned.startswith("-") or cleaned.startswith((".", "/")):
         return None
-    parsed = urlparse(match.group(0))
-    return parsed.hostname
+    parsed = urlparse(cleaned if "://" in cleaned else f"//{cleaned}")
+    host = parsed.hostname
+    if host and "." in host:
+        return host
+    return None
+
+
+def extract_write_target(line: str, fallback_match: re.Match[str]) -> str | None:
+    for pattern in [
+        PY_OPEN_TARGET_RE,
+        PATH_WRITE_TARGET_RE,
+        NODE_FS_TARGET_RE,
+        CAT_REDIRECT_TARGET_RE,
+        TEE_TARGET_RE,
+        REDIRECT_TARGET_RE,
+    ]:
+        match = pattern.search(line)
+        if match:
+            return match.group("target").strip("'\"")
+    return next((group for group in fallback_match.groups() if group), None)
 
 
 class ShellExecutionRule:
@@ -216,7 +270,7 @@ class FilesystemWriteRule:
     def analyze(self, file: FileContent) -> RuleResult:
         result = RuleResult()
         for number, line, match in line_matches(file.text, WRITE_RE):
-            target = next((group for group in match.groups() if group), None)
+            target = extract_write_target(line, match)
             result.findings.append(
                 make_finding(
                     rule_id=self.rule_id,

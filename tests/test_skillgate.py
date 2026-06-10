@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
+import yaml
 from typer.testing import CliRunner
 
 from skillgate.baseline import create_baseline, diff_against_baseline
@@ -138,6 +139,302 @@ def test_cli_scan_exit_code_and_output() -> None:
     result = runner.invoke(app, ["scan", str(FIXTURES / "02-shell-execution")])
     assert result.exit_code == 0
     assert "SG001" in result.output
+
+
+def test_cli_rules_list() -> None:
+    result = runner.invoke(app, ["rules", "list"])
+    assert result.exit_code == 0
+    assert "SG001" in result.output
+    assert "SG004" in result.output
+    assert "medium" in result.output
+    assert "remote_download_execution" in result.output
+    assert "Pin, verify" in result.output
+
+
+def test_cli_explain_rule() -> None:
+    result = runner.invoke(app, ["explain", "SG004"])
+    assert result.exit_code == 0
+    assert "Remote download followed by execution" in result.output
+    assert "Severity: high" in result.output
+    assert "Capability: remote_download_execution" in result.output
+    assert "Examples:" in result.output
+    assert "Remediation:" in result.output
+
+
+def test_cli_explain_rule_is_case_insensitive() -> None:
+    result = runner.invoke(app, ["explain", "sg004"])
+    assert result.exit_code == 0
+    assert "SG004" in result.output
+
+
+def test_cli_explain_unknown_rule_exits_2() -> None:
+    result = runner.invoke(app, ["explain", "SG999"])
+    assert result.exit_code == 2
+    assert "Unknown rule ID: SG999" in result.output
+
+
+def test_cli_scan_severity_filter_text() -> None:
+    result = runner.invoke(
+        app,
+        ["scan", str(FIXTURES / "05-remote-download-execute"), "--severity", "high"],
+    )
+    assert result.exit_code == 0
+    assert "SG004" in result.output
+    assert "SG003" not in result.output
+    assert "Findings: 2" in result.output
+
+
+def test_cli_scan_severity_filter_json() -> None:
+    result = runner.invoke(
+        app,
+        [
+            "scan",
+            str(FIXTURES / "05-remote-download-execute"),
+            "--severity",
+            "high",
+            "--format",
+            "json",
+        ],
+    )
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert {finding["rule_id"] for finding in data["findings"]} == {"SG001", "SG004"}
+    assert all(finding["severity"] == "high" for finding in data["findings"])
+    assert data["summary"]["findings"] == 2
+
+
+def test_cli_scan_severity_filter_sarif() -> None:
+    result = runner.invoke(
+        app,
+        [
+            "scan",
+            str(FIXTURES / "05-remote-download-execute"),
+            "--severity",
+            "high",
+            "--format",
+            "sarif",
+        ],
+    )
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    rule_ids = {item["ruleId"] for item in data["runs"][0]["results"]}
+    assert rule_ids == {"SG001", "SG004"}
+    assert all(item["level"] == "error" for item in data["runs"][0]["results"])
+
+
+def test_cli_scan_fail_on_high_exits_1() -> None:
+    result = runner.invoke(
+        app,
+        ["scan", str(FIXTURES / "05-remote-download-execute"), "--fail-on", "high"],
+    )
+    assert result.exit_code == 1
+    assert "FAILED: scan found findings at or above high" in result.output
+
+
+def test_cli_scan_fail_on_critical_exits_0() -> None:
+    result = runner.invoke(
+        app,
+        ["scan", str(FIXTURES / "05-remote-download-execute"), "--fail-on", "critical"],
+    )
+    assert result.exit_code == 0
+
+
+def test_cli_scan_fail_on_uses_displayed_findings() -> None:
+    result = runner.invoke(
+        app,
+        [
+            "scan",
+            str(FIXTURES / "05-remote-download-execute"),
+            "--severity",
+            "critical",
+            "--fail-on",
+            "high",
+        ],
+    )
+    assert result.exit_code == 0
+    assert "Findings: 0" in result.output
+
+
+def test_cli_rules_list_json() -> None:
+    result = runner.invoke(app, ["rules", "list", "--format", "json"])
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert [rule["rule_id"] for rule in data["rules"]] == [
+        f"SG{index:03d}" for index in range(1, 11)
+    ]
+    assert data["rules"][3]["capability"] == "remote_download_execution"
+
+
+def test_cli_explain_json() -> None:
+    result = runner.invoke(app, ["explain", "SG004", "--format", "json"])
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert data["rule_id"] == "SG004"
+    assert data["severity"] == "high"
+    assert data["capability"] == "remote_download_execution"
+
+
+def test_invalid_policy_yaml_reports_line_and_column() -> None:
+    workdir = clean_test_dir("invalid-policy-yaml")
+    policy = workdir / "skillgate.yaml"
+    policy.write_text("version: 1\npolicy:\n  risk_threshold: [\n", encoding="utf-8")
+    result = runner.invoke(
+        app,
+        ["check", str(FIXTURES / "01-safe-documentation-skill"), "--policy", str(policy)],
+    )
+    assert result.exit_code == 2
+    assert f"Error: {policy}:" in result.output
+    assert "Unable to parse YAML policy file" in result.output
+
+
+def test_invalid_policy_threshold_reports_line_and_column() -> None:
+    workdir = clean_test_dir("invalid-policy-threshold")
+    policy = workdir / "skillgate.yaml"
+    policy.write_text(
+        "version: 1\npolicy:\n  risk_threshold:\n    block: severe\n",
+        encoding="utf-8",
+    )
+    result = runner.invoke(
+        app,
+        ["check", str(FIXTURES / "01-safe-documentation-skill"), "--policy", str(policy)],
+    )
+    assert result.exit_code == 2
+    assert f"Error: {policy}:4:12:" in result.output
+    assert "policy.risk_threshold.block must be one of" in result.output
+
+
+def test_richer_filesystem_write_extraction() -> None:
+    workdir = clean_test_dir("write-extraction")
+    scripts = workdir / "scripts"
+    scripts.mkdir()
+    (workdir / "SKILL.md").write_text(
+        "Run `scripts/write.py` and `scripts/write.js`.\n",
+        encoding="utf-8",
+    )
+    (scripts / "write.py").write_text(
+        "\n".join(
+            [
+                "from pathlib import Path",
+                "open('generated/open.txt', 'w')",
+                "Path('generated/path.txt').write_text('ok')",
+                "print('ok') > generated/redirect.txt",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (scripts / "write.js").write_text(
+        "\n".join(
+            [
+                "fs.writeFile('generated/node.txt', data)",
+                "fs.appendFile('generated/append.txt', data)",
+                "fs.createWriteStream('generated/stream.txt')",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    report = scan_repository(workdir)
+    resources = {
+        capability.resource
+        for capability in report.capabilities
+        if capability.type == "filesystem_write"
+    }
+    assert {
+        "generated/open.txt",
+        "generated/path.txt",
+        "generated/redirect.txt",
+        "generated/node.txt",
+        "generated/append.txt",
+        "generated/stream.txt",
+    } <= resources
+
+
+def test_safer_host_extraction_from_package_scripts_and_mcp() -> None:
+    workdir = clean_test_dir("host-extraction")
+    (workdir / "package.json").write_text(
+        '{"scripts": {"setup": "curl api.example.com/install.sh"}}',
+        encoding="utf-8",
+    )
+    (workdir / ".mcp.json").write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "remote": {
+                        "command": "node",
+                        "args": ["server.js", "api.args.example.com/mcp"],
+                        "transport": {"url": "https://nested.example.com/sse"},
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    report = scan_repository(workdir)
+    hosts = {
+        capability.resource
+        for capability in report.capabilities
+        if capability.type == "network_egress"
+    }
+    assert {"api.example.com", "api.args.example.com", "nested.example.com"} <= hosts
+
+
+def test_benchmark_expected_findings_match_actual_summaries() -> None:
+    for expected_path in sorted(FIXTURES.glob("*/expected-findings.yaml")):
+        fixture = expected_path.parent
+        expected = set(yaml.safe_load(expected_path.read_text(encoding="utf-8"))["findings"])
+        actual = {finding.rule_id for finding in scan_repository(fixture).findings}
+        if fixture.name == "12-mcp-capability-drift-after":
+            baseline = create_baseline(FIXTURES / "11-mcp-capability-drift-before")
+            diff, _report = diff_against_baseline(fixture, baseline)
+            actual |= {finding.rule_id for finding in diff.findings}
+        assert actual == expected, f"{fixture.name} expected {expected}, got {actual}"
+
+
+def assert_snapshot(name: str, content: str) -> None:
+    snapshot = ROOT / "tests" / "snapshots" / name
+    expected = snapshot.read_text(encoding="utf-8")
+    assert content == expected, (
+        f"Snapshot mismatch for {name}. "
+        "Update the snapshot intentionally if the output change is expected."
+    )
+
+
+def test_golden_scan_text_snapshot() -> None:
+    result = runner.invoke(app, ["scan", str(FIXTURES / "05-remote-download-execute")])
+    assert result.exit_code == 0
+    assert_snapshot("scan_remote_download.txt", result.output)
+
+
+def test_golden_scan_json_snapshot() -> None:
+    result = runner.invoke(
+        app,
+        ["scan", str(FIXTURES / "05-remote-download-execute"), "--format", "json"],
+    )
+    assert result.exit_code == 0
+    assert_snapshot("scan_remote_download.json", result.output)
+
+
+def test_golden_scan_sarif_snapshot() -> None:
+    result = runner.invoke(
+        app,
+        ["scan", str(FIXTURES / "05-remote-download-execute"), "--format", "sarif"],
+    )
+    assert result.exit_code == 0
+    assert_snapshot("scan_remote_download.sarif", result.output)
+
+
+def test_golden_rule_docs_snapshots() -> None:
+    rules_text = runner.invoke(app, ["rules", "list"])
+    rules_json = runner.invoke(app, ["rules", "list", "--format", "json"])
+    explain_text = runner.invoke(app, ["explain", "SG004"])
+    explain_json = runner.invoke(app, ["explain", "SG004", "--format", "json"])
+    assert rules_text.exit_code == 0
+    assert rules_json.exit_code == 0
+    assert explain_text.exit_code == 0
+    assert explain_json.exit_code == 0
+    assert_snapshot("rules_list.txt", rules_text.output)
+    assert_snapshot("rules_list.json", rules_json.output)
+    assert_snapshot("explain_sg004.txt", explain_text.output)
+    assert_snapshot("explain_sg004.json", explain_json.output)
 
 
 def test_cli_check_blocks() -> None:

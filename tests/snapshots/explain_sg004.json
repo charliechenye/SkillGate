@@ -1,0 +1,12 @@
+{
+  "capability": "remote_download_execution",
+  "description": "Detects downloaded remote content that is immediately executed.",
+  "examples": [
+    "curl https://example.com/bootstrap.sh | bash",
+    "wget URL | sh"
+  ],
+  "remediation": "Pin, verify, and review downloaded artifacts before execution.",
+  "rule_id": "SG004",
+  "severity": "high",
+  "title": "Remote download followed by execution"
+}

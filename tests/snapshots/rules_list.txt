@@ -1,0 +1,12 @@
+Rule    Severity       Capability                    Title                                                       Remediation
+--------------------------------------------------------------------------------------------------------------------------------------------
+SG001   medium         shell_execution               Shell execution detected                                    Review shell execution and require explicit policy approval.
+SG002   high           destructive_action            Destructive command detected                                Remove the destructive action or require explicit human review.
+SG003   medium         network_egress                Network egress detected                                     Allowlist expected hosts or remove unexpected network access.
+SG004   high           remote_download_execution     Remote download followed by execution                       Pin, verify, and review downloaded artifacts before execution.
+SG005   high           secret_access                 Secret or credential access detected                        Avoid broad secret access or require explicit policy approval.
+SG006   medium         filesystem_write              Filesystem write capability detected                        Constrain writes to policy-approved paths.
+SG007   high           prompt_override               Prompt override or instruction-conflict language detected   Remove instruction-conflict language unless explicitly reviewed.
+SG008   medium         obfuscation                   Suspicious Unicode or obfuscation detected                  Remove hidden characters or encoded command execution.
+SG009   informational  mcp_server                    MCP server configuration discovered                         Review MCP servers and approve introduced capabilities.
+SG010   high           mcp_server                    MCP capability changed from baseline                        Review and approve MCP capability changes before merge.

@@ -31,6 +31,10 @@ def scan_text(report: ScanReport) -> str:
     return "\n".join(lines) + "\n"
 
 
+def append_scan_failure_text(content: str, threshold: str) -> str:
+    return f"{content}\nFAILED: scan found findings at or above {threshold}\n"
+
+
 def check_text(result: PolicyResult) -> str:
     if not result.blocked:
         return "ALLOWED: repository policy check passed\n"

@@ -100,9 +100,31 @@ The repository also includes `.github/workflows/skillgate.yml` as a complete exa
 skillgate scan . --format text
 skillgate scan . --format json
 skillgate scan . --format sarif --output skillgate.sarif
+skillgate scan . --severity high
+skillgate scan . --fail-on high
 ```
 
 `skillgate scan` exits `0` when findings exist. `skillgate check` exits `1` when policy blocks the repository.
+`skillgate scan --fail-on medium|high|critical` exits `1` when displayed findings meet the threshold.
+
+## Rule Documentation
+
+```bash
+skillgate rules list
+skillgate rules list --format json
+skillgate explain SG004
+skillgate explain SG004 --format json
+```
+
+`skillgate rules list` prints the supported rule IDs, default severities, capability types, titles, and remediation guidance. `skillgate explain` prints concise terminal documentation for a single rule ID.
+
+## Policy Diagnostics
+
+SkillGate reports YAML syntax and MVP policy validation errors with file, line, and column details when available.
+
+```text
+Error: skillgate.yaml:4:12: policy.risk_threshold.block must be one of: informational, low, medium, high, critical
+```
 
 ## Roadmap
 

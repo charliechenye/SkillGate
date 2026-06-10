@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 
 from skillgate.models import Severity
 from skillgate.rules.base import FileContent, RuleResult, make_capability, make_finding
+from skillgate.rules.script_rules import host_from_token
 
 URL_RE = re.compile(r"https?://[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]+")
 SHELL_COMMANDS = {"bash", "sh", "zsh", "powershell", "pwsh", "cmd.exe"}
@@ -17,9 +18,37 @@ def host_from_value(value: object) -> str | None:
     if not isinstance(value, str):
         return None
     match = URL_RE.search(value)
-    if not match:
-        return None
-    return urlparse(match.group(0)).hostname
+    if match:
+        return urlparse(match.group(0)).hostname
+    return host_from_token(value)
+
+
+def collect_string_values(value: object) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, list):
+        strings: list[str] = []
+        for item in value:
+            strings.extend(collect_string_values(item))
+        return strings
+    if isinstance(value, dict):
+        strings = []
+        for item in value.values():
+            strings.extend(collect_string_values(item))
+        return strings
+    return []
+
+
+def hosts_from_value(value: object) -> list[str]:
+    hosts = []
+    for item in collect_string_values(value):
+        url_hosts = [urlparse(match.group(0)).hostname for match in URL_RE.finditer(item)]
+        hosts.extend(host for host in url_hosts if host)
+        if not url_hosts:
+            host = host_from_token(item)
+            if host:
+                hosts.append(host)
+    return sorted(set(hosts))
 
 
 def find_servers(data: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -68,11 +97,15 @@ class McpConfigRule:
             command = server.get("command")
             args = server.get("args") if isinstance(server.get("args"), list) else []
             env = server.get("env") if isinstance(server.get("env"), dict) else {}
-            endpoints = [
-                host
-                for host in (host_from_value(value) for value in [server.get("url"), *args])
-                if host
-            ]
+            endpoints = hosts_from_value(
+                {
+                    "url": server.get("url"),
+                    "args": args,
+                    "transport": server.get("transport"),
+                    "headers": server.get("headers"),
+                    "settings": server.get("settings"),
+                }
+            )
             env_names = sorted(str(key) for key in env)
             details = {
                 "server": name,
