@@ -1,0 +1,103 @@
+{
+  "$id": "https://github.com/charliechenye/SkillGate/schemas/skillgate-policy.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Policy schema for SkillGate static trust checks.",
+  "properties": {
+    "policy": {
+      "additionalProperties": false,
+      "properties": {
+        "filesystem": {
+          "additionalProperties": false,
+          "properties": {
+            "read": {
+              "description": "Reserved allowlist for future filesystem read checks.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "write": {
+              "description": "Allowlisted POSIX-style glob patterns for write targets.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
+        "mcp": {
+          "additionalProperties": false,
+          "properties": {
+            "require_review_on_change": {
+              "description": "Block MCP drift findings produced by baseline diff checks.",
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        },
+        "network": {
+          "additionalProperties": false,
+          "properties": {
+            "allow": {
+              "description": "Allowed network hostnames.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
+        "risk_threshold": {
+          "additionalProperties": false,
+          "properties": {
+            "block": {
+              "description": "Block findings at or above this severity.",
+              "enum": [
+                "informational",
+                "low",
+                "medium",
+                "high",
+                "critical"
+              ],
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "secrets": {
+          "additionalProperties": false,
+          "properties": {
+            "deny": {
+              "description": "Denied secret patterns. Use [\"*\"] to block all detected secrets.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
+        "shell": {
+          "additionalProperties": false,
+          "properties": {
+            "allow": {
+              "description": "Set to false to block shell execution capabilities.",
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "version": {
+      "const": 1,
+      "description": "SkillGate policy schema version."
+    }
+  },
+  "title": "SkillGate policy",
+  "type": "object"
+}

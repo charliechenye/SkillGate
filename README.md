@@ -52,11 +52,14 @@ SkillGate can sparse-scan a public GitHub repository before you install or copy 
 
 ```bash
 skillgate github scan https://github.com/phuryn/pm-skills
+skillgate github scan https://github.com/addyosmani/agent-skills/tree/main/skills
 skillgate github scan https://github.com/phuryn/pm-skills --ref main --fail-on high
 skillgate github scan https://github.com/phuryn/pm-skills --format json
 ```
 
 Remote scans do not clone the repository or download a full archive. SkillGate fetches GitHub tree metadata, downloads only supported agent files plus referenced local scripts into a temporary sparse mirror, runs static analysis, and deletes the temporary files. It never executes remote repository content.
+
+GitHub tree URLs scan only the selected subtree. If a tree URL includes a branch and you also pass `--ref`, the explicit `--ref` value wins.
 
 See [GitHub pre-install scans](docs/github-preinstall-scan.md) for the full workflow.
 
@@ -116,6 +119,11 @@ Supported files include:
 - `.github/copilot-instructions.md`
 - `.claude/skills/**`
 - `.agents/skills/**`
+- `skills/**/SKILL.md`
+- `agents/**`
+- `.claude/commands/**`
+- `.gemini/commands/**`
+- `hooks/**`
 - `**/mcp.json`
 - `**/.mcp.json`
 - `package.json`
@@ -133,10 +141,12 @@ python samples/scan_installed_skills.py --root ~/.codex/skills --fail-on high
 
 ## Policy Example
 
-See [`skillgate.example.yaml`](skillgate.example.yaml) and the full [policy schema reference](docs/policy-schema.md).
+See [`skillgate.example.yaml`](skillgate.example.yaml), the full [policy schema reference](docs/policy-schema.md), and the machine-readable JSON Schema at [`schemas/skillgate-policy.schema.json`](schemas/skillgate-policy.schema.json).
 
 ```bash
 skillgate check . --policy skillgate.example.yaml
+skillgate policy schema
+skillgate policy schema --output skillgate-policy.schema.json
 ```
 
 Policy checks can block shell execution, unallowlisted filesystem writes, unallowlisted network hosts, denied secret access, high-risk findings, and MCP capability drift. SkillGate validates the policy schema and reports file, line, and column details for YAML and schema errors when available.

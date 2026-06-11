@@ -1,0 +1,9 @@
+{
+  "marketplace": {
+    "type": "streamable-http",
+    "url": "https://marketplace-mcp.example.com/mcp",
+    "headers": {
+      "Authorization": "Bearer ${MARKETPLACE_TOKEN}"
+    }
+  }
+}

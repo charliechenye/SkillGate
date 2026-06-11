@@ -15,6 +15,7 @@ from skillgate.fixtures import (
 )
 from skillgate.models import SEVERITY_ORDER, severity_at_or_above, stable_json
 from skillgate.policy import evaluate_policy, load_policy
+from skillgate.policy_schema import POLICY_JSON_SCHEMA
 from skillgate.reporting import (
     append_scan_failure_text,
     check_text,
@@ -31,10 +32,12 @@ app = typer.Typer(help="Trust checks for AI-agent skills and MCP configurations.
 baseline_app = typer.Typer(help="Create and manage approved SkillGate baselines.")
 fixtures_app = typer.Typer(help="Inspect benchmark fixture expectations.")
 github_app = typer.Typer(help="Scan remote GitHub repositories before installing skills.")
+policy_app = typer.Typer(help="Inspect SkillGate policy helpers.")
 rules_app = typer.Typer(help="Inspect SkillGate rule documentation.")
 app.add_typer(baseline_app, name="baseline")
 app.add_typer(fixtures_app, name="fixtures")
 app.add_typer(github_app, name="github")
+app.add_typer(policy_app, name="policy")
 app.add_typer(rules_app, name="rules")
 console = Console()
 
@@ -155,6 +158,16 @@ def github_scan(
     finally:
         if "sparse" in locals():
             sparse.cleanup()
+
+
+@policy_app.command("schema")
+def policy_schema(
+    output: Annotated[
+        Path | None, typer.Option("--output", "-o", help="Write schema to a file.")
+    ] = None,
+) -> None:
+    """Print the SkillGate policy JSON Schema."""
+    write_or_print(stable_json(POLICY_JSON_SCHEMA), output, console)
 
 
 @rules_app.command("list")

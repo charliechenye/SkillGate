@@ -5,6 +5,7 @@ SkillGate can scan public GitHub repositories before you install or copy AI-agen
 ```bash
 skillgate github scan https://github.com/phuryn/pm-skills
 skillgate github scan https://github.com/phuryn/pm-skills --ref main
+skillgate github scan https://github.com/addyosmani/agent-skills/tree/main/skills
 skillgate github scan https://github.com/phuryn/pm-skills --fail-on high
 skillgate github scan https://github.com/phuryn/pm-skills --format sarif --output skillgate.sarif
 ```
@@ -21,11 +22,26 @@ Supported remote files include:
 - `.github/copilot-instructions.md`
 - `.claude/skills/**`
 - `.agents/skills/**`
+- `skills/**/SKILL.md`
+- `agents/**`
+- `.claude/commands/**`
+- `.gemini/commands/**`
+- `hooks/**`
 - `mcp.json`
 - `.mcp.json`
 - `package.json`
 - `pyproject.toml`
 - Referenced local scripts ending in `.sh`, `.bash`, `.py`, `.js`, `.ts`, `.mjs`, `.cjs`, or `.ps1`
+
+## Scanning A Subdirectory
+
+GitHub tree URLs scan only the selected subtree:
+
+```bash
+skillgate github scan https://github.com/OWNER/REPO/tree/main/path/to/skills
+```
+
+SkillGate materializes the selected subtree as the scan root, so report paths are relative to that subtree. Referenced scripts are followed only when the referenced file stays inside the selected subtree. If the URL includes a branch and `--ref` is also supplied, `--ref` wins.
 
 ## What SkillGate Looks For
 

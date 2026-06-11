@@ -35,11 +35,12 @@ AI-agent skills, instruction files, helper scripts, and MCP configurations.
 - Added scan severity filtering and `scan --fail-on medium|high|critical` for lightweight CI gates.
 - Added YAML policy evaluation for shell, filesystem write, network, secrets, MCP drift, and severity thresholds.
 - Added line-aware YAML policy diagnostics for parser and schema validation errors.
+- Added a Draft 2020-12 JSON Schema for SkillGate policy files and `skillgate policy schema` for machine-readable schema export.
 - Added stable JSON baseline lockfile creation and baseline diffing.
-- Added sparse public GitHub repository scans that fetch supported agent files and referenced scripts without cloning the full repository.
+- Added sparse public GitHub repository scans that fetch supported agent files and referenced scripts without cloning the full repository, including GitHub tree/subdirectory URL support.
 - Added a no-install local sample at `samples/scan_installed_skills.py` for scanning installed Codex skills from a source checkout.
 - Added rule documentation commands with text and JSON output.
-- Added benchmark fixtures, expected finding summaries, and reduced public-pattern fixtures for Python, Node, shell, PowerShell, MCP, and agent-skill layouts.
+- Added benchmark fixtures, expected finding summaries, and reduced public-pattern fixtures for Python, Node, shell, PowerShell, MCP, plugin hook, command-pack, and agent-skill layouts.
 - Added golden-output snapshots for scan text, JSON, SARIF, and rule documentation output.
 - Added a repo-local snapshot helper with check and accept modes plus CI artifact upload for snapshot review.
 - Added a composite GitHub Action and example GitHub Actions workflow with SARIF upload support.

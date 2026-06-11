@@ -5,18 +5,18 @@
 Expand real-world MCP coverage and policy ergonomics.
 
 - Document a contributor workflow for adding a new rule, fixture, expected findings file, and regression test together.
-- Support GitHub tree/subdirectory URLs for scanning only part of a repository.
 - Support authenticated and private GitHub repositories.
 - Support non-GitHub archive or source URL scanning.
 - Add cache controls for repeated remote scans.
+- Publish a stable hosted policy schema URL after the first tagged release.
 
 ## Practical Product Improvements
 
 - Add `skillgate fixtures verify` as a contributor-facing command for expected findings.
 - Add `--github-token-env GITHUB_TOKEN` for authenticated GitHub API requests.
-- Export a machine-readable JSON Schema for policy files.
 - Expand sourced fixture attribution metadata beyond README notes.
-- Expand extraction fixtures across more public skill, plugin, and MCP ecosystems.
+- Add schema-aware editor setup snippets for VS Code and other common editors.
+- Add more public-pattern fixtures with explicit attribution metadata for each reduced case.
 - Confirm the sanitized social preview image renders correctly after pushing to GitHub.
 - Apply GitHub repository topics and description in the repository settings.
 

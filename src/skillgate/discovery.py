@@ -53,6 +53,11 @@ def is_relevant_path(rel_path: Path) -> bool:
         rel == ".github/copilot-instructions.md"
         or rel.startswith(".claude/skills/")
         or rel.startswith(".agents/skills/")
+        or (rel.startswith("skills/") and rel_path.name == "SKILL.md")
+        or rel.startswith("agents/")
+        or rel.startswith(".claude/commands/")
+        or rel.startswith(".gemini/commands/")
+        or rel.startswith("hooks/")
     )
 
 

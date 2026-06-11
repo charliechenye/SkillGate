@@ -24,6 +24,8 @@ class SourceError(RuntimeError):
 class GitHubRepo:
     owner: str
     repo: str
+    ref: str | None = None
+    subpath: str | None = None
 
 
 @dataclass(frozen=True)
@@ -50,14 +52,46 @@ def parse_github_repo_url(url: str) -> GitHubRepo:
     parts = [part for part in parsed.path.strip("/").split("/") if part]
     if len(parts) < 2:
         raise SourceError("GitHub URL must include an owner and repository name")
-    if len(parts) > 2:
-        raise SourceError(
-            "GitHub tree/subdirectory URLs are not supported yet; use the repo root URL"
-        )
     repo = parts[1][:-4] if parts[1].endswith(".git") else parts[1]
     if not parts[0] or not repo:
         raise SourceError("GitHub URL must include an owner and repository name")
-    return GitHubRepo(owner=parts[0], repo=repo)
+    if len(parts) == 2:
+        return GitHubRepo(owner=parts[0], repo=repo)
+    if len(parts) >= 4 and parts[2] == "tree":
+        tree_ref = parts[3]
+        subpath = normalize_remote_path("/".join(parts[4:])) if len(parts) > 4 else None
+        return GitHubRepo(owner=parts[0], repo=repo, ref=tree_ref, subpath=subpath)
+    raise SourceError(
+        "Expected a GitHub repository URL or tree URL such as "
+        "https://github.com/OWNER/REPO/tree/BRANCH/path"
+    )
+
+
+def normalize_remote_path(path: str | None) -> str | None:
+    if path is None:
+        return None
+    parts = []
+    for part in path.replace("\\", "/").split("/"):
+        if part in {"", "."}:
+            continue
+        if part == "..":
+            raise SourceError("GitHub tree path must not contain '..'")
+        parts.append(part)
+    return "/".join(parts) or None
+
+
+def path_within_subpath(path: str, subpath: str | None) -> bool:
+    if subpath is None:
+        return True
+    return path == subpath or path.startswith(f"{subpath}/")
+
+
+def strip_subpath(path: str, subpath: str | None) -> str:
+    if subpath is None:
+        return path
+    if path == subpath:
+        return Path(path).name
+    return path.removeprefix(f"{subpath}/")
 
 
 def request_json(url: str) -> dict[str, object]:
@@ -104,13 +138,14 @@ def github_tree(repo: GitHubRepo, ref: str) -> list[GitHubTreeItem]:
     return sorted(items, key=lambda item: item.path)
 
 
-def relevant_remote_paths(items: list[GitHubTreeItem]) -> list[str]:
+def relevant_remote_paths(items: list[GitHubTreeItem], subpath: str | None = None) -> list[str]:
     return sorted(
         item.path
         for item in items
         if item.type == "blob"
+        and path_within_subpath(item.path, subpath)
         and not is_excluded(Path(item.path))
-        and is_relevant_path(Path(item.path))
+        and is_relevant_path(Path(strip_subpath(item.path, subpath)))
     )
 
 
@@ -160,30 +195,38 @@ def materialize_sparse_files(files: dict[str, str], prefix: str = "skillgate-git
 
 def fetch_github_sparse(url: str, ref: str | None = None) -> SparseFetchResult:
     repo = parse_github_repo_url(url)
-    resolved_ref = ref or default_branch(repo)
+    resolved_ref = ref or repo.ref or default_branch(repo)
     tree = github_tree(repo, resolved_ref)
     available_paths = {item.path for item in tree if item.type == "blob"}
-    selected_paths = set(relevant_remote_paths(tree))
-    fetched: dict[str, str] = {}
+    selected_paths = set(relevant_remote_paths(tree, repo.subpath))
+    fetched_remote: dict[str, str] = {}
 
     for path in sorted(selected_paths):
-        fetched[path] = request_text(raw_url(repo, resolved_ref, path))
+        fetched_remote[path] = request_text(raw_url(repo, resolved_ref, path))
 
     referenced_paths = set()
-    for path, content in fetched.items():
-        referenced_paths.update(referenced_script_paths(path, content, available_paths))
+    for path, content in fetched_remote.items():
+        referenced_paths.update(
+            reference
+            for reference in referenced_script_paths(path, content, available_paths)
+            if path_within_subpath(reference, repo.subpath)
+        )
 
     missing_references = sorted(path for path in referenced_paths if path not in available_paths)
     for path in sorted(referenced_paths & available_paths):
-        if path not in fetched:
-            fetched[path] = request_text(raw_url(repo, resolved_ref, path))
+        if path not in fetched_remote:
+            fetched_remote[path] = request_text(raw_url(repo, resolved_ref, path))
 
+    fetched = {
+        strip_subpath(path, repo.subpath): content
+        for path, content in sorted(fetched_remote.items())
+    }
     cleanup_path = materialize_sparse_files(fetched)
     return SparseFetchResult(
         root=cleanup_path / "repo",
         cleanup_path=cleanup_path,
         fetched_paths=sorted(fetched),
-        missing_references=missing_references,
+        missing_references=sorted(strip_subpath(path, repo.subpath) for path in missing_references),
     )
 
 

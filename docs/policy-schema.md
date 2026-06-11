@@ -3,6 +3,15 @@
 SkillGate policy files are YAML documents with a schema version and a `policy` mapping.
 The current policy schema version is `1`.
 
+The machine-readable JSON Schema is available at
+[`schemas/skillgate-policy.schema.json`](../schemas/skillgate-policy.schema.json).
+You can also print or write the same schema from the CLI:
+
+```bash
+skillgate policy schema
+skillgate policy schema --output skillgate-policy.schema.json
+```
+
 ```yaml
 version: 1
 

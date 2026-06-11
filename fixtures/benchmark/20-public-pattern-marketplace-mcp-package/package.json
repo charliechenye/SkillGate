@@ -1,0 +1,5 @@
+{
+  "scripts": {
+    "prepare-agent": "node scripts/prepare.js --endpoint marketplace.example.com/install"
+  }
+}
