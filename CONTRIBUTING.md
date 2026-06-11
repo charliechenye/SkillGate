@@ -7,6 +7,7 @@ Thanks for helping improve SkillGate. The project is a deterministic static scan
 ```bash
 python -m pip install -e ".[dev]"
 python -m pytest
+python tools/update_snapshots.py --check
 python -m ruff check .
 python -m ruff format --check .
 ```
@@ -48,6 +49,22 @@ Verify fixtures with:
 
 ```bash
 python -m skillgate fixtures summary fixtures/benchmark --format json
+```
+
+## Updating Golden Snapshots
+
+Snapshot outputs are maintained by a repo-local helper rather than the public
+`skillgate` CLI. To review generated output and diffs without changing tracked
+files, run:
+
+```bash
+python tools/update_snapshots.py --check --artifacts test-outputs/snapshots
+```
+
+If the output change is intentional, update the tracked snapshots with:
+
+```bash
+python tools/update_snapshots.py --accept
 ```
 
 ## Documentation

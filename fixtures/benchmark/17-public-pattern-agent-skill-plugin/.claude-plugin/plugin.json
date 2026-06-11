@@ -1,0 +1,7 @@
+{
+  "name": "safe-example-plugin",
+  "description": "Reduced plugin manifest for fixture coverage.",
+  "author": {
+    "name": "Example"
+  }
+}

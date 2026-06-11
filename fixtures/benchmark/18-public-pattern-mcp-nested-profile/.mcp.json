@@ -1,0 +1,19 @@
+{
+  "profiles": {
+    "dev": {
+      "mcpServers": {
+        "internal-docs": {
+          "command": "node",
+          "args": ["server.js", "https://profile.example.com/mcp"],
+          "env": {
+            "OPENAI_API_KEY": "${OPENAI_API_KEY}"
+          },
+          "transport": {
+            "type": "sse",
+            "url": "https://profile-sse.example.com/sse"
+          }
+        }
+      }
+    }
+  }
+}

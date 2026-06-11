@@ -1,5 +1,18 @@
 # Change Log
 
+## 0.3.0 - MCP coverage and snapshot workflow
+
+### Added
+
+- Added recursive MCP server discovery for nested `mcpServers` maps, top-level HTTP server maps, string arguments, and richer transport/auth/header metadata.
+- Added reduced public-pattern fixtures for official-style remote HTTP MCP configs, agent-skill plugin layouts, and nested MCP profile configs.
+- Added a repo-local golden snapshot helper with check and accept modes plus CI artifact upload for snapshot review.
+
+### Changed
+
+- Bumped package version to `0.3.0`.
+- Updated contributor guidance for fixture verification and intentional snapshot updates.
+
 ## 0.2.0 - Local skills and sparse GitHub scans
 
 ### Added

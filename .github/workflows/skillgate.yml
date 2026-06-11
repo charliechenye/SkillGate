@@ -21,6 +21,19 @@ jobs:
           python-version: "3.11"
       - name: Install SkillGate
         run: python -m pip install -e ".[dev]"
+      - name: Check golden snapshots
+        id: snapshots
+        continue-on-error: true
+        run: python tools/update_snapshots.py --check --artifacts test-outputs/snapshots
+      - name: Upload snapshot review artifacts
+        if: steps.snapshots.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: snapshot-review
+          path: test-outputs/snapshots
+      - name: Fail on snapshot mismatch
+        if: steps.snapshots.outcome == 'failure'
+        run: exit 1
       - name: Run tests
         run: python -m pytest
       - name: Run lint

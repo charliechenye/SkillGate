@@ -25,6 +25,7 @@ from skillgate.sources import (
     referenced_script_paths,
     relevant_remote_paths,
 )
+from tests.snapshot_cases import SNAPSHOT_CASES, snapshot_output
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "fixtures" / "benchmark"
@@ -505,6 +506,104 @@ def test_safer_host_extraction_from_package_scripts_and_mcp() -> None:
     assert {"api.example.com", "api.args.example.com", "nested.example.com"} <= hosts
 
 
+def test_mcp_config_parses_nested_servers_and_transport_metadata() -> None:
+    workdir = clean_test_dir("nested-mcp-config")
+    (workdir / ".mcp.json").write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "local": {
+                        "command": "node",
+                        "args": "server.js api.local.example.com/mcp",
+                        "env": {"LOCAL_API_KEY": "${LOCAL_API_KEY}"},
+                        "transport": "stdio",
+                    }
+                },
+                "profiles": {
+                    "dev": {
+                        "mcpServers": {
+                            "docs": {
+                                "type": "http",
+                                "url": "https://docs.example.com/mcp",
+                                "headers": {"Authorization": "Bearer ${DOCS_TOKEN}"},
+                                "transport": {
+                                    "type": "streamable-http",
+                                    "endpoint": "https://stream.example.com/mcp",
+                                },
+                                "auth": {"token": "${AUTH_SECRET}"},
+                            }
+                        }
+                    }
+                },
+                "example-server": {
+                    "type": "http",
+                    "serverUrl": "https://top.example.com/api",
+                    "args": "legacy.args.example.com/path",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    report = scan_repository(workdir)
+    mcp_caps = {
+        capability.resource: capability
+        for capability in report.capabilities
+        if capability.type == "mcp_server"
+    }
+    assert {"local", "profiles.dev.mcpServers.docs", "example-server"} <= set(mcp_caps)
+    assert mcp_caps["local"].details["args"] == ["server.js api.local.example.com/mcp"]
+    assert mcp_caps["local"].details["transport_type"] == "stdio"
+    assert (
+        mcp_caps["profiles.dev.mcpServers.docs"].details["config_path"]
+        == "profiles.dev.mcpServers.docs"
+    )
+    assert mcp_caps["profiles.dev.mcpServers.docs"].details["headers"] == ["Authorization"]
+    assert mcp_caps["profiles.dev.mcpServers.docs"].details["transport_type"] == "streamable-http"
+    assert mcp_caps["example-server"].details["type"] == "http"
+    hosts = {
+        capability.resource
+        for capability in report.capabilities
+        if capability.type == "network_egress"
+    }
+    assert {
+        "api.local.example.com",
+        "docs.example.com",
+        "stream.example.com",
+        "top.example.com",
+        "legacy.args.example.com",
+    } <= hosts
+
+
+def test_mcp_config_reports_secret_names_without_secret_values() -> None:
+    workdir = clean_test_dir("mcp-secret-redaction")
+    (workdir / ".mcp.json").write_text(
+        json.dumps(
+            {
+                "remote": {
+                    "type": "http",
+                    "url": "https://safe.example.com/mcp",
+                    "headers": {
+                        "Authorization": "Bearer ${REMOTE_TOKEN}",
+                        "X-Client-Secret": "literal-secret-value",
+                    },
+                    "auth": {"apiKey": "${SERVICE_API_KEY}"},
+                }
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    report = scan_repository(workdir)
+    rendered = stable_json(report)
+    secret_resources = {
+        capability.resource
+        for capability in report.capabilities
+        if capability.type == "secret_access"
+    }
+    assert {"REMOTE_TOKEN", "SERVICE_API_KEY", "X-Client-Secret"} <= secret_resources
+    assert "literal-secret-value" not in rendered
+
+
 def test_benchmark_expected_findings_match_actual_summaries() -> None:
     for expected_path in sorted(FIXTURES.glob("*/expected-findings.yaml")):
         fixture = expected_path.parent
@@ -525,7 +624,7 @@ def test_cli_fixtures_summary_json() -> None:
     assert result.exit_code == 0
     data = json.loads(result.output)
     assert data["summary"]["failed"] == 0
-    assert data["summary"]["fixtures"] == 15
+    assert data["summary"]["fixtures"] == 18
     assert all(item["status"] == "pass" for item in data["fixtures"])
 
 
@@ -555,6 +654,9 @@ def test_policy_schema_reference_documents_supported_fields() -> None:
             {"SG001", "SG002", "SG003", "SG006"},
         ),
         ("15-public-pattern-mcp-remote-config", {"SG003", "SG005", "SG009"}),
+        ("16-public-pattern-mcp-http-remote", {"SG003", "SG009"}),
+        ("17-public-pattern-agent-skill-plugin", {"SG003", "SG009"}),
+        ("18-public-pattern-mcp-nested-profile", {"SG003", "SG005", "SG009"}),
     ],
 )
 def test_public_pattern_fixtures_detect_expected_rule_ids(fixture: str, expected: set[str]) -> None:
@@ -588,47 +690,14 @@ def assert_snapshot(name: str, content: str) -> None:
     expected = snapshot.read_text(encoding="utf-8")
     assert content == expected, (
         f"Snapshot mismatch for {name}. "
-        "Update the snapshot intentionally if the output change is expected."
+        "Run `python tools/update_snapshots.py --check` to review actual output and "
+        "`python tools/update_snapshots.py --accept` to update intentional changes."
     )
 
 
-def test_golden_scan_text_snapshot() -> None:
-    result = runner.invoke(app, ["scan", str(FIXTURES / "05-remote-download-execute")])
-    assert result.exit_code == 0
-    assert_snapshot("scan_remote_download.txt", result.output)
-
-
-def test_golden_scan_json_snapshot() -> None:
-    result = runner.invoke(
-        app,
-        ["scan", str(FIXTURES / "05-remote-download-execute"), "--format", "json"],
-    )
-    assert result.exit_code == 0
-    assert_snapshot("scan_remote_download.json", result.output)
-
-
-def test_golden_scan_sarif_snapshot() -> None:
-    result = runner.invoke(
-        app,
-        ["scan", str(FIXTURES / "05-remote-download-execute"), "--format", "sarif"],
-    )
-    assert result.exit_code == 0
-    assert_snapshot("scan_remote_download.sarif", result.output)
-
-
-def test_golden_rule_docs_snapshots() -> None:
-    rules_text = runner.invoke(app, ["rules", "list"])
-    rules_json = runner.invoke(app, ["rules", "list", "--format", "json"])
-    explain_text = runner.invoke(app, ["explain", "SG004"])
-    explain_json = runner.invoke(app, ["explain", "SG004", "--format", "json"])
-    assert rules_text.exit_code == 0
-    assert rules_json.exit_code == 0
-    assert explain_text.exit_code == 0
-    assert explain_json.exit_code == 0
-    assert_snapshot("rules_list.txt", rules_text.output)
-    assert_snapshot("rules_list.json", rules_json.output)
-    assert_snapshot("explain_sg004.txt", explain_text.output)
-    assert_snapshot("explain_sg004.json", explain_json.output)
+@pytest.mark.parametrize("case", SNAPSHOT_CASES, ids=[case.name for case in SNAPSHOT_CASES])
+def test_golden_snapshots(case) -> None:
+    assert_snapshot(case.name, snapshot_output(case))
 
 
 def test_cli_check_blocks() -> None:
