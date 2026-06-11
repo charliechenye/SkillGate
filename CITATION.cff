@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+message: "If you use SkillGate in your work, please cite the software using the metadata below."
+title: "SkillGate: Static trust checks for AI-agent skills and MCP configurations"
+type: software
+authors:
+  - family-names: "Zhu"
+    given-names: "Chenye"
+url: "https://github.com/charliechenye/SkillGate"
+repository-code: "https://github.com/charliechenye/SkillGate"
+license: MIT
+keywords:
+  - AI agents
+  - agent skills
+  - Model Context Protocol
+  - MCP
+  - static analysis
+  - AI security
+  - policy as code
+  - SARIF
+  - CI
+abstract: >-
+  SkillGate is a deterministic static-analysis tool for AI-agent skills,
+  instruction files, helper scripts, and MCP configurations. It detects risky
+  capabilities, compares repositories against approved baselines, and blocks
+  unapproved changes in local checks and CI.

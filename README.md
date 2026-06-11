@@ -210,6 +210,17 @@ No. SkillGate is static analysis and policy enforcement. Use it alongside sandbo
 - See [CONTRIBUTING.md](CONTRIBUTING.md) to add rules, fixtures, tests, or documentation.
 - See [SECURITY.md](SECURITY.md) to report vulnerabilities or unsafe behavior.
 
+## Citation, License, And Brand Assets
+
+SkillGate source code is available under the [MIT License](LICENSE).
+
+To cite this project in technical writing, research, or presentations, use the
+metadata in [`CITATION.cff`](CITATION.cff).
+
+The SkillGate name, logo, social-preview images, and other visual brand assets
+are governed separately by [`BRAND.md`](BRAND.md). Community sharing with clear
+attribution and a link to the canonical repository is encouraged.
+
 ## Roadmap
 
 - sandboxed trace runner
