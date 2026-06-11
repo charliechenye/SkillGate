@@ -46,6 +46,38 @@
                 "type": "string"
               },
               "type": "array"
+            },
+            "allow_categories": {
+              "description": "Allowed built-in network host categories.",
+              "items": {
+                "enum": [
+                  "ai_api",
+                  "cloud_metadata",
+                  "localhost",
+                  "package_registry",
+                  "private_network",
+                  "public_internet",
+                  "source_control"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "deny_categories": {
+              "description": "Denied built-in network host categories.",
+              "items": {
+                "enum": [
+                  "ai_api",
+                  "cloud_metadata",
+                  "localhost",
+                  "package_registry",
+                  "private_network",
+                  "public_internet",
+                  "source_control"
+                ],
+                "type": "string"
+              },
+              "type": "array"
             }
           },
           "type": "object"
@@ -76,6 +108,19 @@
                 "type": "string"
               },
               "type": "array"
+            },
+            "env": {
+              "additionalProperties": false,
+              "properties": {
+                "allow": {
+                  "description": "Allowlisted POSIX-style glob patterns for detected secret environment variable names.",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "type": "object"
             }
           },
           "type": "object"
@@ -86,6 +131,19 @@
             "allow": {
               "description": "Set to false to block shell execution capabilities.",
               "type": "boolean"
+            },
+            "commands": {
+              "additionalProperties": false,
+              "properties": {
+                "allow": {
+                  "description": "Allowlisted POSIX-style glob patterns for shell command strings.",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "type": "object"
             }
           },
           "type": "object"

@@ -1,3 +1,9 @@
 findings:
   - SG003
   - SG009
+attribution:
+  sources:
+    - name: Anthropic Claude plugins official repository
+      url: https://github.com/anthropics/claude-plugins-official
+  reduction: Reduced, nonverbatim plugin layout with a skill and top-level MCP server map.
+  retrieved_on: "2026-06-11"

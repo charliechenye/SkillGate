@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from skillgate.models import ScanReport
+from skillgate.rule_docs import RULE_DOCS
 
 RULES = {
     "SG001": ("Shell execution detected", "The file appears to invoke shell execution."),
@@ -24,6 +25,26 @@ LEVELS = {
     "high": "error",
     "critical": "error",
 }
+RULE_DOC_BY_ID = {rule.rule_id: rule for rule in RULE_DOCS}
+
+
+def rule_tags(rule_id: str) -> list[str]:
+    rule = RULE_DOC_BY_ID.get(rule_id)
+    if rule is None:
+        return ["skillgate"]
+    return ["skillgate", f"capability:{rule.capability}", f"severity:{rule.severity}"]
+
+
+def capability_taxa() -> list[dict[str, object]]:
+    capabilities = sorted({rule.capability for rule in RULE_DOCS})
+    return [
+        {
+            "id": capability,
+            "name": capability,
+            "shortDescription": {"text": f"SkillGate capability: {capability}"},
+        }
+        for capability in capabilities
+    ]
 
 
 def sarif_report(report: ScanReport) -> dict[str, object]:
@@ -34,6 +55,7 @@ def sarif_report(report: ScanReport) -> dict[str, object]:
             "name": rule_id,
             "shortDescription": {"text": title},
             "fullDescription": {"text": description},
+            "properties": {"tags": rule_tags(rule_id)},
         }
         for rule_id, (title, description) in sorted(RULES.items())
         if rule_id in used_rule_ids or rule_id != "SG010"
@@ -52,6 +74,21 @@ def sarif_report(report: ScanReport) -> dict[str, object]:
                     }
                 }
             ],
+            "properties": {
+                "capability": finding.capability,
+                "severity": finding.severity,
+                "tags": [
+                    "skillgate",
+                    f"capability:{finding.capability}",
+                    f"severity:{finding.severity}",
+                ],
+            },
+            "taxa": [
+                {
+                    "id": finding.capability,
+                    "toolComponent": {"name": "SkillGate capabilities"},
+                }
+            ],
         }
         results.append(result)
     return {
@@ -67,6 +104,13 @@ def sarif_report(report: ScanReport) -> dict[str, object]:
                         "rules": rules,
                     }
                 },
+                "taxonomies": [
+                    {
+                        "name": "SkillGate capabilities",
+                        "organization": "OpenEvalGate",
+                        "taxa": capability_taxa(),
+                    }
+                ],
                 "results": results,
             }
         ],

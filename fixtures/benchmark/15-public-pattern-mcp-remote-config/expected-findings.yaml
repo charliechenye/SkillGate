@@ -2,3 +2,11 @@ findings:
   - SG003
   - SG005
   - SG009
+attribution:
+  sources:
+    - name: Model Context Protocol servers repository
+      url: https://github.com/modelcontextprotocol/servers
+    - name: MCP transports specification
+      url: https://modelcontextprotocol.io/specification/2025-06-18/basic/transports
+  reduction: Reduced, nonverbatim remote MCP config with nested transport and secret names.
+  retrieved_on: "2026-06-11"

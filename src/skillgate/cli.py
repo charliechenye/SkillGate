@@ -13,9 +13,17 @@ from skillgate.fixtures import (
     fixture_summary_text,
     summarize_fixtures,
 )
+from skillgate.inventory import inventory_payload, inventory_text
 from skillgate.models import SEVERITY_ORDER, severity_at_or_above, stable_json
 from skillgate.policy import evaluate_policy, load_policy
 from skillgate.policy_schema import POLICY_JSON_SCHEMA
+from skillgate.policy_templates import POLICY_PROFILES, policy_template_yaml
+from skillgate.provenance import (
+    ProvenanceError,
+    create_provenance_manifest,
+    save_provenance_manifest,
+    verify_provenance_manifest,
+)
 from skillgate.reporting import (
     append_scan_failure_text,
     check_text,
@@ -33,11 +41,13 @@ baseline_app = typer.Typer(help="Create and manage approved SkillGate baselines.
 fixtures_app = typer.Typer(help="Inspect benchmark fixture expectations.")
 github_app = typer.Typer(help="Scan remote GitHub repositories before installing skills.")
 policy_app = typer.Typer(help="Inspect SkillGate policy helpers.")
+provenance_app = typer.Typer(help="Create and verify SkillGate provenance manifests.")
 rules_app = typer.Typer(help="Inspect SkillGate rule documentation.")
 app.add_typer(baseline_app, name="baseline")
 app.add_typer(fixtures_app, name="fixtures")
 app.add_typer(github_app, name="github")
 app.add_typer(policy_app, name="policy")
+app.add_typer(provenance_app, name="provenance")
 app.add_typer(rules_app, name="rules")
 console = Console()
 
@@ -85,6 +95,42 @@ def render_scan_command_output(report, output_format: str, fail_on: str | None) 
     if failed and output_format == "text":
         content = append_scan_failure_text(content, fail_on or "")
     return content, failed
+
+
+@app.command()
+def inventory(
+    path: Annotated[Path, typer.Argument(help="Repository path to inventory.")] = Path("."),
+    output_format: Annotated[str, typer.Option("--format", help="Output format.")] = "text",
+    capability: Annotated[
+        list[str] | None,
+        typer.Option("--capability", help="Only include this capability type. Repeatable."),
+    ] = None,
+    severity: Annotated[
+        str | None,
+        typer.Option("--severity", help="Only include findings at or above this severity."),
+    ] = None,
+    source_file: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--source-file",
+            help="Only include POSIX-style source file globs. Repeatable.",
+        ),
+    ] = None,
+    output: Annotated[
+        Path | None, typer.Option("--output", "-o", help="Write output to a file.")
+    ] = None,
+) -> None:
+    """Build a capability inventory and trust-boundary summary."""
+    output_format = validate_format(output_format, {"text", "json"})
+    severity = validate_severity(severity)
+    payload = inventory_payload(
+        scan_repository(path),
+        capability_types=capability,
+        severity=severity,
+        source_files=source_file,
+    )
+    content = stable_json(payload) if output_format == "json" else inventory_text(payload)
+    write_or_print(content, output, console)
 
 
 @app.command()
@@ -168,6 +214,74 @@ def policy_schema(
 ) -> None:
     """Print the SkillGate policy JSON Schema."""
     write_or_print(stable_json(POLICY_JSON_SCHEMA), output, console)
+
+
+@policy_app.command("init")
+def policy_init(
+    profile: Annotated[
+        str,
+        typer.Option(
+            "--profile",
+            help="Policy profile to generate: audit, preinstall, strict, or mcp.",
+        ),
+    ],
+    output: Annotated[
+        Path | None, typer.Option("--output", "-o", help="Write policy YAML to a file.")
+    ] = None,
+) -> None:
+    """Generate a starter SkillGate policy YAML file."""
+    profile = profile.lower()
+    if profile not in POLICY_PROFILES:
+        console.file.write(
+            f"Error: unknown policy profile '{profile}'. "
+            f"Expected one of: {', '.join(sorted(POLICY_PROFILES))}\n"
+        )
+        raise typer.Exit(2)
+    content = policy_template_yaml(profile)
+    if output and output.exists():
+        console.file.write(f"Error: output file already exists: {output}\n")
+        raise typer.Exit(2)
+    write_or_print(content, output, console)
+
+
+@provenance_app.command("create")
+def provenance_create(
+    policy: Annotated[Path, typer.Option("--policy", help="Policy YAML file.")],
+    baseline: Annotated[Path, typer.Option("--baseline", help="Baseline lockfile.")],
+    output: Annotated[
+        Path,
+        typer.Option("--output", "-o", help="Write provenance manifest to a file."),
+    ] = Path("skillgate.provenance.json"),
+) -> None:
+    """Create a checksum manifest for approved policy and baseline files."""
+    try:
+        manifest = create_provenance_manifest(policy, baseline)
+    except OSError as exc:
+        console.file.write(f"Error: unable to read provenance input: {exc}\n")
+        raise typer.Exit(2) from exc
+    save_provenance_manifest(manifest, output)
+    console.print(f"Created provenance manifest: {output}")
+
+
+@provenance_app.command("verify")
+def provenance_verify(
+    manifest: Annotated[
+        Path,
+        typer.Option("--manifest", help="Provenance manifest JSON file."),
+    ] = Path("skillgate.provenance.json"),
+) -> None:
+    """Verify approved policy and baseline checksums from a provenance manifest."""
+    try:
+        mismatches = verify_provenance_manifest(manifest)
+    except ProvenanceError as exc:
+        console.file.write(f"Error: {exc}\n")
+        raise typer.Exit(2) from exc
+    if mismatches:
+        console.file.write("FAILED: provenance verification mismatch\n")
+        for mismatch in mismatches:
+            console.file.write(f"- {mismatch}\n")
+        raise typer.Exit(1)
+    console.file.write("ALLOWED: provenance verification passed\n")
 
 
 @rules_app.command("list")

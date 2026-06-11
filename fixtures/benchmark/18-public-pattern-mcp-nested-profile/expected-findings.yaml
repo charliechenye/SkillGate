@@ -2,3 +2,9 @@ findings:
   - SG003
   - SG005
   - SG009
+attribution:
+  sources:
+    - name: Model Context Protocol servers repository
+      url: https://github.com/modelcontextprotocol/servers
+  reduction: Reduced, nonverbatim profile-scoped MCP server configuration.
+  retrieved_on: "2026-06-11"

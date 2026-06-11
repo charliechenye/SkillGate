@@ -25,7 +25,21 @@ POLICY_JSON_SCHEMA: dict[str, Any] = {
                         "allow": {
                             "type": "boolean",
                             "description": "Set to false to block shell execution capabilities.",
-                        }
+                        },
+                        "commands": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "properties": {
+                                "allow": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "description": (
+                                        "Allowlisted POSIX-style glob patterns for shell "
+                                        "command strings."
+                                    ),
+                                }
+                            },
+                        },
                     },
                 },
                 "filesystem": {
@@ -54,7 +68,39 @@ POLICY_JSON_SCHEMA: dict[str, Any] = {
                             "type": "array",
                             "items": {"type": "string"},
                             "description": "Allowed network hostnames.",
-                        }
+                        },
+                        "allow_categories": {
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "enum": [
+                                    "ai_api",
+                                    "cloud_metadata",
+                                    "localhost",
+                                    "package_registry",
+                                    "private_network",
+                                    "public_internet",
+                                    "source_control",
+                                ],
+                            },
+                            "description": "Allowed built-in network host categories.",
+                        },
+                        "deny_categories": {
+                            "type": "array",
+                            "items": {
+                                "type": "string",
+                                "enum": [
+                                    "ai_api",
+                                    "cloud_metadata",
+                                    "localhost",
+                                    "package_registry",
+                                    "private_network",
+                                    "public_internet",
+                                    "source_control",
+                                ],
+                            },
+                            "description": "Denied built-in network host categories.",
+                        },
                     },
                 },
                 "secrets": {
@@ -67,7 +113,21 @@ POLICY_JSON_SCHEMA: dict[str, Any] = {
                             "description": (
                                 'Denied secret patterns. Use ["*"] to block all detected secrets.'
                             ),
-                        }
+                        },
+                        "env": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "properties": {
+                                "allow": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "description": (
+                                        "Allowlisted POSIX-style glob patterns for detected "
+                                        "secret environment variable names."
+                                    ),
+                                }
+                            },
+                        },
                     },
                 },
                 "mcp": {

@@ -3,3 +3,9 @@ findings:
   - SG002
   - SG003
   - SG006
+attribution:
+  sources:
+    - name: Anthropic Claude plugins official repository
+      url: https://github.com/anthropics/claude-plugins-official
+  reduction: Reduced, nonverbatim shell and PowerShell setup patterns for install hooks.
+  retrieved_on: "2026-06-11"

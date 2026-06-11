@@ -12,12 +12,27 @@ skillgate policy schema
 skillgate policy schema --output skillgate-policy.schema.json
 ```
 
+For schema-aware editor integration, see
+[`docs/editor-setup.md`](editor-setup.md).
+
+Starter policies are available through template profiles:
+
+```bash
+skillgate policy init --profile audit
+skillgate policy init --profile preinstall --output skillgate.yaml
+skillgate policy init --profile strict
+skillgate policy init --profile mcp
+```
+
 ```yaml
 version: 1
 
 policy:
   shell:
     allow: false
+    commands:
+      allow:
+        - "python samples/*"
 
   filesystem:
     read:
@@ -28,10 +43,18 @@ policy:
   network:
     allow:
       - "api.github.com"
+    allow_categories:
+      - "source_control"
+      - "package_registry"
+    deny_categories:
+      - "cloud_metadata"
 
   secrets:
     deny:
       - "*"
+    env:
+      allow:
+        - "GITHUB_TOKEN"
 
   mcp:
     require_review_on_change: true
@@ -58,6 +81,20 @@ Set `policy.shell.allow` to `false` to block shell and process execution capabil
 policy:
   shell:
     allow: false
+```
+
+## `policy.shell.commands.allow`
+
+`policy.shell.commands.allow` is a list of POSIX-style glob patterns for
+allowed shell command strings. It applies to `shell_execution` capabilities
+only; it does not approve `remote_download_execution`.
+
+```yaml
+policy:
+  shell:
+    commands:
+      allow:
+        - "python samples/*"
 ```
 
 ## `policy.filesystem.read`
@@ -100,6 +137,41 @@ policy:
 
 Host matching is exact. If a network host cannot be extracted confidently, SkillGate treats the resource as unknown and blocks it when a network allowlist is configured.
 
+## `policy.network.allow_categories`
+
+`policy.network.allow_categories` allows built-in host categories in addition
+to exact hosts from `policy.network.allow`.
+
+Allowed categories:
+
+- `ai_api`
+- `cloud_metadata`
+- `localhost`
+- `package_registry`
+- `private_network`
+- `public_internet`
+- `source_control`
+
+```yaml
+policy:
+  network:
+    allow_categories:
+      - "source_control"
+      - "package_registry"
+```
+
+## `policy.network.deny_categories`
+
+`policy.network.deny_categories` blocks built-in host categories. Deny
+categories take precedence over exact host and category allowlists.
+
+```yaml
+policy:
+  network:
+    deny_categories:
+      - "cloud_metadata"
+```
+
 ## `policy.secrets.deny`
 
 `policy.secrets.deny` is a list of denied secret patterns. The current enforced form is `["*"]`, which blocks all detected secret or credential access.
@@ -112,6 +184,22 @@ policy:
 ```
 
 SkillGate reports secret names such as `GITHUB_TOKEN`; it does not report likely secret values.
+
+## `policy.secrets.env.allow`
+
+`policy.secrets.env.allow` is a list of POSIX-style glob patterns for detected
+secret environment variable names that are allowed even when
+`policy.secrets.deny` is `["*"]`.
+
+```yaml
+policy:
+  secrets:
+    deny:
+      - "*"
+    env:
+      allow:
+        - "GITHUB_TOKEN"
+```
 
 ## `policy.mcp.require_review_on_change`
 
@@ -144,3 +232,10 @@ policy:
 ```
 
 For example, `block: high` blocks high and critical findings while allowing informational, low, and medium findings unless another policy section blocks their detected capability.
+
+## Policy Template Profiles
+
+- `audit`: minimal high-risk threshold policy for early visibility without broad capability allowlists.
+- `preinstall`: blocks shell execution, secret access, high findings, and unreviewed MCP drift; network and write allowlists start empty for review.
+- `strict`: blocks shell execution, secret access, unallowlisted network, unallowlisted writes, unreviewed MCP drift, and medium-or-higher findings.
+- `mcp`: focuses on MCP drift, remote endpoint review, secret access, and high findings.

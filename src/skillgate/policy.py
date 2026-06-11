@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import fnmatch
+import ipaddress
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,40 @@ from skillgate.models import (
     ScanReport,
     severity_at_or_above,
 )
+
+NETWORK_CATEGORIES = {
+    "source_control",
+    "package_registry",
+    "ai_api",
+    "cloud_metadata",
+    "localhost",
+    "private_network",
+    "public_internet",
+}
+SOURCE_CONTROL_HOSTS = {
+    "github.com",
+    "api.github.com",
+    "gitlab.com",
+    "bitbucket.org",
+}
+PACKAGE_REGISTRY_HOSTS = {
+    "registry.npmjs.org",
+    "npmjs.com",
+    "pypi.org",
+    "files.pythonhosted.org",
+    "crates.io",
+    "rubygems.org",
+    "packagist.org",
+}
+AI_API_HOSTS = {
+    "api.openai.com",
+    "api.anthropic.com",
+    "generativelanguage.googleapis.com",
+}
+CLOUD_METADATA_HOSTS = {
+    "169.254.169.254",
+    "metadata.google.internal",
+}
 
 
 class PolicyLoadError(ValueError):
@@ -95,6 +130,19 @@ def ensure_string_list(value: object, path: Path, node: Node | None, label: str)
         raise_policy_error(f"{label} must be a list of strings", path, node)
 
 
+def ensure_category_list(value: object, path: Path, node: Node | None, label: str) -> None:
+    ensure_string_list(value, path, node, label)
+    if isinstance(value, list):
+        for index, item in enumerate(value):
+            if item not in NETWORK_CATEGORIES:
+                raise_policy_error(
+                    f"{label} must contain known categories: "
+                    f"{', '.join(sorted(NETWORK_CATEGORIES))}",
+                    path,
+                    sequence_item_node(node, index),
+                )
+
+
 def ensure_allowed_keys(
     actual: dict[str, object],
     allowed: set[str],
@@ -155,7 +203,11 @@ def load_policy(path: Path) -> dict[str, Any]:
         shell = policy.get("shell", {})
         if isinstance(shell, dict):
             ensure_allowed_keys(
-                shell, {"allow"}, node_at_path(root_node, ["policy", "shell"]), path, "policy.shell"
+                shell,
+                {"allow", "commands"},
+                node_at_path(root_node, ["policy", "shell"]),
+                path,
+                "policy.shell",
             )
             ensure_bool(
                 shell.get("allow"),
@@ -163,6 +215,27 @@ def load_policy(path: Path) -> dict[str, Any]:
                 node_at_path(root_node, ["policy", "shell", "allow"]),
                 "policy.shell.allow",
             )
+            commands = shell.get("commands")
+            ensure_mapping(
+                commands,
+                path,
+                node_at_path(root_node, ["policy", "shell", "commands"]),
+                "policy.shell.commands",
+            )
+            if isinstance(commands, dict):
+                ensure_allowed_keys(
+                    commands,
+                    {"allow"},
+                    node_at_path(root_node, ["policy", "shell", "commands"]),
+                    path,
+                    "policy.shell.commands",
+                )
+                ensure_string_list(
+                    commands.get("allow"),
+                    path,
+                    node_at_path(root_node, ["policy", "shell", "commands", "allow"]),
+                    "policy.shell.commands.allow",
+                )
         filesystem = policy.get("filesystem", {})
         if isinstance(filesystem, dict):
             ensure_allowed_keys(
@@ -180,7 +253,7 @@ def load_policy(path: Path) -> dict[str, Any]:
         if isinstance(network, dict):
             ensure_allowed_keys(
                 network,
-                {"allow"},
+                {"allow", "allow_categories", "deny_categories"},
                 node_at_path(root_node, ["policy", "network"]),
                 path,
                 "policy.network",
@@ -191,11 +264,23 @@ def load_policy(path: Path) -> dict[str, Any]:
                 node_at_path(root_node, ["policy", "network", "allow"]),
                 "policy.network.allow",
             )
+            ensure_category_list(
+                network.get("allow_categories"),
+                path,
+                node_at_path(root_node, ["policy", "network", "allow_categories"]),
+                "policy.network.allow_categories",
+            )
+            ensure_category_list(
+                network.get("deny_categories"),
+                path,
+                node_at_path(root_node, ["policy", "network", "deny_categories"]),
+                "policy.network.deny_categories",
+            )
         secrets = policy.get("secrets", {})
         if isinstance(secrets, dict):
             ensure_allowed_keys(
                 secrets,
-                {"deny"},
+                {"deny", "env"},
                 node_at_path(root_node, ["policy", "secrets"]),
                 path,
                 "policy.secrets",
@@ -206,6 +291,27 @@ def load_policy(path: Path) -> dict[str, Any]:
                 node_at_path(root_node, ["policy", "secrets", "deny"]),
                 "policy.secrets.deny",
             )
+            env = secrets.get("env")
+            ensure_mapping(
+                env,
+                path,
+                node_at_path(root_node, ["policy", "secrets", "env"]),
+                "policy.secrets.env",
+            )
+            if isinstance(env, dict):
+                ensure_allowed_keys(
+                    env,
+                    {"allow"},
+                    node_at_path(root_node, ["policy", "secrets", "env"]),
+                    path,
+                    "policy.secrets.env",
+                )
+                ensure_string_list(
+                    env.get("allow"),
+                    path,
+                    node_at_path(root_node, ["policy", "secrets", "env", "allow"]),
+                    "policy.secrets.env.allow",
+                )
         mcp = policy.get("mcp", {})
         if isinstance(mcp, dict):
             ensure_allowed_keys(
@@ -254,6 +360,37 @@ def allowed_by_globs(value: str | None, patterns: list[str]) -> bool:
     return any(fnmatch.fnmatch(value, pattern) for pattern in patterns)
 
 
+def host_category(host: str | None) -> str | None:
+    if not host:
+        return None
+    normalized = host.lower()
+    if normalized in CLOUD_METADATA_HOSTS:
+        return "cloud_metadata"
+    if normalized == "localhost" or normalized.endswith(".localhost"):
+        return "localhost"
+    try:
+        address = ipaddress.ip_address(normalized)
+    except ValueError:
+        address = None
+    if address is not None:
+        if address.is_loopback:
+            return "localhost"
+        if address.is_private or address.is_link_local:
+            return "private_network"
+    if normalized in SOURCE_CONTROL_HOSTS or normalized.endswith(".githubusercontent.com"):
+        return "source_control"
+    if normalized in PACKAGE_REGISTRY_HOSTS:
+        return "package_registry"
+    if normalized in AI_API_HOSTS:
+        return "ai_api"
+    return "public_internet"
+
+
+def capability_command(capability: Capability) -> str | None:
+    value = capability.details.get("command")
+    return value if isinstance(value, str) else None
+
+
 def violation(
     message: str,
     severity: str,
@@ -296,6 +433,21 @@ def evaluate_policy(
                 violations.append(
                     violation("Shell execution is not allowed", "high", capability=capability)
                 )
+    shell_command_allow = policy.get("shell", {}).get("commands", {}).get("allow")
+    if isinstance(shell_command_allow, list):
+        patterns = [str(item) for item in shell_command_allow]
+        for capability in report.capabilities:
+            if capability.type == "shell_execution" and not allowed_by_globs(
+                capability_command(capability), patterns
+            ):
+                command = capability_command(capability) or "<unknown>"
+                violations.append(
+                    violation(
+                        f"Shell command is not allowlisted: {command}",
+                        "high",
+                        capability=capability,
+                    )
+                )
     write_allow = policy.get("filesystem", {}).get("write")
     if isinstance(write_allow, list):
         patterns = [str(item) for item in write_allow]
@@ -312,10 +464,30 @@ def evaluate_policy(
                     )
                 )
     network_allow = policy.get("network", {}).get("allow")
+    network_allow_categories = policy.get("network", {}).get("allow_categories")
+    network_deny_categories = policy.get("network", {}).get("deny_categories")
     if isinstance(network_allow, list):
         hosts = [str(item) for item in network_allow]
         for capability in report.capabilities:
-            if capability.type == "network_egress" and capability.resource not in hosts:
+            if capability.type != "network_egress":
+                continue
+            category = host_category(capability.resource)
+            if isinstance(network_deny_categories, list) and category in {
+                str(item) for item in network_deny_categories
+            }:
+                resource = capability.resource or "<unknown>"
+                violations.append(
+                    violation(
+                        f"Network host category is denied: {resource} ({category})",
+                        "medium",
+                        capability=capability,
+                    )
+                )
+                continue
+            category_allowed = isinstance(network_allow_categories, list) and category in {
+                str(item) for item in network_allow_categories
+            }
+            if capability.resource not in hosts and not category_allowed:
                 resource = capability.resource or "<unknown>"
                 violations.append(
                     violation(
@@ -324,14 +496,54 @@ def evaluate_policy(
                         capability=capability,
                     )
                 )
+    elif isinstance(network_allow_categories, list) or isinstance(network_deny_categories, list):
+        allowed_categories = (
+            {str(item) for item in network_allow_categories}
+            if isinstance(network_allow_categories, list)
+            else None
+        )
+        denied_categories = (
+            {str(item) for item in network_deny_categories}
+            if isinstance(network_deny_categories, list)
+            else set()
+        )
+        for capability in report.capabilities:
+            if capability.type != "network_egress":
+                continue
+            category = host_category(capability.resource)
+            resource = capability.resource or "<unknown>"
+            if category in denied_categories:
+                violations.append(
+                    violation(
+                        f"Network host category is denied: {resource} ({category})",
+                        "medium",
+                        capability=capability,
+                    )
+                )
+            elif allowed_categories is not None and category not in allowed_categories:
+                violations.append(
+                    violation(
+                        "Network host category is not allowlisted: "
+                        f"{resource} ({category or '<unknown>'})",
+                        "medium",
+                        capability=capability,
+                    )
+                )
     secrets_deny = policy.get("secrets", {}).get("deny")
     if secrets_deny == ["*"]:
+        env_allow = policy.get("secrets", {}).get("env", {}).get("allow")
+        allowed_env = [str(item) for item in env_allow] if isinstance(env_allow, list) else []
         for capability in report.capabilities:
             if capability.type == "secret_access":
                 resource = capability.resource or "<unknown>"
-                violations.append(
-                    violation(f"Secret access is denied: {resource}", "high", capability=capability)
-                )
+                if not allowed_by_globs(capability.resource, allowed_env):
+                    violations.append(
+                        violation(
+                            f"Secret access is denied: {resource}",
+                            "high",
+                            capability=capability,
+                        )
+                    )
     if policy.get("mcp", {}).get("require_review_on_change") is True:
         for finding in diff_findings or []:
             if finding.rule_id == "SG010":

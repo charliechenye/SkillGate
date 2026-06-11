@@ -3,6 +3,9 @@ version: 1
 policy:
   shell:
     allow: false
+    commands:
+      allow:
+        - "python samples/*"
 
   filesystem:
     read:
@@ -14,10 +17,18 @@ policy:
     allow:
       - "api.github.com"
       - "github.com"
+    allow_categories:
+      - "source_control"
+      - "package_registry"
+    deny_categories:
+      - "cloud_metadata"
 
   secrets:
     deny:
       - "*"
+    env:
+      allow:
+        - "GITHUB_TOKEN"
 
   mcp:
     require_review_on_change: true

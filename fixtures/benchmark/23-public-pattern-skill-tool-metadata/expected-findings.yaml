@@ -1,0 +1,10 @@
+findings:
+  - SG007
+attribution:
+  sources:
+    - name: Anthropic Claude plugins official repository
+      url: https://github.com/anthropics/claude-plugins-official
+    - name: Model Context Protocol servers repository
+      url: https://github.com/modelcontextprotocol/servers
+  reduction: Reduced, nonverbatim skill metadata instruction-control pattern.
+  retrieved_on: "2026-06-11"

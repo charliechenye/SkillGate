@@ -1,3 +1,11 @@
 findings:
   - SG003
   - SG009
+attribution:
+  sources:
+    - name: Model Context Protocol servers repository
+      url: https://github.com/modelcontextprotocol/servers
+    - name: MCP transports specification
+      url: https://modelcontextprotocol.io/specification/2025-06-18/basic/transports
+  reduction: Reduced, nonverbatim HTTP MCP server definition.
+  retrieved_on: "2026-06-11"

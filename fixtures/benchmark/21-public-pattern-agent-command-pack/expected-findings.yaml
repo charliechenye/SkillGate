@@ -1,3 +1,9 @@
 findings:
   - SG003
   - SG006
+attribution:
+  sources:
+    - name: Anthropic Claude plugins official repository
+      url: https://github.com/anthropics/claude-plugins-official
+  reduction: Reduced, nonverbatim command-pack layout with an agent and hook.
+  retrieved_on: "2026-06-11"

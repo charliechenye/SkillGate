@@ -141,15 +141,25 @@ python samples/scan_installed_skills.py --root ~/.codex/skills --fail-on high
 
 ## Policy Example
 
-See [`skillgate.example.yaml`](skillgate.example.yaml), the full [policy schema reference](docs/policy-schema.md), and the machine-readable JSON Schema at [`schemas/skillgate-policy.schema.json`](schemas/skillgate-policy.schema.json).
+See [`skillgate.example.yaml`](skillgate.example.yaml), the full [policy schema reference](docs/policy-schema.md), [schema-aware editor setup snippets](docs/editor-setup.md), and the machine-readable JSON Schema at [`schemas/skillgate-policy.schema.json`](schemas/skillgate-policy.schema.json).
 
 ```bash
 skillgate check . --policy skillgate.example.yaml
 skillgate policy schema
 skillgate policy schema --output skillgate-policy.schema.json
+skillgate policy init --profile strict --output skillgate.yaml
 ```
 
-Policy checks can block shell execution, unallowlisted filesystem writes, unallowlisted network hosts, denied secret access, high-risk findings, and MCP capability drift. SkillGate validates the policy schema and reports file, line, and column details for YAML and schema errors when available.
+Policy checks can block shell execution, unallowlisted commands, unallowlisted filesystem writes, unallowlisted network hosts or host categories, denied secret access, high-risk findings, and MCP capability drift. SkillGate validates the policy schema and reports file, line, and column details for YAML and schema errors when available.
+
+Policy templates are available for common adoption modes:
+
+```bash
+skillgate policy init --profile audit
+skillgate policy init --profile preinstall
+skillgate policy init --profile strict
+skillgate policy init --profile mcp
+```
 
 ## Baselines And Diffs
 
@@ -160,6 +170,28 @@ skillgate diff . --baseline skillgate.lock --policy skillgate.example.yaml
 ```
 
 Baseline files use stable JSON with relative paths so diffs stay reviewable.
+
+To pin approved policy and baseline files by checksum:
+
+```bash
+skillgate provenance create --policy skillgate.yaml --baseline skillgate.lock --output skillgate.provenance.json
+skillgate provenance verify --manifest skillgate.provenance.json
+```
+
+## Capability Inventory
+
+```bash
+skillgate inventory .
+skillgate inventory . --format json
+skillgate inventory . --capability network_egress
+skillgate inventory . --severity high
+skillgate inventory . --source-file "scripts/*"
+```
+
+Inventory output groups detected capabilities and findings by source file and
+summarizes trust boundaries for local execution, remote endpoints, secrets,
+generated files, MCP servers, prompt controls, and obfuscation. This command is
+nonblocking and is intended for review, reporting, and adoption planning.
 
 ## Output Formats
 
@@ -192,6 +224,8 @@ skillgate fixtures summary fixtures/benchmark --format text
 ```
 
 Fixture summaries compare each `expected-findings.yaml` file with actual scan output. JSON output is intended for benchmark reporting and CI jobs. Benchmark fixtures include reduced, nonverbatim cases based on common public skill and MCP repository patterns.
+Public-pattern fixtures include machine-readable attribution metadata in
+`expected-findings.yaml`.
 
 ## FAQ
 
@@ -210,6 +244,7 @@ Yes. `skillgate github scan URL` sparse-scans supported files from a public GitH
 ### Can SkillGate produce SARIF for GitHub code scanning?
 
 Yes. Use `skillgate scan . --format sarif --output skillgate.sarif` and upload the SARIF file in GitHub Actions.
+SARIF output includes SkillGate capability tags and taxa for filtering in code scanning views.
 
 ### Does SkillGate replace a sandbox?
 
@@ -217,7 +252,7 @@ No. SkillGate is static analysis and policy enforcement. Use it alongside sandbo
 
 ## Contributing And Security
 
-- See [CONTRIBUTING.md](CONTRIBUTING.md) to add rules, fixtures, tests, or documentation.
+- See [CONTRIBUTING.md](CONTRIBUTING.md) to add rules, fixtures, expected findings, tests, or documentation.
 - See [SECURITY.md](SECURITY.md) to report vulnerabilities or unsafe behavior.
 
 ## Citation, License, And Brand Assets

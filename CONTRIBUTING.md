@@ -26,18 +26,28 @@ Use Python 3.11 or newer. The repository uses LF line endings through `.gitattri
 
 Rules should be deterministic and static. Do not execute repository code, call LLMs, access external services, or add telemetry.
 
-When adding detection behavior:
+Use this workflow when adding detection behavior:
 
-- Use stable rule IDs and deterministic ordering.
-- Redact secret values and report names such as `GITHUB_TOKEN`.
-- Prefer conservative extraction. If a host or path is uncertain, keep the resource unknown.
-- Add fixture coverage under `fixtures/benchmark/`.
-- Add or update `expected-findings.yaml`.
-- Add focused tests in `tests/test_skillgate.py`.
+1. Add or update the scanner rule with a stable rule ID and deterministic ordering.
+2. Add or update rule metadata in the rule documentation registry so `skillgate rules list` and `skillgate explain` stay complete.
+3. Add a reduced benchmark fixture under `fixtures/benchmark/`.
+4. Add `expected-findings.yaml` with the exact expected rule IDs.
+5. Add a focused regression test in `tests/test_skillgate.py`.
+6. Run `python -m skillgate fixtures summary fixtures/benchmark --format json`.
+7. Update golden snapshots only when public CLI output intentionally changes.
+8. Update `CHANGELOG.md` and `future_steps.md` for user-facing or roadmap changes.
+
+Detection rules must redact secret values and report names such as `GITHUB_TOKEN`.
+Prefer conservative extraction. If a host or path is uncertain, keep the resource
+unknown rather than inventing a value.
 
 ## Adding Benchmark Fixtures
 
 Benchmark fixtures should be small, safe, and reproducible. Public-pattern fixtures should be reduced and nonverbatim unless the source license and attribution are explicitly handled.
+
+Name new fixtures with a two-digit sequence and a short behavior label, such as
+`22-public-pattern-mcp-tool-poisoning`. Keep examples synthetic or reduced from
+public patterns; do not vendor upstream content verbatim.
 
 Each fixture should include:
 

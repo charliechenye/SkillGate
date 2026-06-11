@@ -5,5 +5,7 @@ attribution:
   sources:
     - name: Model Context Protocol servers repository
       url: https://github.com/modelcontextprotocol/servers
-  reduction: Reduced, nonverbatim marketplace package with MCP server metadata.
+    - name: MCP transports specification
+      url: https://modelcontextprotocol.io/specification/2025-06-18/basic/transports
+  reduction: Reduced, nonverbatim local bridge MCP transport pattern.
   retrieved_on: "2026-06-11"

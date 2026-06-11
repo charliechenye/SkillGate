@@ -168,6 +168,14 @@ def test_sarif_structure() -> None:
     assert sarif["version"] == "2.1.0"
     assert sarif["runs"][0]["tool"]["driver"]["name"] == "SkillGate"
     assert sarif["runs"][0]["results"][0]["ruleId"]
+    rules = {rule["id"]: rule for rule in sarif["runs"][0]["tool"]["driver"]["rules"]}
+    assert "capability:remote_download_execution" in rules["SG004"]["properties"]["tags"]
+    result = sarif["runs"][0]["results"][0]
+    assert result["properties"]["capability"]
+    assert result["properties"]["severity"]
+    assert result["taxa"][0]["toolComponent"]["name"] == "SkillGate capabilities"
+    taxa = {item["id"] for item in sarif["runs"][0]["taxonomies"][0]["taxa"]}
+    assert "network_egress" in taxa
 
 
 def test_cli_scan_exit_code_and_output() -> None:
@@ -290,6 +298,125 @@ def test_cli_scan_fail_on_uses_displayed_findings() -> None:
     assert "Findings: 0" in result.output
 
 
+def test_cli_inventory_text_includes_trust_boundaries() -> None:
+    result = runner.invoke(app, ["inventory", str(FIXTURES / "05-remote-download-execute")])
+    assert result.exit_code == 0
+    assert "SkillGate inventory" in result.output
+    assert "Trust boundaries:" in result.output
+    assert "local_execution" in result.output
+    assert "remote_endpoints" in result.output
+    assert "scripts/install.sh" in result.output
+    assert "<unknown>" in result.output
+
+
+def test_cli_inventory_json_groups_capabilities_by_file() -> None:
+    first = runner.invoke(
+        app,
+        ["inventory", str(FIXTURES / "05-remote-download-execute"), "--format", "json"],
+    )
+    second = runner.invoke(
+        app,
+        ["inventory", str(FIXTURES / "05-remote-download-execute"), "--format", "json"],
+    )
+    assert first.exit_code == 0
+    assert second.exit_code == 0
+    assert first.output == second.output
+    data = json.loads(first.output)
+    assert data["schema_version"] == "1"
+    assert data["summary"] == {
+        "capabilities": 4,
+        "files": 1,
+        "findings": 4,
+        "scanned_files": 2,
+    }
+    assert [item["path"] for item in data["files"]] == ["scripts/install.sh"]
+    assert [item["type"] for item in data["files"][0]["capabilities"]] == [
+        "network_egress",
+        "remote_download_execution",
+        "shell_execution",
+        "shell_execution",
+    ]
+    boundaries = {item["name"]: item for item in data["trust_boundaries"]}
+    assert boundaries["local_execution"]["count"] == 3
+    assert boundaries["local_execution"]["resources"] == ["<unknown>", "example.com"]
+    assert boundaries["local_execution"]["rule_ids"] == ["SG001", "SG004"]
+    assert boundaries["remote_endpoints"]["resources"] == ["example.com"]
+
+
+def test_cli_inventory_unknown_resources_render_in_json() -> None:
+    result = runner.invoke(
+        app,
+        ["inventory", str(FIXTURES / "02-shell-execution"), "--format", "json"],
+    )
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    resources = [
+        capability["resource"]
+        for file_record in data["files"]
+        for capability in file_record["capabilities"]
+    ]
+    assert "<unknown>" in resources
+
+
+def test_cli_inventory_filters_by_capability_severity_and_source_file() -> None:
+    capability_result = runner.invoke(
+        app,
+        [
+            "inventory",
+            str(FIXTURES / "05-remote-download-execute"),
+            "--format",
+            "json",
+            "--capability",
+            "network_egress",
+        ],
+    )
+    assert capability_result.exit_code == 0
+    capability_data = json.loads(capability_result.output)
+    assert capability_data["filters"]["capability"] == ["network_egress"]
+    assert capability_data["summary"]["capabilities"] == 1
+    assert {
+        capability["type"]
+        for file_record in capability_data["files"]
+        for capability in file_record["capabilities"]
+    } == {"network_egress"}
+
+    severity_result = runner.invoke(
+        app,
+        [
+            "inventory",
+            str(FIXTURES / "05-remote-download-execute"),
+            "--format",
+            "json",
+            "--severity",
+            "high",
+        ],
+    )
+    assert severity_result.exit_code == 0
+    severity_data = json.loads(severity_result.output)
+    assert severity_data["filters"]["severity"] == "high"
+    assert {
+        finding["severity"]
+        for file_record in severity_data["files"]
+        for finding in file_record["findings"]
+    } == {"high"}
+
+    source_result = runner.invoke(
+        app,
+        [
+            "inventory",
+            str(FIXTURES / "05-remote-download-execute"),
+            "--format",
+            "json",
+            "--source-file",
+            "scripts/*",
+        ],
+    )
+    assert source_result.exit_code == 0
+    source_data = json.loads(source_result.output)
+    assert source_data["filters"]["source_file"] == ["scripts/*"]
+    assert [item["path"] for item in source_data["files"]] == ["scripts/install.sh"]
+
+
 def test_cli_rules_list_json() -> None:
     result = runner.invoke(app, ["rules", "list", "--format", "json"])
     assert result.exit_code == 0
@@ -381,6 +508,21 @@ def test_invalid_policy_threshold_reports_line_and_column() -> None:
             "version: 1\npolicy:\n  mcp:\n    require_review_on_change: yes please\n",
             "policy.mcp.require_review_on_change must be a boolean",
         ),
+        (
+            "bad-shell-command-allow",
+            "version: 1\npolicy:\n  shell:\n    commands:\n      allow: python\n",
+            "policy.shell.commands.allow must be a list of strings",
+        ),
+        (
+            "bad-network-category",
+            "version: 1\npolicy:\n  network:\n    allow_categories:\n      - mystery\n",
+            "policy.network.allow_categories must contain known categories",
+        ),
+        (
+            "bad-secret-env-allow",
+            "version: 1\npolicy:\n  secrets:\n    env:\n      allow: GITHUB_TOKEN\n",
+            "policy.secrets.env.allow must be a list of strings",
+        ),
     ],
 )
 def test_policy_schema_validation_reports_line_and_column(
@@ -400,6 +542,83 @@ def test_policy_schema_validation_reports_line_and_column(
 
 def test_example_policy_still_loads() -> None:
     assert load_policy(ROOT / "skillgate.example.yaml")["version"] == 1
+
+
+def test_policy_command_allowlist_blocks_unapproved_shell_commands() -> None:
+    workdir = clean_test_dir("policy-command-allow")
+    (workdir / "SKILL.md").write_text("Run `run.py`.\n", encoding="utf-8")
+    (workdir / "run.py").write_text(
+        "import subprocess\nsubprocess.run(['python', 'safe.py'])\n",
+        encoding="utf-8",
+    )
+    report = scan_repository(workdir)
+    allowed = evaluate_policy(
+        report,
+        {
+            "version": 1,
+            "policy": {"shell": {"commands": {"allow": ["subprocess.run*"]}}},
+        },
+    )
+    blocked = evaluate_policy(
+        report,
+        {
+            "version": 1,
+            "policy": {"shell": {"commands": {"allow": ["python safe.py"]}}},
+        },
+    )
+    assert not allowed.blocked
+    assert blocked.blocked
+    assert "Shell command is not allowlisted" in blocked.violations[0].message
+
+
+def test_policy_secret_env_allowlist_exempts_named_env() -> None:
+    workdir = clean_test_dir("policy-secret-env-allow")
+    (workdir / "SKILL.md").write_text("Use GITHUB_TOKEN for release metadata.\n", encoding="utf-8")
+    report = scan_repository(workdir)
+    result = evaluate_policy(
+        report,
+        {
+            "version": 1,
+            "policy": {
+                "secrets": {
+                    "deny": ["*"],
+                    "env": {"allow": ["GITHUB_TOKEN"]},
+                }
+            },
+        },
+    )
+    assert not result.blocked
+
+
+def test_policy_network_categories_and_deny_precedence() -> None:
+    workdir = clean_test_dir("policy-network-categories")
+    (workdir / "SKILL.md").write_text("Run `net.py`.\n", encoding="utf-8")
+    (workdir / "net.py").write_text(
+        "\n".join(
+            [
+                "requests.get('https://api.github.com/repos/example/repo')",
+                "requests.get('http://169.254.169.254/latest/meta-data')",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    report = scan_repository(workdir)
+    result = evaluate_policy(
+        report,
+        {
+            "version": 1,
+            "policy": {
+                "network": {
+                    "allow": ["169.254.169.254"],
+                    "allow_categories": ["source_control"],
+                    "deny_categories": ["cloud_metadata"],
+                }
+            },
+        },
+    )
+    assert result.blocked
+    assert any("Network host category is denied" in item.message for item in result.violations)
+    assert not any("api.github.com" in item.message for item in result.violations)
 
 
 def test_richer_filesystem_write_extraction() -> None:
@@ -639,6 +858,45 @@ def test_benchmark_expected_findings_match_actual_summaries() -> None:
         assert actual == expected, f"{fixture.name} expected {expected}, got {actual}"
 
 
+def test_public_pattern_fixtures_have_attribution_metadata() -> None:
+    result = runner.invoke(
+        app,
+        ["fixtures", "summary", str(FIXTURES), "--format", "json"],
+    )
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    public_fixtures = [item for item in data["fixtures"] if "-public-pattern-" in item["name"]]
+    assert public_fixtures
+    assert all(item.get("attribution", {}).get("sources") for item in public_fixtures)
+    assert all(item["attribution"]["retrieved_on"] == "2026-06-11" for item in public_fixtures)
+
+
+def test_public_pattern_fixture_missing_attribution_exits_2() -> None:
+    workdir = clean_test_dir("missing-public-attribution")
+    fixture = workdir / "01-public-pattern-missing-attribution"
+    fixture.mkdir()
+    (fixture / "SKILL.md").write_text("Safe\n", encoding="utf-8")
+    (fixture / "expected-findings.yaml").write_text("findings: []\n", encoding="utf-8")
+    result = runner.invoke(app, ["fixtures", "summary", str(workdir), "--format", "json"])
+    assert result.exit_code == 2
+    assert "must contain attribution for public-pattern fixtures" in result.output
+
+
+def test_public_pattern_fixture_malformed_attribution_exits_2() -> None:
+    workdir = clean_test_dir("malformed-public-attribution")
+    fixture = workdir / "01-public-pattern-malformed-attribution"
+    fixture.mkdir()
+    (fixture / "SKILL.md").write_text("Safe\n", encoding="utf-8")
+    (fixture / "expected-findings.yaml").write_text(
+        "findings: []\nattribution:\n  sources:\n    - name: Missing URL\n"
+        '  reduction: Reduced.\n  retrieved_on: "2026-06-11"\n',
+        encoding="utf-8",
+    )
+    result = runner.invoke(app, ["fixtures", "summary", str(workdir), "--format", "json"])
+    assert result.exit_code == 2
+    assert "attribution.sources entries require url" in result.output
+
+
 def test_cli_fixtures_summary_json() -> None:
     result = runner.invoke(
         app,
@@ -647,7 +905,7 @@ def test_cli_fixtures_summary_json() -> None:
     assert result.exit_code == 0
     data = json.loads(result.output)
     assert data["summary"]["failed"] == 0
-    assert data["summary"]["fixtures"] == 21
+    assert data["summary"]["fixtures"] == 23
     assert all(item["status"] == "pass" for item in data["fixtures"])
 
 
@@ -674,21 +932,191 @@ def test_policy_schema_cli_writes_output() -> None:
     assert json.loads(output.read_text(encoding="utf-8")) == POLICY_JSON_SCHEMA
 
 
+@pytest.mark.parametrize("profile", ["audit", "preinstall", "strict", "mcp"])
+def test_policy_init_profiles_emit_valid_yaml(profile: str) -> None:
+    result = runner.invoke(app, ["policy", "init", "--profile", profile])
+    assert result.exit_code == 0
+    data = yaml.safe_load(result.output)
+    assert data["version"] == 1
+    workdir = clean_test_dir(f"policy-init-{profile}")
+    policy = workdir / "skillgate.yaml"
+    policy.write_text(result.output, encoding="utf-8")
+    assert load_policy(policy)["version"] == 1
+
+
+def test_policy_init_writes_output_file() -> None:
+    workdir = clean_test_dir("policy-init-output")
+    output = workdir / "skillgate.yaml"
+    result = runner.invoke(
+        app,
+        ["policy", "init", "--profile", "strict", "--output", str(output)],
+    )
+    assert result.exit_code == 0
+    data = load_policy(output)
+    assert data["policy"]["risk_threshold"]["block"] == "medium"
+
+
+def test_policy_init_refuses_to_overwrite_existing_output() -> None:
+    workdir = clean_test_dir("policy-init-existing")
+    output = workdir / "skillgate.yaml"
+    output.write_text("version: 1\npolicy: {}\n", encoding="utf-8")
+    result = runner.invoke(
+        app,
+        ["policy", "init", "--profile", "strict", "--output", str(output)],
+    )
+    assert result.exit_code == 2
+    assert "output file already exists" in result.output
+
+
+def test_policy_init_unknown_profile_exits_2() -> None:
+    result = runner.invoke(app, ["policy", "init", "--profile", "unknown"])
+    assert result.exit_code == 2
+    assert "unknown policy profile" in result.output
+
+
+def test_cli_provenance_create_and_verify() -> None:
+    workdir = clean_test_dir("provenance-create-verify")
+    (workdir / "SKILL.md").write_text("Safe\n", encoding="utf-8")
+    policy = workdir / "skillgate.yaml"
+    policy.write_text("version: 1\npolicy: {}\n", encoding="utf-8")
+    baseline = workdir / "skillgate.lock"
+    manifest = workdir / "skillgate.provenance.json"
+    baseline_result = runner.invoke(
+        app,
+        ["baseline", "create", str(workdir), "--output", str(baseline)],
+    )
+    assert baseline_result.exit_code == 0
+    create_result = runner.invoke(
+        app,
+        [
+            "provenance",
+            "create",
+            "--policy",
+            str(policy),
+            "--baseline",
+            str(baseline),
+            "--output",
+            str(manifest),
+        ],
+    )
+    assert create_result.exit_code == 0
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    assert data["algorithm"] == "sha256"
+    assert [item["role"] for item in data["files"]] == ["policy", "baseline"]
+    verify_result = runner.invoke(app, ["provenance", "verify", "--manifest", str(manifest)])
+    assert verify_result.exit_code == 0
+    assert "provenance verification passed" in verify_result.output
+
+
+def test_cli_provenance_verify_detects_changed_file() -> None:
+    workdir = clean_test_dir("provenance-changed-file")
+    (workdir / "SKILL.md").write_text("Safe\n", encoding="utf-8")
+    policy = workdir / "skillgate.yaml"
+    policy.write_text("version: 1\npolicy: {}\n", encoding="utf-8")
+    baseline = workdir / "skillgate.lock"
+    manifest = workdir / "skillgate.provenance.json"
+    runner.invoke(app, ["baseline", "create", str(workdir), "--output", str(baseline)])
+    runner.invoke(
+        app,
+        [
+            "provenance",
+            "create",
+            "--policy",
+            str(policy),
+            "--baseline",
+            str(baseline),
+            "--output",
+            str(manifest),
+        ],
+    )
+    policy.write_text("version: 1\npolicy:\n  risk_threshold:\n    block: high\n", encoding="utf-8")
+    result = runner.invoke(app, ["provenance", "verify", "--manifest", str(manifest)])
+    assert result.exit_code == 1
+    assert "Checksum mismatch" in result.output
+
+
+def test_cli_provenance_verify_missing_and_malformed_exit_2() -> None:
+    workdir = clean_test_dir("provenance-errors")
+    missing = runner.invoke(
+        app,
+        ["provenance", "verify", "--manifest", str(workdir / "missing.json")],
+    )
+    assert missing.exit_code == 2
+    assert "Unable to load provenance manifest" in missing.output
+
+    malformed = workdir / "bad.json"
+    malformed.write_text(
+        '{"schema_version": "1", "algorithm": "md5", "files": []}\n',
+        encoding="utf-8",
+    )
+    result = runner.invoke(app, ["provenance", "verify", "--manifest", str(malformed)])
+    assert result.exit_code == 2
+    assert "algorithm must be sha256" in result.output
+
+    missing_target = workdir / "missing-target.json"
+    missing_target.write_text(
+        json.dumps(
+            {
+                "schema_version": "1",
+                "tool_version": "0.4.0",
+                "created_at": "2026-06-11T00:00:00Z",
+                "algorithm": "sha256",
+                "files": [
+                    {
+                        "role": "policy",
+                        "path": "missing-skillgate.yaml",
+                        "sha256": "0" * 64,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    missing_file = runner.invoke(
+        app,
+        ["provenance", "verify", "--manifest", str(missing_target)],
+    )
+    assert missing_file.exit_code == 2
+    assert "Missing policy file" in missing_file.output
+
+
 def test_policy_schema_reference_documents_supported_fields() -> None:
     reference = (ROOT / "docs" / "policy-schema.md").read_text(encoding="utf-8")
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     for field in [
         "version",
         "policy.shell.allow",
+        "policy.shell.commands.allow",
         "policy.filesystem.read",
         "policy.filesystem.write",
         "policy.network.allow",
+        "policy.network.allow_categories",
+        "policy.network.deny_categories",
         "policy.secrets.deny",
+        "policy.secrets.env.allow",
         "policy.mcp.require_review_on_change",
         "policy.risk_threshold.block",
     ]:
         assert field in reference
     assert "docs/policy-schema.md" in readme
+    assert "docs/editor-setup.md" in readme
+    assert "skillgate inventory" in readme
+    assert "skillgate provenance create" in readme
+    assert "skillgate policy init" in readme
+    assert "skillgate policy init --profile strict" in reference
+
+
+def test_contributing_documents_rule_fixture_test_workflow() -> None:
+    contributing = (ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8")
+    for phrase in [
+        "stable rule ID",
+        "rule documentation registry",
+        "expected-findings.yaml",
+        "focused regression test",
+        "golden snapshots",
+        "do not vendor upstream content verbatim",
+    ]:
+        assert phrase in contributing
 
 
 @pytest.mark.parametrize(
@@ -706,6 +1134,8 @@ def test_policy_schema_reference_documents_supported_fields() -> None:
         ("19-public-pattern-plugin-hooks", {"SG001", "SG003", "SG004", "SG006"}),
         ("20-public-pattern-marketplace-mcp-package", {"SG003", "SG009"}),
         ("21-public-pattern-agent-command-pack", {"SG003", "SG006"}),
+        ("22-public-pattern-mcp-local-bridge", {"SG003", "SG009"}),
+        ("23-public-pattern-skill-tool-metadata", {"SG007"}),
     ],
 )
 def test_public_pattern_fixtures_detect_expected_rule_ids(fixture: str, expected: set[str]) -> None:
