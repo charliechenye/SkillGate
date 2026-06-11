@@ -61,6 +61,27 @@ Verify fixtures with:
 python -m skillgate fixtures summary fixtures/benchmark --format json
 ```
 
+## Adding Non-Benchmark Comparison Fixtures
+
+Use non-benchmark fixtures for workflows that require two inputs, mocked remote
+metadata, or command-specific comparison behavior. For example,
+`fixtures/registry-compare-drift` demonstrates `SG013` by comparing local MCP
+registry metadata against a local registry index.
+
+Use this workflow:
+
+1. Place the fixture outside `fixtures/benchmark/` so it is not included in the
+   single-repository fixture summary contract.
+2. Add a `README.md` with the exact command to run from the repository root.
+3. Keep all inputs reduced, synthetic, and safe; do not copy upstream registry
+   records verbatim.
+4. Prefer local JSON inputs over network calls so tests and examples are
+   deterministic.
+5. Add a focused CLI regression test that exercises the example and asserts the
+   expected rule ID, such as `SG013`.
+6. Update `CHANGELOG.md` and `future_steps.md` when the comparison fixture
+   changes public examples, contributor workflow, or roadmap status.
+
 ## Updating Golden Snapshots
 
 Snapshot outputs are maintained by a repo-local helper rather than the public

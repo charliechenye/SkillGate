@@ -17,6 +17,9 @@ RULES = {
     ),
     "SG009": ("MCP server configuration discovered", "An MCP server configuration is present."),
     "SG010": ("MCP capability changed from baseline", "An MCP capability changed."),
+    "SG011": ("MCP tool metadata risk detected", "Declared MCP tool metadata is risky."),
+    "SG012": ("MCP transport risk detected", "Declared MCP transport metadata is risky."),
+    "SG013": ("MCP registry metadata drift detected", "Local MCP registry metadata drifted."),
 }
 LEVELS = {
     "informational": "note",

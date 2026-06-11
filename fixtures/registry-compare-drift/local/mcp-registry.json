@@ -1,0 +1,34 @@
+{
+  "server": {
+    "name": "io.example.registry-drift",
+    "description": "Local reduced MCP registry metadata.",
+    "version": "0.1.0",
+    "repository": {
+      "source": "github",
+      "url": "https://github.com/example/local-registry-drift"
+    },
+    "remotes": [
+      {
+        "type": "streamable-http",
+        "url": "https://local-drift.example.invalid/mcp",
+        "headers": [
+          {
+            "name": "X-Local-Token",
+            "isRequired": true,
+            "isSecret": true
+          }
+        ]
+      }
+    ],
+    "packages": [
+      {
+        "registryType": "npm",
+        "identifier": "@example/local-registry-drift",
+        "version": "0.1.0",
+        "transport": {
+          "type": "stdio"
+        }
+      }
+    ]
+  }
+}

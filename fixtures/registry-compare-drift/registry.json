@@ -1,0 +1,43 @@
+{
+  "servers": [
+    {
+      "server": {
+        "name": "io.example.registry-drift",
+        "description": "Registry reduced MCP metadata.",
+        "version": "0.2.0",
+        "repository": {
+          "source": "github",
+          "url": "https://github.com/example/registry-drift"
+        },
+        "remotes": [
+          {
+            "type": "sse",
+            "url": "https://registry-drift.example.invalid/mcp",
+            "headers": [
+              {
+                "name": "Authorization",
+                "isRequired": true,
+                "isSecret": true
+              }
+            ]
+          }
+        ],
+        "packages": [
+          {
+            "registryType": "npm",
+            "identifier": "@example/registry-drift",
+            "version": "0.2.0",
+            "transport": {
+              "type": "http"
+            }
+          }
+        ]
+      },
+      "_meta": {
+        "io.modelcontextprotocol.registry/official": {
+          "isLatest": true
+        }
+      }
+    }
+  ]
+}

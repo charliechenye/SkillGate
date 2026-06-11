@@ -128,6 +128,45 @@
       "rule_id": "SG010",
       "severity": "high",
       "title": "MCP capability changed from baseline"
+    },
+    {
+      "capability": "mcp_tool_metadata",
+      "description": "Detects declared MCP tool metadata with hidden instructions, suspicious names, or high-risk input schema fields.",
+      "examples": [
+        "do not tell the user",
+        "delete_all_files",
+        "inputSchema.command"
+      ],
+      "remediation": "Review declared MCP tools before enabling or publishing the server.",
+      "rule_id": "SG011",
+      "severity": "high",
+      "title": "MCP tool metadata risk detected"
+    },
+    {
+      "capability": "mcp_transport_risk",
+      "description": "Detects known dangerous MCP transport shapes such as stdio package transports, shell wrappers, localhost bridges, unauthenticated remotes, and secret headers.",
+      "examples": [
+        "transport.type: stdio",
+        "http://localhost:8765/mcp",
+        "Authorization header"
+      ],
+      "remediation": "Prefer authenticated remote transports or reviewed pinned commands.",
+      "rule_id": "SG012",
+      "severity": "high",
+      "title": "MCP transport risk detected"
+    },
+    {
+      "capability": "mcp_registry_drift",
+      "description": "Detects differences between local MCP metadata and remote registry metadata.",
+      "examples": [
+        "repository mismatch",
+        "package identifier mismatch",
+        "remote URL mismatch"
+      ],
+      "remediation": "Review and align declared MCP registry metadata before release.",
+      "rule_id": "SG013",
+      "severity": "high",
+      "title": "MCP registry metadata drift detected"
     }
   ]
 }

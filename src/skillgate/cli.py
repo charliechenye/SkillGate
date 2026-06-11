@@ -14,6 +14,13 @@ from skillgate.fixtures import (
     summarize_fixtures,
 )
 from skillgate.inventory import inventory_payload, inventory_text
+from skillgate.mcp_registry import (
+    DEFAULT_REGISTRY_URL,
+    RegistryMetadataError,
+    compare_registry_metadata,
+    registry_scan_text,
+    scan_registry_path,
+)
 from skillgate.models import SEVERITY_ORDER, severity_at_or_above, stable_json
 from skillgate.policy import evaluate_policy, load_policy
 from skillgate.policy_schema import POLICY_JSON_SCHEMA
@@ -43,12 +50,16 @@ github_app = typer.Typer(help="Scan remote GitHub repositories before installing
 policy_app = typer.Typer(help="Inspect SkillGate policy helpers.")
 provenance_app = typer.Typer(help="Create and verify SkillGate provenance manifests.")
 rules_app = typer.Typer(help="Inspect SkillGate rule documentation.")
+mcp_app = typer.Typer(help="Inspect MCP metadata without installing servers.")
+mcp_registry_app = typer.Typer(help="Scan and compare MCP registry metadata.")
 app.add_typer(baseline_app, name="baseline")
 app.add_typer(fixtures_app, name="fixtures")
 app.add_typer(github_app, name="github")
+app.add_typer(mcp_app, name="mcp")
 app.add_typer(policy_app, name="policy")
 app.add_typer(provenance_app, name="provenance")
 app.add_typer(rules_app, name="rules")
+mcp_app.add_typer(mcp_registry_app, name="registry")
 console = Console()
 
 
@@ -95,6 +106,59 @@ def render_scan_command_output(report, output_format: str, fail_on: str | None) 
     if failed and output_format == "text":
         content = append_scan_failure_text(content, fail_on or "")
     return content, failed
+
+
+@mcp_registry_app.command("scan")
+def mcp_registry_scan(
+    path: Annotated[
+        Path,
+        typer.Argument(help="MCP registry metadata file or repository path to scan."),
+    ] = Path("."),
+    output_format: Annotated[str, typer.Option("--format", help="Output format.")] = "text",
+    output: Annotated[
+        Path | None, typer.Option("--output", "-o", help="Write output to a file.")
+    ] = None,
+) -> None:
+    """Scan declared MCP registry metadata without installing the server."""
+    output_format = validate_format(output_format, {"text", "json"})
+    report = scan_registry_path(path)
+    content = stable_json(report) if output_format == "json" else registry_scan_text(report)
+    write_or_print(content, output, console)
+
+
+@mcp_registry_app.command("compare")
+def mcp_registry_compare(
+    path: Annotated[
+        Path,
+        typer.Argument(help="Local MCP registry metadata file or repository path."),
+    ] = Path("."),
+    server: Annotated[str, typer.Option("--server", help="MCP server name to compare.")] = "",
+    registry_url: Annotated[
+        str,
+        typer.Option("--registry-url", help="MCP registry servers endpoint."),
+    ] = DEFAULT_REGISTRY_URL,
+    output_format: Annotated[str, typer.Option("--format", help="Output format.")] = "text",
+    fail_on_drift: Annotated[
+        bool,
+        typer.Option("--fail-on-drift", help="Exit 1 when drift or risk findings exist."),
+    ] = False,
+    output: Annotated[
+        Path | None, typer.Option("--output", "-o", help="Write output to a file.")
+    ] = None,
+) -> None:
+    """Compare local MCP metadata with remote registry metadata."""
+    output_format = validate_format(output_format, {"text", "json"})
+    if not server:
+        console.file.write("Error: --server is required\n")
+        raise typer.Exit(2)
+    try:
+        report = compare_registry_metadata(path, server, registry_url)
+    except RegistryMetadataError as exc:
+        console.file.write(f"Error: {exc}\n")
+        raise typer.Exit(2) from exc
+    content = stable_json(report) if output_format == "json" else registry_scan_text(report)
+    write_or_print(content, output, console)
+    raise typer.Exit(1 if fail_on_drift and report.findings else 0)
 
 
 @app.command()

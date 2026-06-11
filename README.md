@@ -98,6 +98,9 @@ The repository also includes `.github/workflows/skillgate.yml` as a complete exa
 | `SG008` | Suspicious Unicode or obfuscation detected | medium |
 | `SG009` | MCP server configuration discovered | informational |
 | `SG010` | MCP capability changed from baseline | high |
+| `SG011` | MCP tool metadata risk detected | high |
+| `SG012` | MCP transport risk detected | high |
+| `SG013` | MCP registry metadata drift detected | high |
 
 SkillGate detects common Python, Node, shell, and PowerShell patterns for shell execution, destructive actions, network egress, and filesystem writes. Extraction stays conservative: when a path or host is not a clear literal value, SkillGate reports the finding without inventing a resource.
 
@@ -126,6 +129,9 @@ Supported files include:
 - `hooks/**`
 - `**/mcp.json`
 - `**/.mcp.json`
+- `**/mcp-registry.json`
+- `**/mcp-server.json`
+- MCP registry-style `server.json`
 - `package.json`
 - `pyproject.toml`
 - Referenced local scripts ending in `.sh`, `.bash`, `.py`, `.js`, `.ts`, `.mjs`, `.cjs`, or `.ps1`
@@ -177,6 +183,38 @@ To pin approved policy and baseline files by checksum:
 skillgate provenance create --policy skillgate.yaml --baseline skillgate.lock --output skillgate.provenance.json
 skillgate provenance verify --manifest skillgate.provenance.json
 ```
+
+## MCP Registry Metadata
+
+```bash
+skillgate mcp registry scan .
+skillgate mcp registry scan mcp-registry.json --format json
+skillgate mcp registry compare . --server io.example.server
+skillgate mcp registry compare . --server io.example.server --fail-on-drift
+skillgate mcp registry compare fixtures/registry-compare-drift/local \
+  --server io.example.registry-drift \
+  --registry-url fixtures/registry-compare-drift/registry.json
+```
+
+Registry scanning is static: SkillGate reads declared MCP registry metadata,
+publisher-provided tool metadata, remotes, packages, headers, and app-surface
+hints without installing packages, starting servers, or introspecting runtime
+tools. Remote registry comparison is opt-in and compares local declarations
+against registry/package metadata for reviewable drift. The local
+`fixtures/registry-compare-drift` example intentionally emits `SG013`.
+
+`SG013` means the local MCP metadata does not match the registry metadata for
+the selected server. Review each mismatch by field:
+
+- Repository, package, remote URL, transport type, version, and secret/header
+  differences can indicate stale local metadata, a registry update, or a
+  substituted package/server identity.
+- A mismatch can be expected during a planned release, registry migration,
+  package rename, endpoint cutover, or before local metadata has been published.
+- Treat unexpected repository, package, remote endpoint, or secret-header drift
+  as a review blocker until the intended source of truth is clear.
+- Keep intentional drift reviewable by recording the reason in the PR and, when
+  possible, attaching the JSON compare output as a CI artifact.
 
 ## Capability Inventory
 
@@ -235,7 +273,7 @@ Yes. SkillGate is a static AI-agent security scanner focused on skills, instruct
 
 ### Is SkillGate an MCP security scanner?
 
-Yes. SkillGate parses MCP config files, extracts server commands, args, environment variable names, and endpoint values, and reports MCP capability drift against approved baselines.
+Yes. SkillGate parses MCP config files, extracts server commands, args, environment variable names, and endpoint values, scans declared MCP registry/tool metadata for risky tool and transport surfaces, and reports MCP capability drift against approved baselines or opt-in registry comparisons.
 
 ### Can SkillGate scan a GitHub repository before I install skills?
 

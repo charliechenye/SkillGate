@@ -1,0 +1,11 @@
+findings:
+  - SG003
+  - SG011
+attribution:
+  sources:
+    - name: MCP Apps public metadata patterns
+      url: https://modelcontextprotocol.io/specification/2025-06-18/basic/transports
+    - name: Anthropic official Claude plugins repository
+      url: https://github.com/anthropics/claude-plugins-official
+  reduction: Synthetic minimal fixture with origin-like, UI hint, and dynamic tool metadata fields.
+  retrieved_on: "2026-06-11"

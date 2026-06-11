@@ -2,7 +2,8 @@
 
 ## Recommended Next Milestone
 
-Make SkillGate useful as an agent supply-chain inventory and review companion.
+Improve reviewer and adoption ergonomics for teams using SkillGate in CI and
+pre-install workflows.
 
 - Add reviewer-friendly PR comment output that summarizes new capabilities and links to SARIF findings.
 - Support authenticated and private GitHub repositories.
@@ -10,6 +11,7 @@ Make SkillGate useful as an agent supply-chain inventory and review companion.
 - Add cache controls for repeated remote scans.
 - Publish a stable hosted policy schema URL after the first tagged release.
 - Add inventory diff annotations that show which trust boundaries are new since a baseline.
+- Make `SG013` registry drift easier to review in CI and PR output, including local registry comparison examples and artifact-friendly JSON output.
 
 ## Trend-Informed Research Notes
 
@@ -35,31 +37,24 @@ Sources to watch:
 
 - Add `skillgate fixtures verify` as a contributor-facing command for expected findings.
 - Add `--github-token-env GITHUB_TOKEN` for authenticated GitHub API requests.
-- Expand sourced fixture attribution metadata beyond README notes.
-- Add schema-aware editor setup snippets for VS Code and other common editors.
-- Add more public-pattern fixtures with explicit attribution metadata for each reduced case.
-- Add policy checks for command allowlists, environment-variable allowlists, and remote host categories.
-- Add first-class baseline signing or checksum verification for teams that want approved policy and lockfile provenance.
-- Add SARIF tags/taxa for easier GitHub code scanning filtering by capability type.
-- Add richer inventory filters by capability type, severity, and source file.
+- Add registry-compare artifact examples for CI systems that want downloadable drift reports.
 - Confirm the sanitized social preview image renders correctly after pushing to GitHub.
 - Apply GitHub repository topics and description in the repository settings.
 
 ## MCP And Agent Ecosystem Coverage
 
-- Add reduced fixtures for MCP tool descriptions that contain hidden instructions, suspicious tool names, or high-risk input schemas.
-- Add reduced fixtures for MCP Apps/WebMCP-style tool surface metadata, including origin-like fields, UI/resource hints, and mid-session tool registration concepts.
 - Add discovery for A2A/ACP-style agent protocol config files once stable public layouts emerge.
-- Add support for scanning MCP registry metadata without installing the server.
-- Add optional remote checks that compare a repository's declared MCP tools against registry/package metadata.
-- Add a "known dangerous transport" ruleset for stdio commands, shell wrappers, localhost bridges, and unauthenticated remote endpoints.
+- Add opt-in live MCP tool-listing comparison in a controlled sandbox for teams that want runtime confirmation.
+- Add origin binding and lifecycle consistency checks for dynamic MCP app and WebMCP tool surfaces.
+- Explore signed capability manifests for skills and MCP servers, where maintainers declare intended permissions before users install.
+- Support trace import/export using OpenTelemetry-compatible formats in a future release.
 
 ## Policy Ergonomics
 
 - Add named capability groups such as `network.any`, `network.package_registry`, `shell.local_script`, `mcp.remote_http`, and `secrets.cloud`.
 - Add policy explanations that describe why a specific violation blocked and which allowlist entry would approve it.
 - Add policy dry-run mode that proposes the smallest policy needed to approve the current baseline.
-- Add JSON Schema examples for each policy profile and editor integration snippets.
+- Add JSON Schema examples for each policy profile if the current docs do not already cover the scenario.
 
 ## Creative Ideas
 
@@ -68,8 +63,6 @@ Sources to watch:
 - Add generated repository badges for "SkillGate baseline present" and "SkillGate policy enforced".
 - Build a public benchmark leaderboard for deterministic agent-safety scanners.
 - Add a sandbox trace runner later, where runtime traces can be promoted into static regression fixtures.
-- Support trace import/export using OpenTelemetry-compatible formats in a future release.
-- Explore signed capability manifests for skills and MCP servers, where maintainers declare intended permissions before users install.
 - Explore a local "agent identity card" view that shows which tools, secrets, endpoints, and write paths a skill or MCP server can touch.
 - Explore comparing static SkillGate findings against live MCP server tool listings in a controlled, opt-in sandbox.
 

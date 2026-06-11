@@ -1,0 +1,39 @@
+{
+  "server": {
+    "name": "io.example.transport-risk",
+    "description": "Reduced transport risk metadata.",
+    "version": "0.1.0",
+    "remotes": [
+      {
+        "type": "streamable-http",
+        "url": "http://localhost:8765/mcp"
+      },
+      {
+        "type": "streamable-http",
+        "url": "https://mcp.example.invalid/mcp"
+      },
+      {
+        "type": "streamable-http",
+        "url": "https://secure.example.invalid/mcp",
+        "headers": [
+          {
+            "name": "Authorization",
+            "isRequired": true,
+            "isSecret": true
+          }
+        ]
+      }
+    ],
+    "packages": [
+      {
+        "registryType": "npm",
+        "identifier": "@example/transport-risk",
+        "version": "0.1.0",
+        "transport": {
+          "type": "stdio",
+          "command": "bash"
+        }
+      }
+    ]
+  }
+}

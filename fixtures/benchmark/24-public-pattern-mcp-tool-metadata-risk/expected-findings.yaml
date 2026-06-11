@@ -1,0 +1,12 @@
+findings:
+  - SG003
+  - SG007
+  - SG011
+attribution:
+  sources:
+    - name: Model Context Protocol registry server metadata
+      url: https://registry.modelcontextprotocol.io/v0/servers
+    - name: MCP transports specification
+      url: https://modelcontextprotocol.io/specification/2025-06-18/basic/transports
+  reduction: Synthetic minimal fixture preserving only public-pattern tool metadata risk shapes.
+  retrieved_on: "2026-06-11"

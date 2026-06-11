@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 from pathlib import Path
@@ -25,9 +26,12 @@ RELEVANT_NAMES = {
     "CLAUDE.md",
     "mcp.json",
     ".mcp.json",
+    "mcp-registry.json",
+    "mcp-server.json",
     "package.json",
     "pyproject.toml",
 }
+MCP_REGISTRY_NAMES = {"mcp-registry.json", "mcp-server.json", "server.json"}
 REFERENCE_RE = re.compile(
     r"""(?P<path>(?:\.{1,2}/)?[A-Za-z0-9_./\\-]+\.(?:sh|bash|py|js|ts|mjs|cjs|ps1))"""
 )
@@ -61,11 +65,32 @@ def is_relevant_path(rel_path: Path) -> bool:
     )
 
 
+def looks_like_mcp_registry(path: Path) -> bool:
+    if path.name not in MCP_REGISTRY_NAMES:
+        return False
+    try:
+        data = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    if not isinstance(data, dict):
+        return False
+    if isinstance(data.get("servers"), list):
+        return True
+    server = data.get("server")
+    if isinstance(server, dict) and isinstance(server.get("name"), str):
+        return True
+    return isinstance(data.get("name"), str) and any(
+        key in data for key in ["repository", "remotes", "packages", "tools", "_meta"]
+    )
+
+
 def classify_file(path: Path) -> str:
     name = path.name
     suffix = path.suffix.lower()
     if name in {"mcp.json", ".mcp.json"}:
         return "mcp_config"
+    if name in MCP_REGISTRY_NAMES:
+        return "mcp_registry"
     if name == "package.json":
         return "package_config"
     if name == "pyproject.toml":
@@ -87,7 +112,7 @@ def iter_candidate_files(root: Path) -> list[Path]:
         for filename in sorted(filenames):
             path = current / filename
             rel = path.relative_to(root)
-            if not is_excluded(rel) and is_relevant_path(rel):
+            if not is_excluded(rel) and (is_relevant_path(rel) or looks_like_mcp_registry(path)):
                 candidates.append(path)
     return sorted(candidates, key=lambda item: relative_path(root, item))
 

@@ -168,10 +168,31 @@
               }
             },
             {
+              "id": "mcp_registry_drift",
+              "name": "mcp_registry_drift",
+              "shortDescription": {
+                "text": "SkillGate capability: mcp_registry_drift"
+              }
+            },
+            {
               "id": "mcp_server",
               "name": "mcp_server",
               "shortDescription": {
                 "text": "SkillGate capability: mcp_server"
+              }
+            },
+            {
+              "id": "mcp_tool_metadata",
+              "name": "mcp_tool_metadata",
+              "shortDescription": {
+                "text": "SkillGate capability: mcp_tool_metadata"
+              }
+            },
+            {
+              "id": "mcp_transport_risk",
+              "name": "mcp_transport_risk",
+              "shortDescription": {
+                "text": "SkillGate capability: mcp_transport_risk"
               }
             },
             {
@@ -375,6 +396,57 @@
               },
               "shortDescription": {
                 "text": "MCP server configuration discovered"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "Declared MCP tool metadata is risky."
+              },
+              "id": "SG011",
+              "name": "SG011",
+              "properties": {
+                "tags": [
+                  "skillgate",
+                  "capability:mcp_tool_metadata",
+                  "severity:high"
+                ]
+              },
+              "shortDescription": {
+                "text": "MCP tool metadata risk detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "Declared MCP transport metadata is risky."
+              },
+              "id": "SG012",
+              "name": "SG012",
+              "properties": {
+                "tags": [
+                  "skillgate",
+                  "capability:mcp_transport_risk",
+                  "severity:high"
+                ]
+              },
+              "shortDescription": {
+                "text": "MCP transport risk detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "Local MCP registry metadata drifted."
+              },
+              "id": "SG013",
+              "name": "SG013",
+              "properties": {
+                "tags": [
+                  "skillgate",
+                  "capability:mcp_registry_drift",
+                  "severity:high"
+                ]
+              },
+              "shortDescription": {
+                "text": "MCP registry metadata drift detected"
               }
             }
           ],

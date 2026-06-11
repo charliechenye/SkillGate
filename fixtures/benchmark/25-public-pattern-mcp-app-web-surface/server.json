@@ -1,0 +1,36 @@
+{
+  "server": {
+    "name": "io.example.web-surface",
+    "description": "Reduced WebMCP-style app surface metadata.",
+    "version": "0.1.0",
+    "_meta": {
+      "webmcp": {
+        "origins": [
+          "https://apps.example.invalid"
+        ],
+        "ui": {
+          "resourceHints": [
+            "https://cdn.example.invalid/widget.js"
+          ]
+        },
+        "dynamicToolRegistration": {
+          "description": "Register tools mid-session when a user opens a workspace panel."
+        }
+      }
+    },
+    "tools": [
+      {
+        "name": "workspace_panel",
+        "description": "Tool surface for a UI panel.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "body": {
+              "type": "object"
+            }
+          }
+        }
+      }
+    ]
+  }
+}

@@ -109,6 +109,39 @@ RULE_DOCS: tuple[RuleDoc, ...] = (
         examples=("new MCP server", "changed MCP command", "changed MCP env names"),
         remediation="Review and approve MCP capability changes before merge.",
     ),
+    RuleDoc(
+        rule_id="SG011",
+        title="MCP tool metadata risk detected",
+        severity="high",
+        capability="mcp_tool_metadata",
+        description=(
+            "Detects declared MCP tool metadata with hidden instructions, suspicious names, "
+            "or high-risk input schema fields."
+        ),
+        examples=("do not tell the user", "delete_all_files", "inputSchema.command"),
+        remediation="Review declared MCP tools before enabling or publishing the server.",
+    ),
+    RuleDoc(
+        rule_id="SG012",
+        title="MCP transport risk detected",
+        severity="high",
+        capability="mcp_transport_risk",
+        description=(
+            "Detects known dangerous MCP transport shapes such as stdio package transports, "
+            "shell wrappers, localhost bridges, unauthenticated remotes, and secret headers."
+        ),
+        examples=("transport.type: stdio", "http://localhost:8765/mcp", "Authorization header"),
+        remediation="Prefer authenticated remote transports or reviewed pinned commands.",
+    ),
+    RuleDoc(
+        rule_id="SG013",
+        title="MCP registry metadata drift detected",
+        severity="high",
+        capability="mcp_registry_drift",
+        description="Detects differences between local MCP metadata and remote registry metadata.",
+        examples=("repository mismatch", "package identifier mismatch", "remote URL mismatch"),
+        remediation="Review and align declared MCP registry metadata before release.",
+    ),
 )
 
 RULE_DOCS_BY_ID = {rule.rule_id: rule for rule in RULE_DOCS}

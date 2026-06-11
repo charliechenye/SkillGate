@@ -3,15 +3,23 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 import pytest
 import yaml
 from typer.testing import CliRunner
 
+import skillgate.mcp_registry as mcp_registry
+from skillgate import __version__
 from skillgate.baseline import create_baseline, diff_against_baseline
 from skillgate.cli import app
 from skillgate.discovery import discover_paths, scan_file_metadata
+from skillgate.mcp_registry import (
+    RegistryMetadataError,
+    collect_registry_servers,
+    scan_registry_path,
+)
 from skillgate.models import stable_json
 from skillgate.policy import evaluate_policy, load_policy
 from skillgate.policy_schema import POLICY_JSON_SCHEMA
@@ -30,6 +38,7 @@ from tests.snapshot_cases import SNAPSHOT_CASES, snapshot_output
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "fixtures" / "benchmark"
+REGISTRY_COMPARE_FIXTURE = ROOT / "fixtures" / "registry-compare-drift"
 TEST_OUTPUTS = ROOT / "test-outputs"
 runner = CliRunner()
 
@@ -91,6 +100,19 @@ def test_public_agent_layouts_are_discovered() -> None:
     ]
 
 
+def test_mcp_registry_server_json_is_discovered_when_schema_like() -> None:
+    workdir = clean_test_dir("mcp-registry-discovery")
+    (workdir / "server.json").write_text(
+        json.dumps({"server": {"name": "io.example.discovery", "version": "0.1.0"}}),
+        encoding="utf-8",
+    )
+    ignored = workdir / "nested" / "server.json"
+    ignored.parent.mkdir()
+    ignored.write_text(json.dumps({"service": "not-mcp"}), encoding="utf-8")
+    paths = [path.relative_to(workdir).as_posix() for path in discover_paths(workdir)]
+    assert paths == ["server.json"]
+
+
 def test_stable_file_hashing() -> None:
     path = FIXTURES / "01-safe-documentation-skill" / "SKILL.md"
     first = scan_file_metadata(FIXTURES / "01-safe-documentation-skill", path)
@@ -130,6 +152,28 @@ def test_mcp_config_parses_metadata() -> None:
     assert mcp.resource == "github"
     assert mcp.details["command"] == "node"
     assert "GITHUB_TOKEN" in mcp.details["env"]
+
+
+def test_mcp_registry_metadata_parser_extracts_declared_fields() -> None:
+    fixture = FIXTURES / "27-public-pattern-mcp-registry-package-metadata"
+    servers = collect_registry_servers(fixture)
+    assert [server.name for server in servers] == ["io.example.registry-package"]
+    report = scan_registry_path(fixture)
+    registry = [
+        capability for capability in report.capabilities if capability.type == "mcp_registry_server"
+    ][0]
+    assert registry.details["repository"] == "https://github.com/example/registry-package"
+    assert registry.details["packages"] == ["npm:@example/registry-package"]
+    assert registry.details["secret_headers"] == ["X-Registry-Token"]
+
+
+def test_mcp_tool_metadata_and_transport_rules_detect_public_patterns() -> None:
+    tool_report = scan_repository(FIXTURES / "24-public-pattern-mcp-tool-metadata-risk")
+    transport_report = scan_repository(FIXTURES / "26-public-pattern-mcp-dangerous-transport")
+    assert any(finding.rule_id == "SG011" for finding in tool_report.findings)
+    assert any("delete_all_files" in finding.evidence for finding in tool_report.findings)
+    assert any(finding.rule_id == "SG012" for finding in transport_report.findings)
+    assert "literal-secret-value" not in stable_json(transport_report)
 
 
 def test_policy_blocks_remote_download_execute() -> None:
@@ -178,10 +222,130 @@ def test_sarif_structure() -> None:
     assert "network_egress" in taxa
 
 
+def test_sarif_includes_mcp_capability_tags_and_taxa() -> None:
+    report = scan_repository(FIXTURES / "24-public-pattern-mcp-tool-metadata-risk")
+    sarif = sarif_report(report)
+    rules = {rule["id"]: rule for rule in sarif["runs"][0]["tool"]["driver"]["rules"]}
+    assert "capability:mcp_tool_metadata" in rules["SG011"]["properties"]["tags"]
+    result = next(item for item in sarif["runs"][0]["results"] if item["ruleId"] == "SG011")
+    assert "capability:mcp_tool_metadata" in result["properties"]["tags"]
+    taxa = {item["id"] for item in sarif["runs"][0]["taxonomies"][0]["taxa"]}
+    assert "mcp_tool_metadata" in taxa
+
+
 def test_cli_scan_exit_code_and_output() -> None:
     result = runner.invoke(app, ["scan", str(FIXTURES / "02-shell-execution")])
     assert result.exit_code == 0
     assert "SG001" in result.output
+
+
+def test_cli_mcp_registry_scan_text_and_json() -> None:
+    fixture = FIXTURES / "26-public-pattern-mcp-dangerous-transport"
+    text = runner.invoke(app, ["mcp", "registry", "scan", str(fixture)])
+    assert text.exit_code == 0
+    assert "SkillGate MCP registry scan completed" in text.output
+    assert "SG012" in text.output
+    json_result = runner.invoke(
+        app,
+        ["mcp", "registry", "scan", str(fixture / "mcp-server.json"), "--format", "json"],
+    )
+    assert json_result.exit_code == 0
+    data = json.loads(json_result.output)
+    assert {finding["rule_id"] for finding in data["findings"]} == {"SG012"}
+
+
+def test_cli_mcp_registry_compare_success_and_drift(monkeypatch: pytest.MonkeyPatch) -> None:
+    workdir = clean_test_dir("mcp-registry-compare")
+    local = {
+        "server": {
+            "name": "io.example.compare",
+            "version": "0.1.0",
+            "repository": {"url": "https://github.com/example/compare"},
+            "packages": [{"registryType": "npm", "identifier": "@example/compare"}],
+        }
+    }
+    (workdir / "mcp-registry.json").write_text(json.dumps(local), encoding="utf-8")
+
+    def matching_registry(_url: str) -> dict[str, object]:
+        return {"servers": [local]}
+
+    monkeypatch.setattr(mcp_registry, "fetch_registry_index", matching_registry)
+    result = runner.invoke(
+        app,
+        ["mcp", "registry", "compare", str(workdir), "--server", "io.example.compare"],
+    )
+    assert result.exit_code == 0
+    assert "SG013" not in result.output
+
+    remote = json.loads(json.dumps(local))
+    remote["server"]["repository"]["url"] = "https://github.com/example/other"
+
+    def drifting_registry(_url: str) -> dict[str, object]:
+        return {"servers": [remote]}
+
+    monkeypatch.setattr(mcp_registry, "fetch_registry_index", drifting_registry)
+    drift = runner.invoke(
+        app,
+        ["mcp", "registry", "compare", str(workdir), "--server", "io.example.compare"],
+    )
+    assert drift.exit_code == 0
+    assert "SG013" in drift.output
+    failed = runner.invoke(
+        app,
+        [
+            "mcp",
+            "registry",
+            "compare",
+            str(workdir),
+            "--server",
+            "io.example.compare",
+            "--fail-on-drift",
+        ],
+    )
+    assert failed.exit_code == 1
+
+
+def test_cli_mcp_registry_compare_fetch_error_exits_2(monkeypatch: pytest.MonkeyPatch) -> None:
+    workdir = clean_test_dir("mcp-registry-compare-error")
+    (workdir / "mcp-registry.json").write_text(
+        json.dumps({"server": {"name": "io.example.compare", "version": "0.1.0"}}),
+        encoding="utf-8",
+    )
+
+    def broken_registry(_url: str) -> dict[str, object]:
+        raise RegistryMetadataError("registry unavailable")
+
+    monkeypatch.setattr(mcp_registry, "fetch_registry_index", broken_registry)
+    result = runner.invoke(
+        app,
+        ["mcp", "registry", "compare", str(workdir), "--server", "io.example.compare"],
+    )
+    assert result.exit_code == 2
+    assert "registry unavailable" in result.output
+
+
+def test_cli_mcp_registry_compare_fixture_reports_sg013() -> None:
+    result = runner.invoke(
+        app,
+        [
+            "mcp",
+            "registry",
+            "compare",
+            str(REGISTRY_COMPARE_FIXTURE / "local"),
+            "--server",
+            "io.example.registry-drift",
+            "--registry-url",
+            str(REGISTRY_COMPARE_FIXTURE / "registry.json"),
+            "--format",
+            "json",
+        ],
+    )
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    drift_findings = [finding for finding in data["findings"] if finding["rule_id"] == "SG013"]
+    assert drift_findings
+    assert any("repository" in finding["evidence"] for finding in drift_findings)
+    assert any(capability["type"] == "mcp_registry_drift" for capability in data["capabilities"])
 
 
 def test_cli_rules_list() -> None:
@@ -422,7 +586,7 @@ def test_cli_rules_list_json() -> None:
     assert result.exit_code == 0
     data = json.loads(result.output)
     assert [rule["rule_id"] for rule in data["rules"]] == [
-        f"SG{index:03d}" for index in range(1, 11)
+        f"SG{index:03d}" for index in range(1, 14)
     ]
     assert data["rules"][3]["capability"] == "remote_download_execution"
 
@@ -905,7 +1069,7 @@ def test_cli_fixtures_summary_json() -> None:
     assert result.exit_code == 0
     data = json.loads(result.output)
     assert data["summary"]["failed"] == 0
-    assert data["summary"]["fixtures"] == 23
+    assert data["summary"]["fixtures"] == 27
     assert all(item["status"] == "pass" for item in data["fixtures"])
 
 
@@ -1106,6 +1270,16 @@ def test_policy_schema_reference_documents_supported_fields() -> None:
     assert "skillgate policy init --profile strict" in reference
 
 
+def test_release_notes_keep_current_changes_under_010() -> None:
+    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    assert pyproject["project"]["version"] == "0.1.0"
+    assert __version__ == "0.1.0"
+    assert "## Unreleased" not in changelog
+    assert "## 0.4.0" not in changelog
+    assert "## 0.1.0 - Initial public release" in changelog
+
+
 def test_contributing_documents_rule_fixture_test_workflow() -> None:
     contributing = (ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8")
     for phrase in [
@@ -1136,6 +1310,10 @@ def test_contributing_documents_rule_fixture_test_workflow() -> None:
         ("21-public-pattern-agent-command-pack", {"SG003", "SG006"}),
         ("22-public-pattern-mcp-local-bridge", {"SG003", "SG009"}),
         ("23-public-pattern-skill-tool-metadata", {"SG007"}),
+        ("24-public-pattern-mcp-tool-metadata-risk", {"SG003", "SG007", "SG011"}),
+        ("25-public-pattern-mcp-app-web-surface", {"SG003", "SG011"}),
+        ("26-public-pattern-mcp-dangerous-transport", {"SG001", "SG003", "SG012"}),
+        ("27-public-pattern-mcp-registry-package-metadata", {"SG003", "SG012"}),
     ],
 )
 def test_public_pattern_fixtures_detect_expected_rule_ids(fixture: str, expected: set[str]) -> None:

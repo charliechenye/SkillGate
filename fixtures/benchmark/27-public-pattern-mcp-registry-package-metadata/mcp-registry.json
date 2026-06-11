@@ -1,0 +1,34 @@
+{
+  "server": {
+    "name": "io.example.registry-package",
+    "description": "Reduced registry/package metadata.",
+    "version": "0.1.0",
+    "repository": {
+      "source": "github",
+      "url": "https://github.com/example/registry-package"
+    },
+    "remotes": [
+      {
+        "type": "streamable-http",
+        "url": "https://registry-package.example.invalid/mcp",
+        "headers": [
+          {
+            "name": "X-Registry-Token",
+            "isRequired": true,
+            "isSecret": true
+          }
+        ]
+      }
+    ],
+    "packages": [
+      {
+        "registryType": "npm",
+        "identifier": "@example/registry-package",
+        "version": "0.1.0",
+        "transport": {
+          "type": "stdio"
+        }
+      }
+    ]
+  }
+}
