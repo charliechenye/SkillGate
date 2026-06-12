@@ -55,11 +55,20 @@ skillgate github scan https://github.com/phuryn/pm-skills
 skillgate github scan https://github.com/addyosmani/agent-skills/tree/main/skills
 skillgate github scan https://github.com/phuryn/pm-skills --ref main --fail-on high
 skillgate github scan https://github.com/phuryn/pm-skills --format json
+skillgate github scan https://github.com/phuryn/pm-skills --manifest-output remote-manifest.json
 ```
 
-Remote scans do not clone the repository or download a full archive. SkillGate fetches GitHub tree metadata, downloads only supported agent files plus referenced local scripts into a temporary sparse mirror, runs static analysis, and deletes the temporary files. It never executes remote repository content.
+Remote scans do not clone the repository or download a full archive. SkillGate resolves the requested branch or tag to an immutable commit SHA, fetches GitHub tree metadata at that SHA, downloads only supported agent files plus referenced local scripts into a temporary sparse mirror, runs static analysis, and deletes the temporary files. It never executes remote repository content.
 
 GitHub tree URLs scan only the selected subtree. If a tree URL includes a branch and you also pass `--ref`, the explicit `--ref` value wins.
+
+Remote scan JSON output includes a `remote_manifest` with the source URL,
+requested ref, resolved commit SHA, downloaded paths, SHA-256 hashes, byte
+counts, skipped files, and resource limits. Use `--manifest-output` to write the
+same manifest as a CI artifact for text or SARIF scans. If a selected file,
+referenced script, ref resolution, or resource limit makes the remote scan
+incomplete, SkillGate exits `2` rather than reporting a partial scan as
+complete.
 
 See [GitHub pre-install scans](docs/github-preinstall-scan.md) for the full workflow.
 

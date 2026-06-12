@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 import sys
@@ -27,12 +28,14 @@ from skillgate.sarif import sarif_report
 from skillgate.scan import scan_repository
 from skillgate.sources import (
     GitHubTreeItem,
+    RemoteScanLimits,
     SourceError,
     fetch_github_sparse,
     installed_skill_roots,
     parse_github_repo_url,
     referenced_script_paths,
     relevant_remote_paths,
+    resolve_github_ref,
 )
 from tests.snapshot_cases import SNAPSHOT_CASES, snapshot_output
 
@@ -41,6 +44,7 @@ FIXTURES = ROOT / "fixtures" / "benchmark"
 REGISTRY_COMPARE_FIXTURE = ROOT / "fixtures" / "registry-compare-drift"
 TEST_OUTPUTS = ROOT / "test-outputs"
 runner = CliRunner()
+FAKE_COMMIT_SHA = "0123456789abcdef0123456789abcdef01234567"
 
 
 def rule_ids(path: str) -> set[str]:
@@ -1632,13 +1636,54 @@ def test_sparse_path_selection_and_referenced_scripts() -> None:
     assert refs == ["scripts/install.sh"]
 
 
+def test_github_ref_resolution_default_branch_branch_tag_and_sha(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tag_object_sha = "abcdefabcdefabcdefabcdefabcdefabcdefabcd"
+    tag_commit_sha = "fedcba9876543210fedcba9876543210fedcba98"
+
+    def fake_request_json(
+        url: str, timeout: int = 30, redirect_limit: int = 3
+    ) -> dict[str, object]:
+        if url.endswith("/repos/phuryn/pm-skills"):
+            return {"default_branch": "develop"}
+        if url.endswith("/git/ref/heads/develop"):
+            return {"object": {"type": "commit", "sha": FAKE_COMMIT_SHA}}
+        if url.endswith("/git/ref/heads/release"):
+            return {"object": {"type": "commit", "sha": "1" * 40}}
+        if url.endswith("/git/ref/heads/v1"):
+            raise SourceError("not a branch")
+        if url.endswith("/git/ref/tags/v1"):
+            return {
+                "object": {
+                    "type": "tag",
+                    "sha": tag_object_sha,
+                    "url": f"https://api.github.com/repos/phuryn/pm-skills/git/tags/{tag_object_sha}",
+                }
+            }
+        if url.endswith(f"/git/tags/{tag_object_sha}"):
+            return {"object": {"type": "commit", "sha": tag_commit_sha}}
+        raise AssertionError(f"Unexpected JSON request: {url}")
+
+    monkeypatch.setattr("skillgate.sources.request_json", fake_request_json)
+    repo = parse_github_repo_url("https://github.com/phuryn/pm-skills")
+    assert resolve_github_ref(repo, None).commit_sha == FAKE_COMMIT_SHA
+    assert resolve_github_ref(repo, "release").commit_sha == "1" * 40
+    assert resolve_github_ref(repo, "v1").commit_sha == tag_commit_sha
+    assert resolve_github_ref(repo, "2" * 40).commit_sha == "2" * 40
+
+
 def fake_github_subtree(monkeypatch: pytest.MonkeyPatch, tmp_roots: list[Path]) -> list[str]:
     requested_urls: list[str] = []
 
-    def fake_request_json(url: str) -> dict[str, object]:
+    def fake_request_json(
+        url: str, timeout: int = 30, redirect_limit: int = 3
+    ) -> dict[str, object]:
         requested_urls.append(url)
         if url.endswith("/repos/phuryn/pm-skills"):
             return {"default_branch": "main"}
+        if url.endswith("/git/ref/heads/main"):
+            return {"object": {"type": "commit", "sha": FAKE_COMMIT_SHA}}
         if "/git/trees/" in url:
             return {
                 "tree": [
@@ -1651,7 +1696,7 @@ def fake_github_subtree(monkeypatch: pytest.MonkeyPatch, tmp_roots: list[Path]) 
             }
         raise AssertionError(f"Unexpected JSON request: {url}")
 
-    def fake_request_text(url: str) -> str:
+    def fake_request_text(url: str, timeout: int = 30, redirect_limit: int = 3) -> str:
         requested_urls.append(url)
         if url.endswith("/skills/demo/SKILL.md"):
             return "Run `scripts/install.sh` and `../../scripts/root.sh`.\n"
@@ -1693,15 +1738,20 @@ def test_fetch_github_sparse_tree_url_limits_to_subtree_and_strips_paths(
         assert not (sparse.root / "scripts" / "root.sh").exists()
     finally:
         sparse.cleanup()
-    assert any("/git/trees/main?" in url for url in requested_urls)
+    assert any(f"/git/trees/{FAKE_COMMIT_SHA}?" in url for url in requested_urls)
+    assert any(f"/{FAKE_COMMIT_SHA}/skills/demo/SKILL.md" in url for url in requested_urls)
     assert all("skills/other/SKILL.md" not in url for url in requested_urls)
     assert all("scripts/root.sh" not in url for url in requested_urls)
 
 
 def fake_github(monkeypatch: pytest.MonkeyPatch, tmp_roots: list[Path]) -> None:
-    def fake_request_json(url: str) -> dict[str, object]:
+    def fake_request_json(
+        url: str, timeout: int = 30, redirect_limit: int = 3
+    ) -> dict[str, object]:
         if url.endswith("/repos/phuryn/pm-skills"):
             return {"default_branch": "main"}
+        if url.endswith("/git/ref/heads/main"):
+            return {"object": {"type": "commit", "sha": FAKE_COMMIT_SHA}}
         if "/git/trees/" in url:
             return {
                 "tree": [
@@ -1712,7 +1762,7 @@ def fake_github(monkeypatch: pytest.MonkeyPatch, tmp_roots: list[Path]) -> None:
             }
         raise AssertionError(f"Unexpected JSON request: {url}")
 
-    def fake_request_text(url: str) -> str:
+    def fake_request_text(url: str, timeout: int = 30, redirect_limit: int = 3) -> str:
         if url.endswith("/SKILL.md"):
             return "Run `scripts/install.sh`.\n"
         if url.endswith("/scripts/install.sh"):
@@ -1746,9 +1796,116 @@ def test_fetch_github_sparse_fetches_relevant_files_and_references(
         assert (sparse.root / "SKILL.md").exists()
         assert (sparse.root / "scripts" / "install.sh").exists()
         assert not (sparse.root / "README.md").exists()
+        manifest = sparse.manifest
+        assert manifest["source_url"] == "https://github.com/phuryn/pm-skills"
+        assert manifest["requested_ref"] is None
+        assert manifest["resolved_ref"] == "main"
+        assert manifest["resolved_commit_sha"] == FAKE_COMMIT_SHA
+        assert manifest["summary"]["downloaded_file_count"] == 2
+        assert manifest["summary"]["skipped_file_count"] == 1
+        downloaded = {item["materialized_path"]: item for item in manifest["downloaded_files"]}
+        assert downloaded["SKILL.md"]["reason"] == "relevant_path"
+        assert downloaded["scripts/install.sh"]["reason"] == "referenced_script"
+        assert (
+            downloaded["SKILL.md"]["sha256"]
+            == hashlib.sha256(b"Run `scripts/install.sh`.\n").hexdigest()
+        )
+        assert manifest["skipped_files"] == [
+            {"remote_path": "README.md", "reason": "unsupported_file"}
+        ]
     finally:
         sparse.cleanup()
     assert not tmp_roots[0].exists()
+
+
+@pytest.mark.parametrize(
+    ("limits", "expected"),
+    [
+        (RemoteScanLimits(max_files=1), "maximum file count exceeded"),
+        (RemoteScanLimits(max_file_bytes=5), "maximum individual file size exceeded"),
+        (RemoteScanLimits(max_total_bytes=30), "maximum total bytes exceeded"),
+    ],
+)
+def test_fetch_github_sparse_resource_limits_fail_safely(
+    monkeypatch: pytest.MonkeyPatch,
+    limits: RemoteScanLimits,
+    expected: str,
+) -> None:
+    tmp_roots: list[Path] = []
+    fake_github(monkeypatch, tmp_roots)
+    with pytest.raises(SourceError) as excinfo:
+        fetch_github_sparse("https://github.com/phuryn/pm-skills", limits=limits)
+    assert expected in str(excinfo.value)
+    assert excinfo.value.manifest is not None
+    assert excinfo.value.manifest["skipped_files"]
+    assert tmp_roots == []
+
+
+def test_fetch_github_sparse_missing_reference_fails_with_manifest(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_request_json(
+        url: str, timeout: int = 30, redirect_limit: int = 3
+    ) -> dict[str, object]:
+        if url.endswith("/repos/phuryn/pm-skills"):
+            return {"default_branch": "main"}
+        if url.endswith("/git/ref/heads/main"):
+            return {"object": {"type": "commit", "sha": FAKE_COMMIT_SHA}}
+        if "/git/trees/" in url:
+            return {"tree": [{"path": "SKILL.md", "type": "blob"}]}
+        raise AssertionError(f"Unexpected JSON request: {url}")
+
+    def fake_request_text(url: str, timeout: int = 30, redirect_limit: int = 3) -> str:
+        if url.endswith("/SKILL.md"):
+            return "Run `scripts/missing.sh`.\n"
+        raise AssertionError(f"Unexpected text request: {url}")
+
+    monkeypatch.setattr("skillgate.sources.request_json", fake_request_json)
+    monkeypatch.setattr("skillgate.sources.request_text", fake_request_text)
+    with pytest.raises(SourceError) as excinfo:
+        fetch_github_sparse("https://github.com/phuryn/pm-skills")
+    assert "missing referenced scripts" in str(excinfo.value)
+    assert excinfo.value.manifest is not None
+    assert {
+        "remote_path": "scripts/missing.sh",
+        "reason": "missing_referenced_script",
+    } in excinfo.value.manifest["skipped_files"]
+
+
+def test_fetch_github_sparse_passes_timeout_and_redirect_limits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[tuple[str, int, int]] = []
+
+    def fake_request_json(
+        url: str, timeout: int = 30, redirect_limit: int = 3
+    ) -> dict[str, object]:
+        seen.append(("json", timeout, redirect_limit))
+        if url.endswith("/repos/phuryn/pm-skills"):
+            return {"default_branch": "main"}
+        if url.endswith("/git/ref/heads/main"):
+            return {"object": {"type": "commit", "sha": FAKE_COMMIT_SHA}}
+        if "/git/trees/" in url:
+            return {"tree": [{"path": "SKILL.md", "type": "blob"}]}
+        raise AssertionError(f"Unexpected JSON request: {url}")
+
+    def fake_request_text(url: str, timeout: int = 30, redirect_limit: int = 3) -> str:
+        seen.append(("text", timeout, redirect_limit))
+        return "Safe skill.\n"
+
+    tmp_roots: list[Path] = []
+    monkeypatch.setattr("skillgate.sources.request_json", fake_request_json)
+    monkeypatch.setattr("skillgate.sources.request_text", fake_request_text)
+    fake_github(monkeypatch, tmp_roots)
+    monkeypatch.setattr("skillgate.sources.request_json", fake_request_json)
+    monkeypatch.setattr("skillgate.sources.request_text", fake_request_text)
+    sparse = fetch_github_sparse(
+        "https://github.com/phuryn/pm-skills",
+        limits=RemoteScanLimits(request_timeout=7, redirect_limit=2),
+    )
+    sparse.cleanup()
+    assert seen
+    assert all(timeout == 7 and redirect == 2 for _kind, timeout, redirect in seen)
 
 
 def test_cli_github_scan_mocked(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1779,7 +1936,9 @@ def test_cli_github_scan_json_and_sarif_mocked(monkeypatch: pytest.MonkeyPatch) 
         ["github", "scan", "https://github.com/phuryn/pm-skills", "--format", "json"],
     )
     assert json_result.exit_code == 0
-    assert json.loads(json_result.output)["summary"]["findings"] >= 1
+    json_data = json.loads(json_result.output)
+    assert json_data["scan_report"]["summary"]["findings"] >= 1
+    assert json_data["remote_manifest"]["resolved_commit_sha"] == FAKE_COMMIT_SHA
     tmp_roots.clear()
     fake_github(monkeypatch, tmp_roots)
     sarif_result = runner.invoke(
@@ -1788,6 +1947,51 @@ def test_cli_github_scan_json_and_sarif_mocked(monkeypatch: pytest.MonkeyPatch) 
     )
     assert sarif_result.exit_code == 0
     assert json.loads(sarif_result.output)["version"] == "2.1.0"
+
+
+def test_cli_github_scan_manifest_output_mocked(monkeypatch: pytest.MonkeyPatch) -> None:
+    tmp_roots: list[Path] = []
+    fake_github(monkeypatch, tmp_roots)
+    output = clean_test_dir("github-manifest-output") / "remote-manifest.json"
+    result = runner.invoke(
+        app,
+        [
+            "github",
+            "scan",
+            "https://github.com/phuryn/pm-skills",
+            "--manifest-output",
+            str(output),
+        ],
+    )
+    assert result.exit_code == 0
+    manifest = json.loads(output.read_text(encoding="utf-8"))
+    assert manifest["resolved_commit_sha"] == FAKE_COMMIT_SHA
+    assert manifest["summary"]["downloaded_file_count"] == 2
+
+
+def test_cli_github_scan_limit_failure_exits_2_and_writes_manifest(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tmp_roots: list[Path] = []
+    fake_github(monkeypatch, tmp_roots)
+    output = clean_test_dir("github-limit-manifest") / "remote-manifest.json"
+    result = runner.invoke(
+        app,
+        [
+            "github",
+            "scan",
+            "https://github.com/phuryn/pm-skills",
+            "--max-files",
+            "1",
+            "--manifest-output",
+            str(output),
+        ],
+    )
+    assert result.exit_code == 2
+    assert "maximum file count exceeded" in result.output
+    manifest = json.loads(output.read_text(encoding="utf-8"))
+    assert manifest["skipped_files"][-1]["reason"] == "max_files_exceeded"
+    assert tmp_roots == []
 
 
 def test_installed_skill_roots_respects_codex_home(monkeypatch: pytest.MonkeyPatch) -> None:

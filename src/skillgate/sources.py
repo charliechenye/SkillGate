@@ -1,23 +1,32 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import re
 import shutil
 import tempfile
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from urllib.parse import quote, urlparse
 
+from skillgate import __version__
 from skillgate.discovery import REFERENCE_RE, SCRIPT_EXTENSIONS, is_excluded, is_relevant_path
+from skillgate.models import SCHEMA_VERSION
 
 GITHUB_API = "https://api.github.com"
 GITHUB_RAW = "https://raw.githubusercontent.com"
+GIT_SHA_RE = re.compile(r"^[0-9a-fA-F]{40}$")
 
 
 class SourceError(RuntimeError):
-    pass
+    def __init__(self, message: str, manifest: dict[str, Any] | None = None) -> None:
+        super().__init__(message)
+        self.manifest = manifest
 
 
 @dataclass(frozen=True)
@@ -34,12 +43,38 @@ class GitHubTreeItem:
     type: str
 
 
+@dataclass(frozen=True)
+class RemoteScanLimits:
+    max_files: int = 100
+    max_total_bytes: int = 5_242_880
+    max_file_bytes: int = 1_048_576
+    request_timeout: int = 30
+    redirect_limit: int = 3
+
+    def to_data(self) -> dict[str, int]:
+        return {
+            "max_files": self.max_files,
+            "max_total_bytes": self.max_total_bytes,
+            "max_file_bytes": self.max_file_bytes,
+            "request_timeout": self.request_timeout,
+            "redirect_limit": self.redirect_limit,
+        }
+
+
+@dataclass(frozen=True)
+class ResolvedGitHubRef:
+    requested_ref: str | None
+    resolved_ref: str
+    commit_sha: str
+
+
 @dataclass
 class SparseFetchResult:
     root: Path
     cleanup_path: Path
     fetched_paths: list[str]
     missing_references: list[str]
+    manifest: dict[str, Any]
 
     def cleanup(self) -> None:
         shutil.rmtree(self.cleanup_path, ignore_errors=True)
@@ -94,40 +129,147 @@ def strip_subpath(path: str, subpath: str | None) -> str:
     return path.removeprefix(f"{subpath}/")
 
 
-def request_json(url: str) -> dict[str, object]:
+class LimitedRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def __init__(self, redirect_limit: int) -> None:
+        self.redirect_limit = redirect_limit
+        self.redirect_count = 0
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[no-untyped-def]
+        self.redirect_count += 1
+        if self.redirect_count > self.redirect_limit:
+            raise SourceError(f"GitHub request exceeded redirect limit: {req.full_url}")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def urlopen_limited(
+    request: urllib.request.Request,
+    *,
+    timeout: int,
+    redirect_limit: int,
+):
+    opener = urllib.request.build_opener(LimitedRedirectHandler(redirect_limit))
+    return opener.open(request, timeout=timeout)
+
+
+def request_json(
+    url: str,
+    timeout: int = 30,
+    redirect_limit: int = 3,
+) -> dict[str, object]:
     request = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json"})
     try:
-        with urllib.request.urlopen(request, timeout=30) as response:
+        with urlopen_limited(request, timeout=timeout, redirect_limit=redirect_limit) as response:
             return json.loads(response.read().decode("utf-8"))
+    except SourceError:
+        raise
     except urllib.error.HTTPError as exc:
         raise SourceError(f"GitHub request failed with HTTP {exc.code}: {url}") from exc
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
         raise SourceError(f"GitHub request failed: {url}") from exc
 
 
-def request_text(url: str) -> str:
+def request_text(
+    url: str,
+    timeout: int = 30,
+    redirect_limit: int = 3,
+) -> str:
     request = urllib.request.Request(url, headers={"Accept": "text/plain"})
     try:
-        with urllib.request.urlopen(request, timeout=30) as response:
+        with urlopen_limited(request, timeout=timeout, redirect_limit=redirect_limit) as response:
             return response.read().decode("utf-8", errors="replace")
+    except SourceError:
+        raise
     except urllib.error.HTTPError as exc:
         raise SourceError(f"GitHub file fetch failed with HTTP {exc.code}: {url}") from exc
     except (urllib.error.URLError, TimeoutError) as exc:
         raise SourceError(f"GitHub file fetch failed: {url}") from exc
 
 
-def default_branch(repo: GitHubRepo) -> str:
-    data = request_json(f"{GITHUB_API}/repos/{repo.owner}/{repo.repo}")
+def default_branch(repo: GitHubRepo, limits: RemoteScanLimits | None = None) -> str:
+    limits = limits or RemoteScanLimits()
+    data = request_json(
+        f"{GITHUB_API}/repos/{repo.owner}/{repo.repo}",
+        timeout=limits.request_timeout,
+        redirect_limit=limits.redirect_limit,
+    )
     branch = data.get("default_branch")
     if not isinstance(branch, str) or not branch:
         raise SourceError("GitHub repository metadata did not include a default branch")
     return branch
 
 
-def github_tree(repo: GitHubRepo, ref: str) -> list[GitHubTreeItem]:
-    data = request_json(
-        f"{GITHUB_API}/repos/{repo.owner}/{repo.repo}/git/trees/{quote(ref, safe='')}?recursive=1"
+def github_ref(
+    repo: GitHubRepo, ref_kind: str, ref: str, limits: RemoteScanLimits
+) -> dict[str, Any]:
+    return request_json(
+        f"{GITHUB_API}/repos/{repo.owner}/{repo.repo}/git/ref/"
+        f"{quote(f'{ref_kind}/{ref}', safe='/')}",
+        timeout=limits.request_timeout,
+        redirect_limit=limits.redirect_limit,
     )
+
+
+def peel_ref_object(value: object, limits: RemoteScanLimits) -> str | None:
+    if not isinstance(value, dict):
+        return None
+    sha = value.get("sha")
+    object_type = value.get("type")
+    if object_type == "commit" and isinstance(sha, str):
+        return sha
+    url = value.get("url")
+    if object_type == "tag" and isinstance(url, str):
+        data = request_json(
+            url,
+            timeout=limits.request_timeout,
+            redirect_limit=limits.redirect_limit,
+        )
+        nested = data.get("object") if isinstance(data, dict) else None
+        return peel_ref_object(nested, limits)
+    return sha if isinstance(sha, str) and GIT_SHA_RE.fullmatch(sha) else None
+
+
+def resolve_github_ref(
+    repo: GitHubRepo,
+    requested_ref: str | None,
+    limits: RemoteScanLimits | None = None,
+) -> ResolvedGitHubRef:
+    limits = limits or RemoteScanLimits()
+    resolved_ref = requested_ref or default_branch(repo, limits)
+    if GIT_SHA_RE.fullmatch(resolved_ref):
+        return ResolvedGitHubRef(
+            requested_ref=requested_ref,
+            resolved_ref=resolved_ref,
+            commit_sha=resolved_ref.lower(),
+        )
+    errors = []
+    for ref_kind in ["heads", "tags"]:
+        try:
+            data = github_ref(repo, ref_kind, resolved_ref, limits)
+        except SourceError as exc:
+            errors.append(str(exc))
+            continue
+        commit_sha = peel_ref_object(data.get("object"), limits)
+        if commit_sha:
+            return ResolvedGitHubRef(
+                requested_ref=requested_ref,
+                resolved_ref=resolved_ref,
+                commit_sha=commit_sha.lower(),
+            )
+    details = "; ".join(errors) if errors else "ref did not resolve to a commit"
+    raise SourceError(f"Unable to resolve GitHub ref '{resolved_ref}' to a commit SHA: {details}")
+
+
+def github_tree(
+    repo: GitHubRepo, ref: str, limits: RemoteScanLimits | None = None
+) -> list[GitHubTreeItem]:
+    limits = limits or RemoteScanLimits()
+    data = request_json(
+        f"{GITHUB_API}/repos/{repo.owner}/{repo.repo}/git/trees/{quote(ref, safe='')}?recursive=1",
+        timeout=limits.request_timeout,
+        redirect_limit=limits.redirect_limit,
+    )
+    if data.get("truncated") is True:
+        raise SourceError(f"GitHub tree response was truncated for ref: {ref}")
     tree = data.get("tree")
     if not isinstance(tree, list):
         raise SourceError(f"GitHub ref was not found or did not return a tree: {ref}")
@@ -150,6 +292,14 @@ def relevant_remote_paths(items: list[GitHubTreeItem], subpath: str | None = Non
 
 
 def referenced_script_paths(source_path: str, content: str, available_paths: set[str]) -> list[str]:
+    return sorted(
+        reference
+        for reference in referenced_script_candidates(source_path, content)
+        if reference in available_paths
+    )
+
+
+def referenced_script_candidates(source_path: str, content: str) -> list[str]:
     base = Path(source_path).parent
     references = []
     for match in REFERENCE_RE.finditer(content):
@@ -168,7 +318,7 @@ def referenced_script_paths(source_path: str, content: str, available_paths: set
             else:
                 parts.append(part)
         candidate = "/".join(parts)
-        if Path(candidate).suffix.lower() in SCRIPT_EXTENSIONS and candidate in available_paths:
+        if Path(candidate).suffix.lower() in SCRIPT_EXTENSIONS:
             references.append(candidate)
     return sorted(set(references))
 
@@ -193,29 +343,196 @@ def materialize_sparse_files(files: dict[str, str], prefix: str = "skillgate-git
     return temp_root
 
 
-def fetch_github_sparse(url: str, ref: str | None = None) -> SparseFetchResult:
+def remote_manifest(
+    *,
+    source_url: str,
+    requested_ref: str | None,
+    resolved_ref: str,
+    resolved_commit_sha: str,
+    limits: RemoteScanLimits,
+) -> dict[str, Any]:
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "tool_version": __version__,
+        "source_url": source_url,
+        "requested_ref": requested_ref,
+        "resolved_ref": resolved_ref,
+        "resolved_commit_sha": resolved_commit_sha,
+        "scan_started_at": datetime.now(UTC)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z"),
+        "limits": limits.to_data(),
+        "downloaded_files": [],
+        "skipped_files": [],
+        "summary": {
+            "downloaded_file_count": 0,
+            "skipped_file_count": 0,
+            "total_bytes": 0,
+        },
+    }
+
+
+def add_skipped(manifest: dict[str, Any], remote_path: str, reason: str) -> None:
+    manifest["skipped_files"].append({"remote_path": remote_path, "reason": reason})
+    manifest["summary"]["skipped_file_count"] = len(manifest["skipped_files"])
+
+
+def add_downloaded(
+    manifest: dict[str, Any],
+    *,
+    remote_path: str,
+    materialized_path: str,
+    content: str,
+    reason: str,
+) -> None:
+    data = content.encode("utf-8")
+    manifest["skipped_files"] = [
+        item for item in manifest["skipped_files"] if item["remote_path"] != remote_path
+    ]
+    manifest["downloaded_files"].append(
+        {
+            "remote_path": remote_path,
+            "materialized_path": materialized_path,
+            "sha256": hashlib.sha256(data).hexdigest(),
+            "size_bytes": len(data),
+            "reason": reason,
+        }
+    )
+    manifest["summary"]["downloaded_file_count"] = len(manifest["downloaded_files"])
+    manifest["summary"]["skipped_file_count"] = len(manifest["skipped_files"])
+    manifest["summary"]["total_bytes"] = sum(
+        item["size_bytes"] for item in manifest["downloaded_files"]
+    )
+
+
+def skipped_remote_paths(
+    items: list[GitHubTreeItem],
+    selected_paths: set[str],
+    subpath: str | None,
+) -> list[tuple[str, str]]:
+    skipped = []
+    for item in items:
+        if item.type != "blob" or not path_within_subpath(item.path, subpath):
+            continue
+        if item.path in selected_paths:
+            continue
+        stripped = strip_subpath(item.path, subpath)
+        if is_excluded(Path(item.path)):
+            skipped.append((item.path, "excluded_path"))
+        elif not is_relevant_path(Path(stripped)):
+            skipped.append((item.path, "unsupported_file"))
+    return skipped
+
+
+def enforce_download_limits(
+    manifest: dict[str, Any],
+    limits: RemoteScanLimits,
+    remote_path: str,
+    content: str,
+) -> None:
+    next_file_count = len(manifest["downloaded_files"]) + 1
+    data_size = len(content.encode("utf-8"))
+    current_total = int(manifest["summary"]["total_bytes"])
+    if next_file_count > limits.max_files:
+        add_skipped(manifest, remote_path, "max_files_exceeded")
+        raise SourceError("Remote scan incomplete: maximum file count exceeded", manifest)
+    if data_size > limits.max_file_bytes:
+        add_skipped(manifest, remote_path, "max_file_bytes_exceeded")
+        raise SourceError("Remote scan incomplete: maximum individual file size exceeded", manifest)
+    if current_total + data_size > limits.max_total_bytes:
+        add_skipped(manifest, remote_path, "max_total_bytes_exceeded")
+        raise SourceError("Remote scan incomplete: maximum total bytes exceeded", manifest)
+
+
+def fetch_text_with_limits(
+    repo: GitHubRepo,
+    commit_sha: str,
+    remote_path: str,
+    manifest: dict[str, Any],
+    limits: RemoteScanLimits,
+) -> str:
+    try:
+        content = request_text(
+            raw_url(repo, commit_sha, remote_path),
+            timeout=limits.request_timeout,
+            redirect_limit=limits.redirect_limit,
+        )
+    except SourceError as exc:
+        add_skipped(manifest, remote_path, "download_failed")
+        raise SourceError(
+            f"Remote scan incomplete: failed to download {remote_path}: {exc}", manifest
+        ) from exc
+    enforce_download_limits(manifest, limits, remote_path, content)
+    return content
+
+
+def fetch_github_sparse(
+    url: str,
+    ref: str | None = None,
+    limits: RemoteScanLimits | None = None,
+) -> SparseFetchResult:
+    limits = limits or RemoteScanLimits()
     repo = parse_github_repo_url(url)
-    resolved_ref = ref or repo.ref or default_branch(repo)
-    tree = github_tree(repo, resolved_ref)
+    requested_ref = ref or repo.ref
+    resolved = resolve_github_ref(repo, requested_ref, limits)
+    manifest = remote_manifest(
+        source_url=url,
+        requested_ref=requested_ref,
+        resolved_ref=resolved.resolved_ref,
+        resolved_commit_sha=resolved.commit_sha,
+        limits=limits,
+    )
+    try:
+        tree = github_tree(repo, resolved.commit_sha, limits)
+    except SourceError as exc:
+        raise SourceError(f"Remote scan incomplete: {exc}", manifest) from exc
     available_paths = {item.path for item in tree if item.type == "blob"}
     selected_paths = set(relevant_remote_paths(tree, repo.subpath))
+    for remote_path, reason in skipped_remote_paths(tree, selected_paths, repo.subpath):
+        add_skipped(manifest, remote_path, reason)
     fetched_remote: dict[str, str] = {}
 
     for path in sorted(selected_paths):
-        fetched_remote[path] = request_text(raw_url(repo, resolved_ref, path))
-
-    referenced_paths = set()
-    for path, content in fetched_remote.items():
-        referenced_paths.update(
-            reference
-            for reference in referenced_script_paths(path, content, available_paths)
-            if path_within_subpath(reference, repo.subpath)
+        content = fetch_text_with_limits(repo, resolved.commit_sha, path, manifest, limits)
+        fetched_remote[path] = content
+        add_downloaded(
+            manifest,
+            remote_path=path,
+            materialized_path=strip_subpath(path, repo.subpath),
+            content=content,
+            reason="relevant_path",
         )
 
-    missing_references = sorted(path for path in referenced_paths if path not in available_paths)
+    referenced_paths = set()
+    missing_references = set()
+    for path, content in fetched_remote.items():
+        for reference in referenced_script_candidates(path, content):
+            if not path_within_subpath(reference, repo.subpath):
+                add_skipped(manifest, reference, "referenced_script_outside_subtree")
+            elif reference not in available_paths:
+                add_skipped(manifest, reference, "missing_referenced_script")
+                missing_references.add(reference)
+            else:
+                referenced_paths.add(reference)
+
+    if missing_references:
+        raise SourceError(
+            "Remote scan incomplete: missing referenced scripts: "
+            f"{', '.join(sorted(missing_references))}",
+            manifest,
+        )
     for path in sorted(referenced_paths & available_paths):
         if path not in fetched_remote:
-            fetched_remote[path] = request_text(raw_url(repo, resolved_ref, path))
+            content = fetch_text_with_limits(repo, resolved.commit_sha, path, manifest, limits)
+            fetched_remote[path] = content
+            add_downloaded(
+                manifest,
+                remote_path=path,
+                materialized_path=strip_subpath(path, repo.subpath),
+                content=content,
+                reason="referenced_script",
+            )
 
     fetched = {
         strip_subpath(path, repo.subpath): content
@@ -226,7 +543,8 @@ def fetch_github_sparse(url: str, ref: str | None = None) -> SparseFetchResult:
         root=cleanup_path / "repo",
         cleanup_path=cleanup_path,
         fetched_paths=sorted(fetched),
-        missing_references=sorted(strip_subpath(path, repo.subpath) for path in missing_references),
+        missing_references=[],
+        manifest=manifest,
     )
 
 

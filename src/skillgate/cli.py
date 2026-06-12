@@ -42,7 +42,7 @@ from skillgate.reporting import (
 )
 from skillgate.rule_docs import RULE_DOCS, get_rule_doc, rule_doc_to_data, rule_docs_to_data
 from skillgate.scan import filter_report_by_severity, scan_repository
-from skillgate.sources import SourceError, fetch_github_sparse
+from skillgate.sources import RemoteScanLimits, SourceError, fetch_github_sparse
 
 app = typer.Typer(help="Trust checks for AI-agent skills and MCP configurations.")
 baseline_app = typer.Typer(help="Create and manage approved SkillGate baselines.")
@@ -252,18 +252,57 @@ def github_scan(
     output: Annotated[
         Path | None, typer.Option("--output", "-o", help="Write output to a file.")
     ] = None,
+    manifest_output: Annotated[
+        Path | None,
+        typer.Option("--manifest-output", help="Write the remote-scan manifest to a file."),
+    ] = None,
+    max_files: Annotated[int, typer.Option("--max-files", help="Maximum files to download.")] = 100,
+    max_total_bytes: Annotated[
+        int,
+        typer.Option("--max-total-bytes", help="Maximum total downloaded bytes."),
+    ] = 5_242_880,
+    max_file_bytes: Annotated[
+        int,
+        typer.Option("--max-file-bytes", help="Maximum bytes for one downloaded file."),
+    ] = 1_048_576,
+    request_timeout: Annotated[
+        int,
+        typer.Option("--request-timeout", help="GitHub request timeout in seconds."),
+    ] = 30,
+    redirect_limit: Annotated[
+        int,
+        typer.Option("--redirect-limit", help="Maximum redirects per GitHub request."),
+    ] = 3,
 ) -> None:
     """Sparse-scan a public GitHub repository before installing skills."""
     output_format = validate_format(output_format, {"text", "json", "sarif"})
     severity = validate_severity(severity)
     fail_on = validate_fail_on(fail_on)
+    limits = RemoteScanLimits(
+        max_files=max_files,
+        max_total_bytes=max_total_bytes,
+        max_file_bytes=max_file_bytes,
+        request_timeout=request_timeout,
+        redirect_limit=redirect_limit,
+    )
+    if any(value <= 0 for value in limits.to_data().values()):
+        console.file.write("Error: remote scan limits must be positive integers\n")
+        raise typer.Exit(2)
     try:
-        sparse = fetch_github_sparse(url, ref)
+        sparse = fetch_github_sparse(url, ref, limits=limits)
         report = filter_report_by_severity(scan_repository(sparse.root), severity)
-        content, failed = render_scan_command_output(report, output_format, fail_on)
+        if manifest_output:
+            write_or_print(stable_json(sparse.manifest), manifest_output, console)
+        if output_format == "json":
+            failed = scan_failed(report, fail_on)
+            content = stable_json({"scan_report": report, "remote_manifest": sparse.manifest})
+        else:
+            content, failed = render_scan_command_output(report, output_format, fail_on)
         write_or_print(content, output, console)
         raise typer.Exit(1 if failed else 0)
     except SourceError as exc:
+        if manifest_output and exc.manifest:
+            write_or_print(stable_json(exc.manifest), manifest_output, console)
         console.file.write(f"Error: {exc}\n")
         raise typer.Exit(2) from exc
     finally:

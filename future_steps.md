@@ -64,29 +64,6 @@ workflow is widely usable.
 * Add examples showing how teams approve a known network host, shell command, or
   MCP server change without disabling the gate.
 
-### Make Remote Scans Reproducible
-
-* Resolve GitHub branches and tags to immutable commit SHAs before scanning.
-* Emit a remote-scan manifest containing:
-
-  * source repository URL
-  * requested ref
-  * resolved commit SHA
-  * scan timestamp
-  * downloaded relative paths
-  * SHA-256 hashes
-  * file counts and total bytes
-  * skipped files and reasons
-* Add resource limits for remote scans:
-
-  * maximum file count
-  * maximum total bytes
-  * maximum individual file size
-  * request timeout
-  * redirect limit
-* Fail safely when a remote scan is incomplete.
-* Support JSON export for audit records and CI artifacts.
-
 ### Improve Pull-Request Review Ergonomics
 
 * Add reviewer-friendly Markdown summary output for GitHub Actions.

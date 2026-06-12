@@ -25,6 +25,8 @@ AI-agent skills, instruction files, helper scripts, and MCP configurations.
 - Added known dangerous MCP transport checks for stdio package transports, shell wrappers, localhost/private-network bridges, unauthenticated remote endpoints, and secret-bearing remote headers.
 - Added opt-in MCP registry comparison for local-vs-registry repository URLs, package identifiers, remote URLs, transport types, versions, and secret/header requirements.
 - Added sparse public GitHub repository scans that fetch supported agent files and referenced scripts without cloning the full repository, including GitHub tree/subdirectory URL support.
+- Added reproducible remote GitHub scan manifests with resolved commit SHAs, downloaded file hashes, skipped-file reasons, byte counts, and resource limits.
+- Added remote GitHub scan resource limits for file count, total bytes, individual file size, request timeout, and redirect count.
 - Added a no-install local sample at `samples/scan_installed_skills.py` for scanning installed Codex skills from a source checkout.
 
 **Policy, baselines, and provenance**
