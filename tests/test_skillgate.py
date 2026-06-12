@@ -5,6 +5,7 @@ import json
 import subprocess
 import sys
 import tomllib
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -784,6 +785,55 @@ def test_invalid_policy_threshold_reports_line_and_column() -> None:
             "version: 1\npolicy:\n  secrets:\n    env:\n      allow: GITHUB_TOKEN\n",
             "policy.secrets.env.allow must be a list of strings",
         ),
+        (
+            "bad-waiver-owner",
+            (
+                "version: 1\npolicy:\n  waivers:\n    entries:\n      - reason: reviewed\n"
+                "        created_on: 2026-01-01\n        expires_on: 2026-02-01\n"
+                "        finding:\n          id: SG004-abc\n"
+            ),
+            "policy.waivers.entries.owner is required",
+        ),
+        (
+            "bad-waiver-date",
+            (
+                "version: 1\npolicy:\n  waivers:\n    entries:\n"
+                "      - owner: sec\n        reason: reviewed\n"
+                "        created_on: yesterday\n        expires_on: 2026-02-01\n"
+                "        finding:\n          id: SG004-abc\n"
+            ),
+            "policy.waivers.entries.created_on must be an ISO date",
+        ),
+        (
+            "bad-waiver-date-order",
+            (
+                "version: 1\npolicy:\n  waivers:\n    entries:\n"
+                "      - owner: sec\n        reason: reviewed\n"
+                "        created_on: 2026-03-01\n        expires_on: 2026-02-01\n"
+                "        finding:\n          id: SG004-abc\n"
+            ),
+            "policy.waivers.entries.created_on must be on or before expires_on",
+        ),
+        (
+            "bad-waiver-capability-selector",
+            (
+                "version: 1\npolicy:\n  waivers:\n    entries:\n"
+                "      - owner: sec\n        reason: reviewed\n"
+                "        created_on: 2026-01-01\n        expires_on: 2026-02-01\n"
+                "        capability:\n          type: network_egress\n"
+            ),
+            "Unknown policy.waivers.entries key: capability",
+        ),
+        (
+            "bad-waiver-broad-selector",
+            (
+                "version: 1\npolicy:\n  waivers:\n    entries:\n"
+                "      - owner: sec\n        reason: reviewed\n"
+                "        created_on: 2026-01-01\n        expires_on: 2026-02-01\n"
+                "        finding:\n          rule_id: SG004\n"
+            ),
+            "policy.waivers.entries.finding selector is too broad",
+        ),
     ],
 )
 def test_policy_schema_validation_reports_line_and_column(
@@ -803,6 +853,31 @@ def test_policy_schema_validation_reports_line_and_column(
 
 def test_example_policy_still_loads() -> None:
     assert load_policy(ROOT / "skillgate.example.yaml")["version"] == 1
+
+
+def test_policy_waiver_broad_selector_requires_explicit_opt_in() -> None:
+    workdir = clean_test_dir("policy-waiver-broad-opt-in")
+    policy = workdir / "skillgate.yaml"
+    policy.write_text(
+        "\n".join(
+            [
+                "version: 1",
+                "policy:",
+                "  waivers:",
+                "    allow_broad_selectors: true",
+                "    entries:",
+                "      - owner: security",
+                "        reason: temporary reviewed installer exception",
+                "        created_on: 2026-01-01",
+                "        expires_on: 2026-02-01",
+                "        finding:",
+                "          rule_id: SG004",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    data = load_policy(policy)
+    assert data["policy"]["waivers"]["entries"][0]["finding"]["rule_id"] == "SG004"
 
 
 def test_policy_command_allowlist_blocks_unapproved_shell_commands() -> None:
@@ -1006,6 +1081,131 @@ def test_policy_violations_include_explanations_and_suggestions() -> None:
     assert violation.reason
     assert violation.approval_hint
     assert violation.suggested_policy == {"policy": {"network": {"allow": ["registry.npmjs.org"]}}}
+
+
+def test_active_finding_waiver_suppresses_specific_sg004_threshold_violation() -> None:
+    report = scan_repository(FIXTURES / "05-remote-download-execute")
+    sg004 = next(finding for finding in report.findings if finding.rule_id == "SG004")
+    report = report.model_copy(update={"findings": [sg004], "capabilities": []})
+    result = evaluate_policy(
+        report,
+        {
+            "version": 1,
+            "policy": {
+                "risk_threshold": {"block": "high"},
+                "waivers": {
+                    "entries": [
+                        {
+                            "id": "waive-reviewed-installer",
+                            "owner": "security",
+                            "reason": "Reviewed pinned installer script.",
+                            "created_on": "2026-01-01",
+                            "expires_on": "2026-02-01",
+                            "ticket": "SEC-123",
+                            "finding": {"id": sg004.id},
+                        }
+                    ]
+                },
+            },
+        },
+        today=date(2026, 1, 15),
+    )
+    assert not result.blocked
+    assert result.active_waivers[0]["id"] == "waive-reviewed-installer"
+    assert result.waived_violations[0]["finding_id"] == sg004.id
+    assert result.waived_violations[0]["waiver"]["ticket"] == "SEC-123"
+
+
+def test_nonmatching_and_expired_finding_waivers_do_not_approve_findings() -> None:
+    report = scan_repository(FIXTURES / "05-remote-download-execute")
+    sg004 = next(finding for finding in report.findings if finding.rule_id == "SG004")
+    report = report.model_copy(update={"findings": [sg004], "capabilities": []})
+    nonmatching = evaluate_policy(
+        report,
+        {
+            "version": 1,
+            "policy": {
+                "risk_threshold": {"block": "high"},
+                "waivers": {
+                    "entries": [
+                        {
+                            "owner": "security",
+                            "reason": "Different reviewed finding.",
+                            "created_on": "2026-01-01",
+                            "expires_on": "2026-02-01",
+                            "finding": {"id": "SG004-nope"},
+                        }
+                    ]
+                },
+            },
+        },
+        today=date(2026, 1, 15),
+    )
+    assert nonmatching.blocked
+    assert not nonmatching.waived_violations
+
+    expired = evaluate_policy(
+        report,
+        {
+            "version": 1,
+            "policy": {
+                "risk_threshold": {"block": "high"},
+                "waivers": {
+                    "entries": [
+                        {
+                            "id": "expired-installer",
+                            "owner": "security",
+                            "reason": "Old review.",
+                            "created_on": "2026-01-01",
+                            "expires_on": "2026-01-10",
+                            "finding": {"id": sg004.id},
+                        }
+                    ]
+                },
+            },
+        },
+        today=date(2026, 1, 15),
+    )
+    assert expired.blocked
+    assert expired.expired_waivers[0]["id"] == "expired-installer"
+    assert any("Finding waiver expired" in item.message for item in expired.violations)
+
+
+def test_finding_waivers_do_not_suppress_capability_only_violations() -> None:
+    workdir = clean_test_dir("policy-waiver-capability-only")
+    (workdir / "SKILL.md").write_text("Run `net.py`.\n", encoding="utf-8")
+    (workdir / "net.py").write_text(
+        "requests.get('https://api.github.com/repos/example/repo')\n",
+        encoding="utf-8",
+    )
+    report = scan_repository(workdir)
+    result = evaluate_policy(
+        report,
+        {
+            "version": 1,
+            "policy": {
+                "network": {"allow": []},
+                "waivers": {
+                    "entries": [
+                        {
+                            "owner": "security",
+                            "reason": "Finding waiver does not approve capability.",
+                            "created_on": "2026-01-01",
+                            "expires_on": "2026-02-01",
+                            "finding": {
+                                "rule_id": "SG003",
+                                "file_path": "net.py",
+                            },
+                        }
+                    ]
+                },
+            },
+        },
+        today=date(2026, 1, 15),
+    )
+    assert result.blocked
+    assert any("Network host is not allowlisted" in item.message for item in result.violations)
+    assert not result.waived_violations
 
 
 def test_richer_filesystem_write_extraction() -> None:
@@ -1485,6 +1685,10 @@ def test_policy_schema_reference_documents_supported_fields() -> None:
         "policy.secrets.env.allow",
         "policy.mcp.require_review_on_change",
         "policy.risk_threshold.block",
+        "policy.waivers",
+        "allow_broad_selectors",
+        "created_on",
+        "expires_on",
     ]:
         assert field in reference
     assert "docs/policy-schema.md" in readme
@@ -1641,9 +1845,148 @@ def test_cli_check_dry_run_json_includes_suggestions() -> None:
     assert data["suggestions"] == [{"policy": {"network": {"allow": ["registry.npmjs.org"]}}}]
 
 
+def test_cli_check_text_and_json_surface_finding_waivers() -> None:
+    sg004 = next(
+        finding
+        for finding in scan_repository(FIXTURES / "05-remote-download-execute").findings
+        if finding.rule_id == "SG004"
+    )
+    workdir = clean_test_dir("check-waiver-output")
+    policy = workdir / "skillgate.yaml"
+    policy.write_text(
+        "\n".join(
+            [
+                "version: 1",
+                "policy:",
+                "  risk_threshold:",
+                "    block: high",
+                "  waivers:",
+                "    entries:",
+                "      - id: waive-reviewed-installer",
+                "        owner: security",
+                "        reason: Reviewed pinned installer script.",
+                "        created_on: 2026-01-01",
+                "        expires_on: 2999-01-01",
+                "        ticket: SEC-123",
+                "        finding:",
+                f"          id: {sg004.id}",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    text = runner.invoke(
+        app,
+        ["check", str(FIXTURES / "05-remote-download-execute"), "--policy", str(policy)],
+    )
+    assert text.exit_code == 1
+    assert "Active waivers:" in text.output
+    assert "Waived violations:" in text.output
+    assert "waive-reviewed-installer" in text.output
+
+    json_result = runner.invoke(
+        app,
+        [
+            "check",
+            str(FIXTURES / "05-remote-download-execute"),
+            "--policy",
+            str(policy),
+            "--format",
+            "json",
+        ],
+    )
+    assert json_result.exit_code == 1
+    data = json.loads(json_result.output)
+    assert data["policy_result"]["active_waivers"][0]["id"] == "waive-reviewed-installer"
+    assert data["policy_result"]["waived_violations"][0]["finding_id"] == sg004.id
+
+
+def test_cli_check_expired_waiver_blocks_safe_repository() -> None:
+    workdir = clean_test_dir("check-expired-waiver")
+    policy = workdir / "skillgate.yaml"
+    policy.write_text(
+        "\n".join(
+            [
+                "version: 1",
+                "policy:",
+                "  waivers:",
+                "    entries:",
+                "      - id: expired-review",
+                "        owner: security",
+                "        reason: Old review.",
+                "        created_on: 1999-01-01",
+                "        expires_on: 2000-01-01",
+                "        finding:",
+                "          id: SG004-old",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    result = runner.invoke(
+        app,
+        ["check", str(FIXTURES / "01-safe-documentation-skill"), "--policy", str(policy)],
+    )
+    assert result.exit_code == 1
+    assert "Finding waiver expired" in result.output
+    assert "Expired waivers:" in result.output
+
+
+def test_cli_check_sarif_includes_waiver_suppressions() -> None:
+    sg004 = next(
+        finding
+        for finding in scan_repository(FIXTURES / "05-remote-download-execute").findings
+        if finding.rule_id == "SG004"
+    )
+    workdir = clean_test_dir("check-waiver-sarif")
+    policy = workdir / "skillgate.yaml"
+    policy.write_text(
+        "\n".join(
+            [
+                "version: 1",
+                "policy:",
+                "  risk_threshold:",
+                "    block: high",
+                "  waivers:",
+                "    entries:",
+                "      - id: waive-reviewed-installer",
+                "        owner: security",
+                "        reason: Reviewed pinned installer script.",
+                "        created_on: 2026-01-01",
+                "        expires_on: 2999-01-01",
+                "        finding:",
+                f"          id: {sg004.id}",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    result = runner.invoke(
+        app,
+        [
+            "check",
+            str(FIXTURES / "05-remote-download-execute"),
+            "--policy",
+            str(policy),
+            "--format",
+            "sarif",
+        ],
+    )
+    assert result.exit_code == 1
+    data = json.loads(result.output)
+    assert data["runs"][0]["properties"]["policyWaivers"]["active"][0]["id"] == (
+        "waive-reviewed-installer"
+    )
+    sg004_result = next(item for item in data["runs"][0]["results"] if item["ruleId"] == "SG004")
+    assert sg004_result["suppressions"][0]["kind"] == "external"
+    assert "Reviewed pinned installer" in sg004_result["suppressions"][0]["justification"]
+
+
 def test_cli_baseline_and_diff() -> None:
     workdir = clean_test_dir("baseline-diff")
     lock = workdir / "skillgate.lock"
+    policy = workdir / "skillgate.yaml"
+    policy.write_text(
+        "version: 1\npolicy:\n  mcp:\n    require_review_on_change: true\n",
+        encoding="utf-8",
+    )
     create = runner.invoke(
         app,
         [
@@ -1666,6 +2009,19 @@ def test_cli_baseline_and_diff() -> None:
     )
     assert diff.exit_code == 0
     assert "SG010" in diff.output
+    policy_diff = runner.invoke(
+        app,
+        [
+            "diff",
+            str(FIXTURES / "12-mcp-capability-drift-after"),
+            "--baseline",
+            str(lock),
+            "--policy",
+            str(policy),
+        ],
+    )
+    assert policy_diff.exit_code == 1
+    assert "MCP capability changed from baseline" in policy_diff.output
 
 
 def test_github_url_parser_accepts_root_urls() -> None:

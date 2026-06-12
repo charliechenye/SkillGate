@@ -91,6 +91,9 @@ class PolicyViolation(StableModel):
 class PolicyResult(StableModel):
     blocked: bool
     violations: list[PolicyViolation]
+    active_waivers: list[dict[str, Any]] = Field(default_factory=list)
+    expired_waivers: list[dict[str, Any]] = Field(default_factory=list)
+    waived_violations: list[dict[str, Any]] = Field(default_factory=list)
 
 
 def model_to_data(value: Any) -> Any:

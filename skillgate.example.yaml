@@ -40,5 +40,9 @@ policy:
   mcp:
     require_review_on_change: true
 
+  waivers:
+    allow_broad_selectors: false
+    entries: []
+
   risk_threshold:
     block: high

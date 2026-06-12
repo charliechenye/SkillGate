@@ -4,7 +4,7 @@ import hashlib
 import json
 from typing import Literal
 
-from skillgate.models import Finding, ScanReport
+from skillgate.models import Finding, PolicyResult, ScanReport
 from skillgate.rule_docs import RULE_DOCS
 
 RULES = {
@@ -93,6 +93,7 @@ def finding_fingerprint(finding: Finding) -> str:
 def sarif_report(
     report: ScanReport,
     category: SarifRunCategory | str = "local_repository",
+    policy_result: PolicyResult | None = None,
 ) -> dict[str, object]:
     used_rule_ids = {finding.rule_id for finding in report.findings}
     rules = [
@@ -137,29 +138,60 @@ def sarif_report(
                 }
             ],
         }
+        if policy_result is not None:
+            suppressions = result_suppressions(finding, policy_result)
+            if suppressions:
+                result["suppressions"] = suppressions
         results.append(result)
+    run: dict[str, object] = {
+        "automationDetails": {"id": sarif_run_category(category)},
+        "tool": {
+            "driver": {
+                "name": "SkillGate",
+                "semanticVersion": report.tool_version,
+                "informationUri": "https://github.com/OpenEvalGate/skillgate",
+                "rules": rules,
+            }
+        },
+        "taxonomies": [
+            {
+                "name": "SkillGate capabilities",
+                "organization": "OpenEvalGate",
+                "taxa": capability_taxa(),
+            }
+        ],
+        "results": results,
+    }
+    if policy_result is not None:
+        run["properties"] = {
+            "policyWaivers": {
+                "active": policy_result.active_waivers,
+                "expired": policy_result.expired_waivers,
+                "waivedViolations": policy_result.waived_violations,
+            }
+        }
     return {
         "version": "2.1.0",
         "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
-        "runs": [
-            {
-                "automationDetails": {"id": sarif_run_category(category)},
-                "tool": {
-                    "driver": {
-                        "name": "SkillGate",
-                        "semanticVersion": report.tool_version,
-                        "informationUri": "https://github.com/OpenEvalGate/skillgate",
-                        "rules": rules,
-                    }
-                },
-                "taxonomies": [
-                    {
-                        "name": "SkillGate capabilities",
-                        "organization": "OpenEvalGate",
-                        "taxa": capability_taxa(),
-                    }
-                ],
-                "results": results,
-            }
-        ],
+        "runs": [run],
     }
+
+
+def result_suppressions(finding: Finding, policy_result: PolicyResult) -> list[dict[str, object]]:
+    suppressions = []
+    for item in policy_result.waived_violations:
+        if item.get("finding_id") != finding.id:
+            continue
+        waiver = item.get("waiver")
+        if not isinstance(waiver, dict):
+            continue
+        suppression = {
+            "kind": "external",
+            "justification": str(waiver.get("reason") or "Policy finding waiver"),
+            "properties": {
+                "waiver": waiver,
+                "violation": item.get("message"),
+            },
+        }
+        suppressions.append(suppression)
+    return suppressions

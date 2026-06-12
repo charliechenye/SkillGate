@@ -33,23 +33,6 @@ workflow is widely usable.
 * Add a release checklist covering tests, linting, snapshots, benchmark fixture
   verification, package build verification, changelog updates, and release notes.
 
-### Add Reviewable Policy Waivers
-
-* Support narrow policy waivers with:
-
-  * finding or capability selector
-  * owner
-  * reason
-  * creation date
-  * expiry date
-  * optional issue or ticket reference
-* Reject expired waivers during CI checks.
-* Surface active and expired waivers in text, JSON, and SARIF output.
-* Avoid broad repository-wide suppressions unless the policy explicitly allows
-  them.
-* Add examples showing how teams approve a known network host, shell command, or
-  MCP server change without disabling the gate.
-
 ### Improve Pull-Request Review Ergonomics
 
 * Add reviewer-friendly Markdown summary output for GitHub Actions.

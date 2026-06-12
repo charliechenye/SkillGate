@@ -177,6 +177,14 @@ skillgate policy init --profile strict --output skillgate.yaml
 
 Policy checks can block shell execution, unallowlisted commands, unallowlisted filesystem writes, unallowlisted network hosts or host categories, denied capability groups, denied secret access, high-risk findings, and MCP capability drift. SkillGate validates the policy schema and reports file, line, and column details for YAML and schema errors when available. Use `--dry-run` to see why a policy would block and which narrow allowlist or capability-group entry would approve expected behavior.
 
+Use durable capability approvals for expected behavior, such as allowing
+`api.github.com` in `policy.network.allow`, `generated/**` in
+`policy.filesystem.write`, `bash scripts/build.sh` in
+`policy.shell.commands.allow`, or an updated MCP baseline after reviewing an
+`SG010` diff. Use expiring `policy.waivers.entries[]` only for rare finding
+waivers, such as one reviewed `SG004` installer finding that remains risky and
+needs owner, reason, creation date, expiry date, and optional ticket metadata.
+
 Policy templates are available for common adoption modes:
 
 ```bash

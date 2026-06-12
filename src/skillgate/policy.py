@@ -3,6 +3,7 @@ from __future__ import annotations
 import fnmatch
 import ipaddress
 import re
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -157,6 +158,26 @@ def ensure_string_list(value: object, path: Path, node: Node | None, label: str)
         raise_policy_error(f"{label} must be a list of strings", path, node)
 
 
+def ensure_string(value: object, path: Path, node: Node | None, label: str) -> None:
+    if value is not None and not isinstance(value, str):
+        raise_policy_error(f"{label} must be a string", path, node)
+
+
+def ensure_date_string(value: object, path: Path, node: Node | None, label: str) -> None:
+    if isinstance(value, date):
+        return
+    ensure_string(value, path, node, label)
+    if isinstance(value, str):
+        try:
+            date.fromisoformat(value)
+        except ValueError:
+            raise_policy_error(
+                f"{label} must be an ISO date in YYYY-MM-DD format",
+                path,
+                node,
+            )
+
+
 def ensure_category_list(value: object, path: Path, node: Node | None, label: str) -> None:
     ensure_string_list(value, path, node, label)
     if isinstance(value, list):
@@ -203,6 +224,139 @@ def sequence_item_node(node: Node | None, index: int) -> Node | None:
     return node
 
 
+FINDING_WAIVER_SELECTOR_KEYS = {"id", "rule_id", "capability", "file_path", "title", "evidence"}
+NARROW_FINDING_SELECTOR_KEYS = {"id", "file_path", "title", "evidence"}
+
+
+def is_broad_selector(selector: dict[str, object]) -> bool:
+    string_values = [value for value in selector.values() if isinstance(value, str)]
+    if not selector or any(value.strip() in {"", "*", "**"} for value in string_values):
+        return True
+    if "id" in selector:
+        return False
+    if len(selector) < 2:
+        return True
+    return not bool(NARROW_FINDING_SELECTOR_KEYS & set(selector))
+
+
+def validate_waivers(
+    waivers: dict[str, object],
+    root_node: Node | None,
+    path: Path,
+) -> None:
+    waiver_node = node_at_path(root_node, ["policy", "waivers"])
+    ensure_allowed_keys(
+        waivers,
+        {"allow_broad_selectors", "entries"},
+        waiver_node,
+        path,
+        "policy.waivers",
+    )
+    ensure_bool(
+        waivers.get("allow_broad_selectors"),
+        path,
+        node_at_path(root_node, ["policy", "waivers", "allow_broad_selectors"]),
+        "policy.waivers.allow_broad_selectors",
+    )
+    entries = waivers.get("entries")
+    if entries is None:
+        return
+    entries_node = node_at_path(root_node, ["policy", "waivers", "entries"])
+    if not isinstance(entries, list) or not all(isinstance(item, dict) for item in entries):
+        raise_policy_error("policy.waivers.entries must be a list of mappings", path, entries_node)
+    allow_broad = waivers.get("allow_broad_selectors") is True
+    for index, entry in enumerate(entries):
+        entry_node = sequence_item_node(entries_node, index)
+        validate_waiver_entry(entry, root_node, path, entry_node, index, allow_broad)
+
+
+def validate_waiver_entry(
+    entry: dict[str, object],
+    root_node: Node | None,
+    path: Path,
+    entry_node: Node | None,
+    index: int,
+    allow_broad: bool,
+) -> None:
+    ensure_allowed_keys(
+        entry,
+        {"id", "owner", "reason", "created_on", "expires_on", "ticket", "finding"},
+        entry_node,
+        path,
+        "policy.waivers.entries",
+    )
+    for key in ["owner", "reason", "created_on", "expires_on"]:
+        if key not in entry:
+            raise_policy_error(
+                f"policy.waivers.entries.{key} is required",
+                path,
+                child_node(entry_node if isinstance(entry_node, MappingNode) else None, key),
+            )
+    for key in ["id", "owner", "reason", "ticket"]:
+        ensure_string(
+            entry.get(key),
+            path,
+            node_at_path(root_node, ["policy", "waivers", "entries", str(index), key]),
+            f"policy.waivers.entries.{key}",
+        )
+    ensure_date_string(
+        entry.get("created_on"),
+        path,
+        node_at_path(root_node, ["policy", "waivers", "entries", str(index), "created_on"]),
+        "policy.waivers.entries.created_on",
+    )
+    ensure_date_string(
+        entry.get("expires_on"),
+        path,
+        node_at_path(root_node, ["policy", "waivers", "entries", str(index), "expires_on"]),
+        "policy.waivers.entries.expires_on",
+    )
+    for key in ["created_on", "expires_on"]:
+        if isinstance(entry.get(key), date):
+            entry[key] = entry[key].isoformat()
+    if isinstance(entry.get("created_on"), str) and isinstance(entry.get("expires_on"), str):
+        if date.fromisoformat(entry["created_on"]) > date.fromisoformat(entry["expires_on"]):
+            raise_policy_error(
+                "policy.waivers.entries.created_on must be on or before expires_on",
+                path,
+                child_node(
+                    entry_node if isinstance(entry_node, MappingNode) else None,
+                    "created_on",
+                ),
+            )
+    finding = entry.get("finding")
+    finding_node = child_node(
+        entry_node if isinstance(entry_node, MappingNode) else None,
+        "finding",
+    )
+    if finding is None:
+        raise_policy_error("policy.waivers.entries.finding is required", path, entry_node)
+    ensure_mapping(finding, path, finding_node, "policy.waivers.entries.finding")
+    if not isinstance(finding, dict):
+        return
+    ensure_allowed_keys(
+        finding,
+        FINDING_WAIVER_SELECTOR_KEYS,
+        finding_node,
+        path,
+        "policy.waivers.entries.finding",
+    )
+    for key in FINDING_WAIVER_SELECTOR_KEYS:
+        ensure_string(
+            finding.get(key),
+            path,
+            child_node(finding_node if isinstance(finding_node, MappingNode) else None, key),
+            f"policy.waivers.entries.finding.{key}",
+        )
+    if not allow_broad and is_broad_selector(finding):
+        raise_policy_error(
+            "policy.waivers.entries.finding selector is too broad; add id, file_path plus rule_id, "
+            "or set policy.waivers.allow_broad_selectors to true",
+            path,
+            finding_node,
+        )
+
+
 def load_policy(path: Path) -> dict[str, Any]:
     try:
         text = path.read_text(encoding="utf-8")
@@ -239,6 +393,7 @@ def load_policy(path: Path) -> dict[str, Any]:
                 "secrets",
                 "mcp",
                 "risk_threshold",
+                "waivers",
             },
             policy_node,
             path,
@@ -252,6 +407,7 @@ def load_policy(path: Path) -> dict[str, Any]:
             "secrets",
             "mcp",
             "risk_threshold",
+            "waivers",
         ]:
             section_value = policy.get(section)
             section_node = node_at_path(root_node, ["policy", section])
@@ -413,6 +569,9 @@ def load_policy(path: Path) -> dict[str, Any]:
                 path,
                 "policy.risk_threshold",
             )
+        waivers = policy.get("waivers", {})
+        if isinstance(waivers, dict):
+            validate_waivers(waivers, root_node, path)
         threshold = policy.get("risk_threshold", {}).get("block")
         if threshold is not None and threshold not in {
             "informational",
@@ -566,6 +725,79 @@ def secret_suggestion(capability: Capability) -> dict[str, Any] | None:
     return suggested_capability_group(group) if group else None
 
 
+def policy_waiver_entries(policy: dict[str, Any]) -> list[dict[str, Any]]:
+    waivers = policy.get("waivers")
+    if not isinstance(waivers, dict):
+        return []
+    entries = waivers.get("entries")
+    if not isinstance(entries, list):
+        return []
+    return [entry for entry in entries if isinstance(entry, dict)]
+
+
+def waiver_selector_label(entry: dict[str, Any]) -> str:
+    waiver_id = entry.get("id")
+    if isinstance(waiver_id, str) and waiver_id:
+        return waiver_id
+    finding = entry.get("finding")
+    if isinstance(finding, dict):
+        return ", ".join(f"{key}={finding[key]}" for key in sorted(finding))
+    return "<unknown waiver>"
+
+
+def waiver_summary(entry: dict[str, Any]) -> dict[str, Any]:
+    summary = {
+        "id": entry.get("id"),
+        "owner": entry.get("owner"),
+        "reason": entry.get("reason"),
+        "created_on": entry.get("created_on"),
+        "expires_on": entry.get("expires_on"),
+        "ticket": entry.get("ticket"),
+        "finding": entry.get("finding"),
+        "selector": waiver_selector_label(entry),
+    }
+    return {key: value for key, value in summary.items() if value is not None}
+
+
+def waiver_expires_on(entry: dict[str, Any]) -> date:
+    value = entry.get("expires_on")
+    return date.fromisoformat(value) if isinstance(value, str) else date.min
+
+
+def finding_value(finding: Finding, key: str) -> str | None:
+    value = getattr(finding, key)
+    return value if isinstance(value, str) else None
+
+
+def finding_matches_waiver(finding: Finding, entry: dict[str, Any]) -> bool:
+    selector = entry.get("finding")
+    if not isinstance(selector, dict):
+        return False
+    for key, pattern in selector.items():
+        if not isinstance(pattern, str):
+            return False
+        value = finding_value(finding, key)
+        if value is None or not fnmatch.fnmatch(value, pattern):
+            return False
+    return True
+
+
+def matching_waiver_for_violation(
+    item: PolicyViolation,
+    findings_by_id: dict[str, Finding],
+    active_waivers: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    if item.finding_id is None:
+        return None
+    finding = findings_by_id.get(item.finding_id)
+    if finding is None:
+        return None
+    for waiver in active_waivers:
+        if finding_matches_waiver(finding, waiver):
+            return waiver_summary(waiver)
+    return None
+
+
 def violation(
     message: str,
     severity: str,
@@ -590,9 +822,20 @@ def evaluate_policy(
     report: ScanReport,
     policy_data: dict[str, Any],
     diff_findings: list[Finding] | None = None,
+    today: date | None = None,
 ) -> PolicyResult:
     policy = policy_data.get("policy") if isinstance(policy_data.get("policy"), dict) else {}
     violations: list[PolicyViolation] = []
+    current_date = today or date.today()
+    waiver_entries = policy_waiver_entries(policy)
+    active_waiver_entries = [
+        entry for entry in waiver_entries if waiver_expires_on(entry) >= current_date
+    ]
+    expired_waiver_entries = [
+        entry for entry in waiver_entries if waiver_expires_on(entry) < current_date
+    ]
+    active_waivers = [waiver_summary(entry) for entry in active_waiver_entries]
+    expired_waivers = [waiver_summary(entry) for entry in expired_waiver_entries]
     threshold = policy.get("risk_threshold", {}).get("block", "critical")
     allowed_groups = policy_groups(policy, "allow")
     denied_groups = policy_groups(policy, "deny")
@@ -605,6 +848,20 @@ def evaluate_policy(
         if isinstance(endpoint, str)
     }
     findings = [*report.findings, *(diff_findings or [])]
+    findings_by_id = {finding.id: finding for finding in findings}
+    for waiver_entry in expired_waiver_entries:
+        summary = waiver_summary(waiver_entry)
+        violations.append(
+            violation(
+                f"Finding waiver expired: {summary.get('selector')}",
+                "high",
+                reason=(
+                    f"Waiver owned by `{summary.get('owner')}` expired on "
+                    f"{summary.get('expires_on')}."
+                ),
+                approval_hint="Remove the expired waiver or renew it with a new review date.",
+            )
+        )
     for finding in findings:
         if severity_at_or_above(finding.severity, threshold):
             message = (
@@ -922,7 +1179,25 @@ def evaluate_policy(
                     )
                 )
     unique: dict[str, PolicyViolation] = {}
+    waived_violations: list[dict[str, Any]] = []
     for item in violations:
+        waiver = matching_waiver_for_violation(item, findings_by_id, active_waiver_entries)
+        if waiver is not None:
+            waived_violations.append(
+                {
+                    "finding_id": item.finding_id,
+                    "message": item.message,
+                    "severity": item.severity,
+                    "waiver": waiver,
+                }
+            )
+            continue
         key = f"{item.message}|{item.finding_id or ''}"
         unique[key] = item
-    return PolicyResult(blocked=bool(unique), violations=list(unique.values()))
+    return PolicyResult(
+        blocked=bool(unique),
+        violations=list(unique.values()),
+        active_waivers=active_waivers,
+        expired_waivers=expired_waivers,
+        waived_violations=waived_violations,
+    )

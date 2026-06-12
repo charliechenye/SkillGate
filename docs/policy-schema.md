@@ -110,7 +110,9 @@ policy:
 Capability groups suppress matching capability-based policy violations, but
 they do not suppress severity threshold findings or remote download execution.
 Exact allowlists still work and are preferred when the expected resource is
-known.
+known. Treat these groups and exact allowlists as durable capability approvals:
+they describe expected behavior that should remain permitted until policy
+owners change the file.
 
 ## `policy.capabilities.deny`
 
@@ -283,6 +285,63 @@ policy:
 ```
 
 For example, `block: high` blocks high and critical findings while allowing informational, low, and medium findings unless another policy section blocks their detected capability.
+
+## Capability Approvals
+
+Capability approvals are durable policy-as-code allowlists for expected
+behavior. Prefer these for known-good capabilities instead of finding waivers:
+
+```yaml
+version: 1
+policy:
+  shell:
+    commands:
+      allow:
+        - "bash scripts/build.sh"
+  filesystem:
+    write:
+      - "generated/**"
+  network:
+    allow:
+      - "api.github.com"
+  mcp:
+    require_review_on_change: true
+```
+
+For MCP drift, review the `SG010` diff and update the approved baseline when
+the server command, args, env names, or endpoints are expected.
+
+## `policy.waivers`
+
+`policy.waivers` contains rare, expiring finding waivers for specific risky
+findings that remain risky after review. Waivers are finding-only; they do not
+approve capability-based violations such as unallowlisted network hosts or
+filesystem writes.
+
+```yaml
+version: 1
+policy:
+  waivers:
+    allow_broad_selectors: false
+    entries:
+      - id: reviewed-installer-2026-01
+        owner: security@example.com
+        reason: Reviewed pinned installer script before migration.
+        created_on: 2026-01-01
+        expires_on: 2026-02-01
+        ticket: SEC-123
+        finding:
+          rule_id: SG004
+          file_path: scripts/install.sh
+          evidence: "curl https://example.com/bootstrap.sh | bash"
+```
+
+Each entry requires `owner`, `reason`, `created_on`, `expires_on`, and a
+`finding` selector. The selector supports glob matching for `id`, `rule_id`,
+`capability`, `file_path`, `title`, and `evidence`. By default, broad selectors
+such as only `rule_id: SG004` are rejected; set
+`allow_broad_selectors: true` only for an explicitly reviewed temporary policy.
+Expired waivers block `skillgate check` until renewed or removed.
 
 ## Dry-Run Suggestions
 

@@ -509,7 +509,7 @@ def check(
     if output_format == "text":
         content = check_text(result, dry_run=dry_run)
     else:
-        content = render_scan(report, output_format)
+        content = render_scan(report, output_format, policy_result=result)
         if output_format == "json":
             content = stable_json(
                 {

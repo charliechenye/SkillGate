@@ -51,7 +51,9 @@ def policy_suggestions(result: PolicyResult) -> list[dict[str, Any]]:
 def check_text(result: PolicyResult, dry_run: bool = False) -> str:
     if not result.blocked:
         prefix = "DRY RUN: " if dry_run else ""
-        return f"{prefix}ALLOWED: repository policy check passed\n"
+        lines = [f"{prefix}ALLOWED: repository policy check passed"]
+        append_waiver_sections(lines, result)
+        return "\n".join(lines) + "\n"
     heading = (
         "DRY RUN: repository would be blocked by policy"
         if dry_run
@@ -68,7 +70,31 @@ def check_text(result: PolicyResult, dry_run: bool = False) -> str:
     if suggestions:
         lines.extend(["", "Suggested policy additions:"])
         lines.extend(f"- {stable_json(suggestion).strip()}" for suggestion in suggestions)
+    append_waiver_sections(lines, result)
     return "\n".join(lines) + "\n"
+
+
+def append_waiver_sections(lines: list[str], result: PolicyResult) -> None:
+    if result.active_waivers:
+        lines.extend(["", "Active waivers:"])
+        for waiver in result.active_waivers:
+            label = waiver.get("id") or waiver.get("selector")
+            lines.append(
+                f"- {label} owner={waiver.get('owner')} expires={waiver.get('expires_on')}"
+            )
+    if result.expired_waivers:
+        lines.extend(["", "Expired waivers:"])
+        for waiver in result.expired_waivers:
+            label = waiver.get("id") or waiver.get("selector")
+            lines.append(
+                f"- {label} owner={waiver.get('owner')} expired={waiver.get('expires_on')}"
+            )
+    if result.waived_violations:
+        lines.extend(["", "Waived violations:"])
+        for item in result.waived_violations:
+            waiver = item.get("waiver", {})
+            label = waiver.get("id") or waiver.get("selector")
+            lines.append(f"- {item.get('message')} by {label}")
 
 
 def diff_text(report: DiffReport) -> str:
@@ -101,11 +127,14 @@ def render_scan(
     report: ScanReport,
     output_format: str,
     sarif_category: str = "local_repository",
+    policy_result: PolicyResult | None = None,
 ) -> str:
     if output_format == "json":
         return stable_json(report)
     if output_format == "sarif":
-        return stable_json(sarif_report(report, category=sarif_category))
+        return stable_json(
+            sarif_report(report, category=sarif_category, policy_result=policy_result)
+        )
     return scan_text(report)
 
 

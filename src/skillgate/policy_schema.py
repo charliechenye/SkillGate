@@ -188,6 +188,65 @@ POLICY_JSON_SCHEMA: dict[str, Any] = {
                         }
                     },
                 },
+                "waivers": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "allow_broad_selectors": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": (
+                                "Allow broad finding waiver selectors. Keep false for normal "
+                                "policy files."
+                            ),
+                        },
+                        "entries": {
+                            "type": "array",
+                            "description": (
+                                "Expiring, audited finding waivers. Use capability approval "
+                                "allowlists for expected capabilities instead."
+                            ),
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": False,
+                                "required": [
+                                    "owner",
+                                    "reason",
+                                    "created_on",
+                                    "expires_on",
+                                    "finding",
+                                ],
+                                "properties": {
+                                    "id": {"type": "string"},
+                                    "owner": {"type": "string"},
+                                    "reason": {"type": "string"},
+                                    "created_on": {
+                                        "type": "string",
+                                        "format": "date",
+                                    },
+                                    "expires_on": {
+                                        "type": "string",
+                                        "format": "date",
+                                    },
+                                    "ticket": {"type": "string"},
+                                    "finding": {
+                                        "type": "object",
+                                        "additionalProperties": False,
+                                        "minProperties": 1,
+                                        "properties": {
+                                            "id": {"type": "string"},
+                                            "rule_id": {"type": "string"},
+                                            "capability": {"type": "string"},
+                                            "file_path": {"type": "string"},
+                                            "title": {"type": "string"},
+                                            "evidence": {"type": "string"},
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
             },
         },
     },

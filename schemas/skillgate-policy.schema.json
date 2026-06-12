@@ -204,6 +204,79 @@
             }
           },
           "type": "object"
+        },
+        "waivers": {
+          "additionalProperties": false,
+          "properties": {
+            "allow_broad_selectors": {
+              "default": false,
+              "description": "Allow broad finding waiver selectors. Keep false for normal policy files.",
+              "type": "boolean"
+            },
+            "entries": {
+              "description": "Expiring, audited finding waivers. Use capability approval allowlists for expected capabilities instead.",
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "created_on": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "expires_on": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "finding": {
+                    "additionalProperties": false,
+                    "minProperties": 1,
+                    "properties": {
+                      "capability": {
+                        "type": "string"
+                      },
+                      "evidence": {
+                        "type": "string"
+                      },
+                      "file_path": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "rule_id": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "owner": {
+                    "type": "string"
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "ticket": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "owner",
+                  "reason",
+                  "created_on",
+                  "expires_on",
+                  "finding"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
         }
       },
       "type": "object"
