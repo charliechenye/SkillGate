@@ -32,6 +32,8 @@ workflow is widely usable.
   references.
 * Add a release checklist covering tests, linting, snapshots, benchmark fixture
   verification, package build verification, changelog updates, and release notes.
+* After PyPI publication, make the README install path lead with `pip install
+  skillgate` and keep source-checkout instructions as the contributor path.
 
 ### Improve Pull-Request Review Ergonomics
 
@@ -460,7 +462,8 @@ Track, but do not prioritize implementation until formats stabilize:
 Move one-time administrative tasks out of the product roadmap:
 
 * Confirm the social-preview image renders correctly on GitHub.
-* Confirm GitHub repository description and topics.
+* Confirm GitHub repository description and topics using the README SEO/AEO
+  keywords and FAQ search phrases as the source of truth.
 * Publish `v0.1.0`.
 * Publish the PyPI package.
 * Confirm installation with `pip`, `pipx`, and `uvx`.

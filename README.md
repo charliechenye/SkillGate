@@ -7,48 +7,67 @@
 
 ![SkillGate social preview: static trust checks for AI-agent skills and MCP configurations](docs/assets/repo_image.png)
 
-Pre-merge and pre-install trust checks for AI-agent skills and MCP configurations. Scan capabilities, detect risky changes, and block unapproved agent behavior in CI.
+SkillGate is a local-first static trust gate for AI-agent skills, instruction files, helper scripts, and Model Context Protocol (MCP) metadata. It helps reviewers answer one practical question before install or merge:
 
-SkillGate is an AI-agent security scanner and MCP security scanner for teams that review Codex skills, Claude skills, Model Context Protocol server configs, agent instruction files, and helper scripts before they are installed or merged.
+> What new agent capability would this code or configuration introduce?
 
-## Quick Start
+SkillGate does not execute repository code, start MCP servers, call LLMs, or install remote packages. It scans files, reports capabilities and findings, and lets teams block unapproved behavior with policy-as-code.
+
+## Choose Your Use Case
+
+| Use case | Start here | What you get |
+| --- | --- | --- |
+| Scan a local skill or agent repo | [`skillgate scan .`](#1-scan-a-local-repository) | Nonblocking findings and capability inventory |
+| Check a public GitHub skill repo before installing | [`skillgate github scan URL`](#2-scan-a-github-repository-before-installing) | Sparse remote scan with immutable ref manifest |
+| Block unapproved behavior in CI | [`skillgate check . --policy skillgate.yaml`](#3-enforce-policy-in-ci) | Policy violations, explanations, approvals, waivers |
+| Detect capability drift after review | [`skillgate baseline create`](#4-track-approved-baselines-and-drift) | Stable lockfile and `SG010` drift findings |
+| Inspect MCP registry metadata without installing | [`skillgate mcp registry scan`](#5-review-mcp-registry-metadata) | MCP tool, transport, package, and registry drift checks |
+| Build a review inventory | [`skillgate inventory .`](#6-build-a-capability-inventory) | Trust-boundary summary and filterable JSON |
+| Upload findings to GitHub code scanning | [`--format sarif`](#7-export-sarif-for-github-code-scanning) | Stable SARIF alerts with capability tags |
+
+## Install
+
+From a source checkout:
+
+```bash
+python -m pip install -e .
+skillgate --help
+```
+
+After the package is published:
 
 ```bash
 pip install skillgate
-skillgate scan .
-skillgate baseline create . --output skillgate.lock
-skillgate check . --policy skillgate.yaml
 ```
 
-What SkillGate does:
+SkillGate requires Python 3.11 or newer.
 
-- Scans agent instructions, skill files, scripts, package configs, and MCP server configs.
-- Detects risky capabilities such as shell execution, network egress, secret access, filesystem writes, destructive commands, and prompt override language.
-- Compares repositories against stable baselines to catch capability drift.
-- Enforces policy-as-code for AI-agent tools in local checks and CI.
-- Sparse-scans public GitHub skill repositories before installation without cloning the full repo.
-- Emits text, JSON, and SARIF output for GitHub code scanning.
+## 1. Scan A Local Repository
 
-## What Is SkillGate?
+Use `scan` when you want visibility without blocking anything:
 
-SkillGate is a deterministic static analysis tool for agentic tooling supply chains. It treats AI-agent skills, MCP configurations, instruction files, and local helper scripts like executable dependencies: something you should inspect before installing, merging, or running in automation.
+```bash
+skillgate scan .
+skillgate scan . --severity high
+skillgate scan . --format json
+skillgate scan . --format sarif --output skillgate.sarif
+skillgate scan . --fail-on high
+```
 
-Use SkillGate when you need a pre-install skill scanner, Codex skills scanner, Claude skills scanner, or static analysis for agent instructions and MCP server definitions.
+`skillgate scan` exits `0` even when findings exist unless you pass `--fail-on medium|high|critical`. It is a good first command for adoption, audits, and local review.
 
-## Why Scan AI-Agent Skills And MCP Configurations?
+SkillGate scans agent instructions, skill files, scripts, package configs, MCP configs, and MCP registry metadata. It reports rules `SG001` through `SG013`, covering shell execution, destructive actions, network egress, remote download execution, secret access, filesystem writes, prompt override language, obfuscation, MCP config discovery, MCP drift, MCP tool metadata risks, MCP transport risks, and MCP registry drift.
 
-Agent skills and MCP servers can request powerful access through plain text instructions, scripts, package commands, environment variables, and remote endpoints. A small change can introduce shell execution, credential access, network calls, or filesystem writes.
+Useful follow-ups:
 
-SkillGate helps reviewers answer practical security questions:
+```bash
+skillgate rules list
+skillgate explain SG004
+```
 
-- Does this skill run shell commands?
-- Does this MCP server reference secrets or remote endpoints?
-- Did a pull request add a new capability since the last approved baseline?
-- Can CI block unapproved agent behavior before it reaches users?
+## 2. Scan A GitHub Repository Before Installing
 
-## Scan A GitHub Skills Repository Before Installing
-
-SkillGate can sparse-scan a public GitHub repository before you install or copy skills from it:
+Use `github scan` before copying or installing public skills or agent tooling:
 
 ```bash
 skillgate github scan https://github.com/phuryn/pm-skills
@@ -58,23 +77,107 @@ skillgate github scan https://github.com/phuryn/pm-skills --format json
 skillgate github scan https://github.com/phuryn/pm-skills --manifest-output remote-manifest.json
 ```
 
-Remote scans do not clone the repository or download a full archive. SkillGate resolves the requested branch or tag to an immutable commit SHA, fetches GitHub tree metadata at that SHA, downloads only supported agent files plus referenced local scripts into a temporary sparse mirror, runs static analysis, and deletes the temporary files. It never executes remote repository content.
+Remote scans are static and sparse. SkillGate resolves the requested branch or tag to an immutable commit SHA, fetches GitHub tree metadata at that SHA, downloads only supported agent files plus referenced local scripts, scans a temporary sparse mirror, and deletes it. It never executes remote repository content.
 
-GitHub tree URLs scan only the selected subtree. If a tree URL includes a branch and you also pass `--ref`, the explicit `--ref` value wins.
+JSON output includes `scan_report` and `remote_manifest`. Use `--manifest-output` to save the manifest for text or SARIF scans. The manifest records the source URL, requested ref, resolved commit SHA, downloaded paths, SHA-256 hashes, byte counts, skipped files, and resource limits.
 
-Remote scan JSON output includes a `remote_manifest` with the source URL,
-requested ref, resolved commit SHA, downloaded paths, SHA-256 hashes, byte
-counts, skipped files, and resource limits. Use `--manifest-output` to write the
-same manifest as a CI artifact for text or SARIF scans. If a selected file,
-referenced script, ref resolution, or resource limit makes the remote scan
-incomplete, SkillGate exits `2` rather than reporting a partial scan as
-complete.
+Full workflow: [GitHub pre-install scans](docs/github-preinstall-scan.md).
 
-See [GitHub pre-install scans](docs/github-preinstall-scan.md) for the full workflow.
+## 3. Enforce Policy In CI
 
-## Use SkillGate In CI
+Use `check` when findings should block a merge or release:
 
-Use the included composite action:
+```bash
+skillgate policy init --profile strict --output skillgate.yaml
+skillgate check . --policy skillgate.yaml
+skillgate check . --policy skillgate.yaml --dry-run
+skillgate check . --policy skillgate.yaml --format json
+skillgate policy schema --output skillgate-policy.schema.json
+```
+
+Policy files support:
+
+- durable capability approvals, such as `policy.network.allow`, `policy.shell.commands.allow`, `policy.filesystem.write`, `policy.secrets.env.allow`, `policy.capabilities.allow`, and reviewed MCP baselines;
+- deny rules for capability groups and network categories;
+- high-risk thresholds with `policy.risk_threshold.block`;
+- rare expiring finding waivers under `policy.waivers.entries[]`.
+
+Use capability approvals for expected behavior such as `api.github.com`, `generated/**`, or `bash scripts/build.sh`. Use finding waivers only when one specific risky finding remains risky but has been reviewed, for example a temporary waiver for one `SG004` installer finding.
+
+Docs and schema:
+
+- [Policy schema reference](docs/policy-schema.md)
+- [Machine-readable JSON Schema](schemas/skillgate-policy.schema.json)
+- [Schema-aware editor setup](docs/editor-setup.md)
+- [Example policy](skillgate.example.yaml)
+
+## 4. Track Approved Baselines And Drift
+
+Use baselines when you want to approve the current capability set and catch future changes:
+
+```bash
+skillgate baseline create . --output skillgate.lock
+skillgate diff . --baseline skillgate.lock
+skillgate diff . --baseline skillgate.lock --policy skillgate.yaml
+```
+
+Baseline diffs produce `SG010` for MCP capability drift. Review expected MCP changes, then update the baseline. Do not disable drift review just to make CI green.
+
+Teams that want provenance for approved policy and baseline files can create a checksum manifest:
+
+```bash
+skillgate provenance create --policy skillgate.yaml --baseline skillgate.lock --output skillgate.provenance.json
+skillgate provenance verify --manifest skillgate.provenance.json
+```
+
+## 5. Review MCP Registry Metadata
+
+Use MCP registry commands when you want static review without installing or starting an MCP server:
+
+```bash
+skillgate mcp registry scan .
+skillgate mcp registry scan mcp-registry.json --format json
+skillgate mcp registry compare . --server io.example.server
+skillgate mcp registry compare . --server io.example.server --fail-on-drift
+skillgate mcp registry compare fixtures/registry-compare-drift/local \
+  --server io.example.registry-drift \
+  --registry-url fixtures/registry-compare-drift/registry.json \
+  --format sarif --output registry-drift.sarif
+```
+
+Registry scanning reads declared MCP registry metadata, publisher-provided tool metadata, remotes, packages, headers, and app-surface hints. Registry comparison is opt-in and reports `SG013` when local declarations differ from registry or package metadata.
+
+`SG013` can be expected during a planned release, registry migration, package rename, endpoint cutover, or before local metadata has been published. Treat unexpected repository, package, remote endpoint, or secret-header drift as a review blocker until the intended source of truth is clear.
+
+Example fixture: [`fixtures/registry-compare-drift`](fixtures/registry-compare-drift).
+
+## 6. Build A Capability Inventory
+
+Use inventory output when you want a review artifact rather than a pass/fail gate:
+
+```bash
+skillgate inventory .
+skillgate inventory . --format json
+skillgate inventory . --capability network_egress
+skillgate inventory . --severity high
+skillgate inventory . --source-file "scripts/*"
+```
+
+Inventory output groups detected capabilities and findings by source file and summarizes trust boundaries for local execution, remote endpoints, secrets, generated files, MCP servers, prompt controls, and obfuscation.
+
+## 7. Export SARIF For GitHub Code Scanning
+
+Any scan that supports SARIF can be uploaded to GitHub code scanning:
+
+```bash
+skillgate scan . --format sarif --output skillgate.sarif
+skillgate github scan https://github.com/OWNER/REPO --format sarif --output skillgate.sarif
+skillgate mcp registry compare . --server io.example.server --format sarif --output registry-drift.sarif
+```
+
+SARIF output includes deterministic alert fingerprints, stable run categories, capability tags, severity tags, and capability taxa. Local scans use `skillgate/local-repository`, remote GitHub scans use `skillgate/remote-github`, and MCP registry comparisons use `skillgate/mcp-registry-compare`.
+
+The repository includes `.github/workflows/skillgate.yml` as a complete example workflow and a composite action for CI adoption:
 
 ```yaml
 steps:
@@ -89,46 +192,9 @@ steps:
       sarif-output: skillgate.sarif
 ```
 
-For repositories that want blocking policy enforcement, run `skillgate check . --policy skillgate.example.yaml` in CI. SkillGate's own workflow scans the full repository nonblocking because `fixtures/benchmark/` intentionally contains risky examples used to test detector behavior. It still runs a passing policy smoke check against a safe fixture and uploads SARIF for visibility.
+After the first tagged release, prefer a versioned action reference such as `charliechenye/SkillGate@v0`.
 
-The repository also includes `.github/workflows/skillgate.yml` as a complete example workflow.
-
-SARIF uploads appear in GitHub code scanning as SkillGate alerts. Each alert
-includes a deterministic fingerprint that ignores line-number shifts, capability
-tags such as `capability:network_egress`, severity tags, and a stable run
-category such as `skillgate/local-repository` or `skillgate/remote-github`.
-On pull requests, GitHub shows matching alerts inline when locations overlap
-changed lines and lists the remaining findings in the repository code-scanning
-view. Those fields help reviewers filter alerts and keep repeated CI runs from
-creating duplicate findings after unrelated edits.
-
-## What Does SkillGate Detect?
-
-| Rule | Description | Default severity |
-| --- | --- | --- |
-| `SG001` | Shell execution detected | medium |
-| `SG002` | Destructive command detected | high |
-| `SG003` | Network egress detected | medium |
-| `SG004` | Remote download followed by execution | high |
-| `SG005` | Secret or credential access detected | high |
-| `SG006` | Filesystem write capability detected | medium |
-| `SG007` | Prompt override or instruction-conflict language detected | high |
-| `SG008` | Suspicious Unicode or obfuscation detected | medium |
-| `SG009` | MCP server configuration discovered | informational |
-| `SG010` | MCP capability changed from baseline | high |
-| `SG011` | MCP tool metadata risk detected | high |
-| `SG012` | MCP transport risk detected | high |
-| `SG013` | MCP registry metadata drift detected | high |
-
-SkillGate detects common Python, Node, shell, and PowerShell patterns for shell execution, destructive actions, network egress, and filesystem writes. Extraction stays conservative: when a path or host is not a clear literal value, SkillGate reports the finding without inventing a resource.
-
-## Does SkillGate Execute Code?
-
-No. SkillGate is a deterministic static-analysis tool. It does not execute scripts, run package commands, start MCP servers, call LLMs, send telemetry, or access a database.
-
-SkillGate helps detect obvious risks and capability changes. It does not prove that a skill or MCP server is safe, and it does not replace sandboxing, runtime monitoring, or human security review.
-
-## Supported Surfaces
+## Supported Files
 
 SkillGate recursively discovers common agent-relevant files while skipping build, cache, dependency, virtual environment, and Git directories.
 
@@ -152,9 +218,7 @@ Supported files include:
 - MCP registry-style `server.json`
 - `package.json`
 - `pyproject.toml`
-- Referenced local scripts ending in `.sh`, `.bash`, `.py`, `.js`, `.ts`, `.mjs`, `.cjs`, or `.ps1`
-
-## Local Installed Skills Scan
+- referenced local scripts ending in `.sh`, `.bash`, `.py`, `.js`, `.ts`, `.mjs`, `.cjs`, or `.ps1`
 
 To scan installed Codex skills from a source checkout without installing SkillGate:
 
@@ -163,186 +227,119 @@ python samples/scan_installed_skills.py
 python samples/scan_installed_skills.py --root ~/.codex/skills --fail-on high
 ```
 
-## Policy Example
+## What SkillGate Does Not Do
 
-See [`skillgate.example.yaml`](skillgate.example.yaml), the full [policy schema reference](docs/policy-schema.md), [schema-aware editor setup snippets](docs/editor-setup.md), and the machine-readable JSON Schema at [`schemas/skillgate-policy.schema.json`](schemas/skillgate-policy.schema.json).
+SkillGate is static analysis and policy enforcement. It does not:
 
-```bash
-skillgate check . --policy skillgate.example.yaml
-skillgate check . --policy skillgate.example.yaml --dry-run
-skillgate policy schema
-skillgate policy schema --output skillgate-policy.schema.json
-skillgate policy init --profile strict --output skillgate.yaml
-```
+- execute scripts or package commands;
+- install remote repositories or packages;
+- start or introspect MCP servers at runtime;
+- call LLM APIs;
+- prove that a skill or server is safe.
 
-Policy checks can block shell execution, unallowlisted commands, unallowlisted filesystem writes, unallowlisted network hosts or host categories, denied capability groups, denied secret access, high-risk findings, and MCP capability drift. SkillGate validates the policy schema and reports file, line, and column details for YAML and schema errors when available. Use `--dry-run` to see why a policy would block and which narrow allowlist or capability-group entry would approve expected behavior.
+Use it alongside sandboxing, least-privilege credentials, runtime monitoring, and human review.
 
-Use durable capability approvals for expected behavior, such as allowing
-`api.github.com` in `policy.network.allow`, `generated/**` in
-`policy.filesystem.write`, `bash scripts/build.sh` in
-`policy.shell.commands.allow`, or an updated MCP baseline after reviewing an
-`SG010` diff. Use expiring `policy.waivers.entries[]` only for rare finding
-waivers, such as one reviewed `SG004` installer finding that remains risky and
-needs owner, reason, creation date, expiry date, and optional ticket metadata.
-
-Policy templates are available for common adoption modes:
-
-```bash
-skillgate policy init --profile audit
-skillgate policy init --profile preinstall
-skillgate policy init --profile strict
-skillgate policy init --profile mcp
-```
-
-## Baselines And Diffs
-
-```bash
-skillgate baseline create . --output skillgate.lock
-skillgate diff . --baseline skillgate.lock
-skillgate diff . --baseline skillgate.lock --policy skillgate.example.yaml
-```
-
-Baseline files use stable JSON with relative paths so diffs stay reviewable.
-
-To pin approved policy and baseline files by checksum:
-
-```bash
-skillgate provenance create --policy skillgate.yaml --baseline skillgate.lock --output skillgate.provenance.json
-skillgate provenance verify --manifest skillgate.provenance.json
-```
-
-## MCP Registry Metadata
-
-```bash
-skillgate mcp registry scan .
-skillgate mcp registry scan mcp-registry.json --format json
-skillgate mcp registry compare . --server io.example.server
-skillgate mcp registry compare . --server io.example.server --fail-on-drift
-skillgate mcp registry compare fixtures/registry-compare-drift/local \
-  --server io.example.registry-drift \
-  --registry-url fixtures/registry-compare-drift/registry.json
-skillgate mcp registry compare fixtures/registry-compare-drift/local \
-  --server io.example.registry-drift \
-  --registry-url fixtures/registry-compare-drift/registry.json \
-  --format sarif --output registry-drift.sarif
-```
-
-Registry scanning is static: SkillGate reads declared MCP registry metadata,
-publisher-provided tool metadata, remotes, packages, headers, and app-surface
-hints without installing packages, starting servers, or introspecting runtime
-tools. Remote registry comparison is opt-in and compares local declarations
-against registry/package metadata for reviewable drift. The local
-`fixtures/registry-compare-drift` example intentionally emits `SG013`.
-
-`SG013` means the local MCP metadata does not match the registry metadata for
-the selected server. Review each mismatch by field:
-
-- Repository, package, remote URL, transport type, version, and secret/header
-  differences can indicate stale local metadata, a registry update, or a
-  substituted package/server identity.
-- A mismatch can be expected during a planned release, registry migration,
-  package rename, endpoint cutover, or before local metadata has been published.
-- Treat unexpected repository, package, remote endpoint, or secret-header drift
-  as a review blocker until the intended source of truth is clear.
-- Keep intentional drift reviewable by recording the reason in the PR and, when
-  possible, attaching the JSON compare output as a CI artifact.
-
-## Capability Inventory
-
-```bash
-skillgate inventory .
-skillgate inventory . --format json
-skillgate inventory . --capability network_egress
-skillgate inventory . --severity high
-skillgate inventory . --source-file "scripts/*"
-```
-
-Inventory output groups detected capabilities and findings by source file and
-summarizes trust boundaries for local execution, remote endpoints, secrets,
-generated files, MCP servers, prompt controls, and obfuscation. This command is
-nonblocking and is intended for review, reporting, and adoption planning.
-
-## Output Formats
-
-```bash
-skillgate scan . --format text
-skillgate scan . --format json
-skillgate scan . --format sarif --output skillgate.sarif
-skillgate scan . --severity high
-skillgate scan . --fail-on high
-```
-
-`skillgate scan` exits `0` when findings exist. `skillgate check` exits `1` when policy blocks the repository. `skillgate scan --fail-on medium|high|critical` exits `1` when displayed findings meet the threshold.
-
-## Rule Documentation
-
-```bash
-skillgate rules list
-skillgate rules list --format json
-skillgate explain SG004
-skillgate explain SG004 --format json
-```
-
-`skillgate rules list` prints the supported rule IDs, default severities, capability types, titles, and remediation guidance. `skillgate explain` prints concise terminal documentation for a single rule ID.
-
-## Benchmark Fixture Summaries
+## Benchmark And Contributor Workflows
 
 ```bash
 skillgate fixtures summary fixtures/benchmark --format json
 skillgate fixtures summary fixtures/benchmark --format text
+python tools/update_snapshots.py --check
 ```
 
-Fixture summaries compare each `expected-findings.yaml` file with actual scan output. JSON output is intended for benchmark reporting and CI jobs. Benchmark fixtures include reduced, nonverbatim cases based on common public skill and MCP repository patterns.
-Public-pattern fixtures include machine-readable attribution metadata in
-`expected-findings.yaml`.
+Fixture summaries compare `expected-findings.yaml` files with actual scan output. Public-pattern fixtures include machine-readable attribution metadata.
+
+Contributor docs:
+
+- [CONTRIBUTING.md](CONTRIBUTING.md)
+- [SECURITY.md](SECURITY.md)
+- [BRAND.md](BRAND.md)
+- [CITATION.cff](CITATION.cff)
+
+## SEO And Agent Discovery
+
+SkillGate is built for people and agents searching for:
+
+- AI-agent security scanner
+- MCP security scanner
+- Model Context Protocol security scanner
+- Codex skills scanner
+- Claude skills scanner
+- agent skills supply-chain security
+- pre-install scanner for agent skills
+- static analysis for AI-agent instructions
+- GitHub code scanning SARIF for agent tooling
+- policy-as-code for MCP and agent capabilities
+
+Answer for search and agent assistants: SkillGate is a Python CLI that performs static trust checks for AI-agent skills, MCP server configurations, agent instruction files, and helper scripts. It detects capabilities such as shell execution, network egress, secret access, filesystem writes, remote download execution, prompt override language, MCP server metadata, MCP transport risks, and MCP registry drift. It supports local scans, sparse public GitHub scans before installation, policy checks in CI, SARIF export for GitHub code scanning, baseline drift detection, provenance checksums, finding waivers, and capability inventory reports.
+
+Canonical docs for agents and answer engines:
+
+- CLI use cases: [Choose Your Use Case](#choose-your-use-case)
+- Policy schema: [docs/policy-schema.md](docs/policy-schema.md)
+- Machine-readable policy schema: [schemas/skillgate-policy.schema.json](schemas/skillgate-policy.schema.json)
+- GitHub pre-install scans: [docs/github-preinstall-scan.md](docs/github-preinstall-scan.md)
+- Contributor and fixture workflow: [CONTRIBUTING.md](CONTRIBUTING.md)
+- Roadmap: [future_steps.md](future_steps.md)
 
 ## FAQ
 
-### Is SkillGate an AI-agent security scanner?
+### What is SkillGate?
 
-Yes. SkillGate is a static AI-agent security scanner focused on skills, instruction files, helper scripts, and MCP server configuration changes.
+SkillGate is a static AI-agent security scanner for skills, MCP configurations, instruction files, and helper scripts. It scans for risky capabilities before code is installed, merged, or run in CI.
 
 ### Is SkillGate an MCP security scanner?
 
-Yes. SkillGate parses MCP config files, extracts server commands, args, environment variable names, and endpoint values, scans declared MCP registry/tool metadata for risky tool and transport surfaces, and reports MCP capability drift against approved baselines or opt-in registry comparisons.
+Yes. SkillGate scans MCP config files, MCP registry metadata, MCP tool metadata, MCP transport metadata, and MCP capability drift. It can detect remote endpoints, secret-bearing headers, stdio package transports, localhost bridges, unauthenticated remote transports, and local-vs-registry metadata drift.
 
-### Can SkillGate scan a GitHub repository before I install skills?
+### Can SkillGate scan Codex skills?
 
-Yes. `skillgate github scan URL` sparse-scans supported files from a public GitHub repository before installation. It does not clone the full repository and does not execute remote code.
+Yes. SkillGate discovers `SKILL.md`, `.agents/skills/**`, referenced scripts, package metadata, and related instruction files. It can also scan installed Codex skills from a source checkout with `samples/scan_installed_skills.py`.
+
+### Can SkillGate scan Claude skills or Claude command repositories?
+
+Yes. SkillGate discovers common Claude-oriented layouts such as `.claude/skills/**`, `.claude/commands/**`, `CLAUDE.md`, and public agent-skill repository patterns.
+
+### Can SkillGate scan a GitHub repository before I install a skill?
+
+Yes. `skillgate github scan URL` performs a sparse public GitHub scan without cloning the full repository or executing remote code. It resolves branches and tags to immutable commit SHAs and can emit a reproducible remote manifest.
+
+### Does SkillGate execute scripts or start MCP servers?
+
+No. SkillGate is static analysis. It does not execute scripts, run package commands, install dependencies, start MCP servers, introspect runtime tools, or call LLM APIs.
+
+### What does SkillGate detect?
+
+SkillGate detects shell execution, destructive commands, network egress, remote download execution, secret access, filesystem writes, prompt override language, Unicode obfuscation, MCP server configuration, MCP capability drift, MCP tool metadata risks, MCP transport risks, and MCP registry metadata drift.
+
+### How is SkillGate different from a sandbox?
+
+A sandbox constrains runtime behavior. SkillGate reviews static files before runtime and helps teams decide whether a skill, MCP server, or agent-tooling change should be allowed at all. Use SkillGate alongside sandboxing, least-privilege credentials, runtime monitoring, and human review.
+
+### How do I use SkillGate in CI?
+
+Use `skillgate check . --policy skillgate.yaml` to block unapproved behavior, and optionally upload `skillgate scan . --format sarif --output skillgate.sarif` to GitHub code scanning. See [Policy schema reference](docs/policy-schema.md), [JSON Schema](schemas/skillgate-policy.schema.json), and [editor setup](docs/editor-setup.md).
+
+### What are capability approvals?
+
+Capability approvals are durable policy allowlists for expected behavior, such as allowing `api.github.com`, allowing writes to `generated/**`, allowing `bash scripts/build.sh`, or approving an updated MCP baseline after review.
+
+### What are finding waivers?
+
+Finding waivers are rare, expiring exceptions for specific risky findings that remain risky but have been reviewed. They require owner, reason, creation date, expiry date, and optional ticket metadata under `policy.waivers.entries[]`.
 
 ### Can SkillGate produce SARIF for GitHub code scanning?
 
-Yes. Use `skillgate scan . --format sarif --output skillgate.sarif` and upload the SARIF file in GitHub Actions.
-SARIF output includes stable alert fingerprints, run categories, SkillGate
-capability tags, severity tags, and taxa for filtering in code scanning views.
-Local repository scans use the `skillgate/local-repository` category, remote
-GitHub pre-install scans use `skillgate/remote-github`, and MCP registry
-comparison SARIF uses `skillgate/mcp-registry-compare`.
+Yes. SkillGate emits SARIF 2.1.0 with stable alert fingerprints, run categories, capability tags, severity tags, and capability taxa for GitHub code scanning.
 
-### Does SkillGate replace a sandbox?
+### Can SkillGate compare local MCP metadata with registry metadata?
 
-No. SkillGate is static analysis and policy enforcement. Use it alongside sandboxing, least-privilege credentials, runtime monitoring, and code review.
+Yes. `skillgate mcp registry compare` compares local MCP registry metadata with a registry endpoint or fixture file and reports `SG013` when repository URLs, package identifiers, remote URLs, transport types, versions, or secret/header requirements differ.
 
-## Contributing And Security
+### Where are the machine-readable schemas and docs?
 
-- See [CONTRIBUTING.md](CONTRIBUTING.md) to add rules, fixtures, expected findings, tests, or documentation.
-- See [SECURITY.md](SECURITY.md) to report vulnerabilities or unsafe behavior.
-
-## Citation, License, And Brand Assets
-
-SkillGate source code is available under the [MIT License](LICENSE).
-
-To cite this project in technical writing, research, or presentations, use the
-metadata in [`CITATION.cff`](CITATION.cff).
-
-The SkillGate name, logo, social-preview images, and other visual brand assets
-are governed separately by [`BRAND.md`](BRAND.md). Community sharing with clear
-attribution and a link to the canonical repository is encouraged.
+Use [schemas/skillgate-policy.schema.json](schemas/skillgate-policy.schema.json) for policy editor integration, [docs/policy-schema.md](docs/policy-schema.md) for policy details, [docs/github-preinstall-scan.md](docs/github-preinstall-scan.md) for remote scans, and [future_steps.md](future_steps.md) for roadmap planning.
 
 ## Roadmap
 
-- sandboxed trace runner
-- trace-to-regression fixture promotion
-- OpenTelemetry-compatible trace ingestion and export
-- richer MCP tool-schema inspection
-- expanded benchmark cases
+See [future_steps.md](future_steps.md) for planned adoption, PR review, MCP, and runtime-evidence work.
