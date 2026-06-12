@@ -83,6 +83,9 @@ class PolicyViolation(StableModel):
     severity: Severity
     finding_id: str | None = None
     capability: Capability | None = None
+    reason: str | None = None
+    approval_hint: str | None = None
+    suggested_policy: dict[str, Any] | None = None
 
 
 class PolicyResult(StableModel):

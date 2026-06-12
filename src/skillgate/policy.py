@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import fnmatch
 import ipaddress
+import re
 from pathlib import Path
 from typing import Any
 
@@ -50,6 +51,32 @@ CLOUD_METADATA_HOSTS = {
     "169.254.169.254",
     "metadata.google.internal",
 }
+CAPABILITY_GROUPS = {
+    "mcp.remote_http",
+    "network.ai_api",
+    "network.any",
+    "network.cloud_metadata",
+    "network.localhost",
+    "network.package_registry",
+    "network.private_network",
+    "network.public_internet",
+    "network.source_control",
+    "secrets.cloud",
+    "shell.local_script",
+}
+NETWORK_GROUP_BY_CATEGORY = {
+    "ai_api": "network.ai_api",
+    "cloud_metadata": "network.cloud_metadata",
+    "localhost": "network.localhost",
+    "package_registry": "network.package_registry",
+    "private_network": "network.private_network",
+    "public_internet": "network.public_internet",
+    "source_control": "network.source_control",
+}
+CLOUD_SECRET_RE = re.compile(
+    r"(?i)(AWS_|AZURE_|GOOGLE_|GCP_|OPENAI_|ANTHROPIC_|CLOUD_|API_KEY|SERVICE_ACCOUNT)"
+)
+REMOTE_HTTP_TRANSPORTS = {"http", "sse", "streamable-http", "websocket"}
 
 
 class PolicyLoadError(ValueError):
@@ -143,6 +170,19 @@ def ensure_category_list(value: object, path: Path, node: Node | None, label: st
                 )
 
 
+def ensure_capability_group_list(value: object, path: Path, node: Node | None, label: str) -> None:
+    ensure_string_list(value, path, node, label)
+    if isinstance(value, list):
+        for index, item in enumerate(value):
+            if item not in CAPABILITY_GROUPS:
+                raise_policy_error(
+                    f"{label} must contain known capability groups: "
+                    f"{', '.join(sorted(CAPABILITY_GROUPS))}",
+                    path,
+                    sequence_item_node(node, index),
+                )
+
+
 def ensure_allowed_keys(
     actual: dict[str, object],
     allowed: set[str],
@@ -191,15 +231,52 @@ def load_policy(path: Path) -> dict[str, Any]:
     if isinstance(policy, dict):
         ensure_allowed_keys(
             policy,
-            {"shell", "filesystem", "network", "secrets", "mcp", "risk_threshold"},
+            {
+                "capabilities",
+                "shell",
+                "filesystem",
+                "network",
+                "secrets",
+                "mcp",
+                "risk_threshold",
+            },
             policy_node,
             path,
             "policy",
         )
-        for section in ["shell", "filesystem", "network", "secrets", "mcp", "risk_threshold"]:
+        for section in [
+            "capabilities",
+            "shell",
+            "filesystem",
+            "network",
+            "secrets",
+            "mcp",
+            "risk_threshold",
+        ]:
             section_value = policy.get(section)
             section_node = node_at_path(root_node, ["policy", section])
             ensure_mapping(section_value, path, section_node, f"policy.{section}")
+        capabilities = policy.get("capabilities", {})
+        if isinstance(capabilities, dict):
+            ensure_allowed_keys(
+                capabilities,
+                {"allow", "deny"},
+                node_at_path(root_node, ["policy", "capabilities"]),
+                path,
+                "policy.capabilities",
+            )
+            ensure_capability_group_list(
+                capabilities.get("allow"),
+                path,
+                node_at_path(root_node, ["policy", "capabilities", "allow"]),
+                "policy.capabilities.allow",
+            )
+            ensure_capability_group_list(
+                capabilities.get("deny"),
+                path,
+                node_at_path(root_node, ["policy", "capabilities", "deny"]),
+                "policy.capabilities.deny",
+            )
         shell = policy.get("shell", {})
         if isinstance(shell, dict):
             ensure_allowed_keys(
@@ -391,17 +468,121 @@ def capability_command(capability: Capability) -> str | None:
     return value if isinstance(value, str) else None
 
 
+def policy_groups(policy: dict[str, Any], key: str) -> set[str]:
+    values = policy.get("capabilities", {}).get(key)
+    return {str(item) for item in values} if isinstance(values, list) else set()
+
+
+def mcp_transport_type(capability: Capability) -> str | None:
+    value = capability.details.get("transport_type") or capability.details.get("type")
+    return value.lower() if isinstance(value, str) else None
+
+
+def is_local_shell_command(command: str | None) -> bool:
+    if not command:
+        return False
+    lowered = command.lower()
+    if "http://" in lowered or "https://" in lowered:
+        return False
+    return bool(
+        re.search(r"\b[\w./\\-]+\.(?:sh|bash|py|js|ts|mjs|cjs|ps1)\b", command)
+        or re.search(r"\b(?:subprocess\.run|child_process\.(?:exec|spawn))\b", command)
+    )
+
+
+def capability_matches_group(capability: Capability, group: str) -> bool:
+    if group == "network.any":
+        return capability.type == "network_egress"
+    if group.startswith("network."):
+        category = group.removeprefix("network.")
+        return (
+            capability.type == "network_egress" and host_category(capability.resource) == category
+        )
+    if group == "shell.local_script":
+        return capability.type == "shell_execution" and is_local_shell_command(
+            capability_command(capability)
+        )
+    if group == "mcp.remote_http":
+        transport = mcp_transport_type(capability)
+        return (
+            capability.type in {"mcp_server", "mcp_transport_risk", "network_egress"}
+            and transport in REMOTE_HTTP_TRANSPORTS
+        )
+    if group == "secrets.cloud":
+        return capability.type == "secret_access" and bool(
+            CLOUD_SECRET_RE.search(capability.resource or "")
+        )
+    return False
+
+
+def matching_groups(capability: Capability, groups: set[str]) -> set[str]:
+    return {group for group in groups if capability_matches_group(capability, group)}
+
+
+def group_suggestion_for_capability(capability: Capability) -> str | None:
+    if capability.type == "network_egress":
+        category = host_category(capability.resource)
+        return NETWORK_GROUP_BY_CATEGORY.get(category or "")
+    if capability.type == "shell_execution" and is_local_shell_command(
+        capability_command(capability)
+    ):
+        return "shell.local_script"
+    if capability.type == "secret_access" and CLOUD_SECRET_RE.search(capability.resource or ""):
+        return "secrets.cloud"
+    if capability_matches_group(capability, "mcp.remote_http"):
+        return "mcp.remote_http"
+    return None
+
+
+def suggested_capability_group(group: str) -> dict[str, Any]:
+    return {"policy": {"capabilities": {"allow": [group]}}}
+
+
+def network_suggestion(capability: Capability) -> dict[str, Any] | None:
+    if capability.resource:
+        return {"policy": {"network": {"allow": [capability.resource]}}}
+    group = group_suggestion_for_capability(capability)
+    return suggested_capability_group(group) if group else None
+
+
+def shell_suggestion(capability: Capability) -> dict[str, Any] | None:
+    command = capability_command(capability)
+    if command:
+        return {"policy": {"shell": {"commands": {"allow": [command]}}}}
+    group = group_suggestion_for_capability(capability)
+    return suggested_capability_group(group) if group else None
+
+
+def filesystem_suggestion(capability: Capability) -> dict[str, Any] | None:
+    if capability.resource:
+        return {"policy": {"filesystem": {"write": [capability.resource]}}}
+    return None
+
+
+def secret_suggestion(capability: Capability) -> dict[str, Any] | None:
+    if capability.resource:
+        return {"policy": {"secrets": {"env": {"allow": [capability.resource]}}}}
+    group = group_suggestion_for_capability(capability)
+    return suggested_capability_group(group) if group else None
+
+
 def violation(
     message: str,
     severity: str,
     finding: Finding | None = None,
     capability: Capability | None = None,
+    reason: str | None = None,
+    approval_hint: str | None = None,
+    suggestion: dict[str, Any] | None = None,
 ) -> PolicyViolation:
     return PolicyViolation(
         message=message,
         severity=severity,  # type: ignore[arg-type]
         finding_id=finding.id if finding else None,
         capability=capability,
+        reason=reason,
+        approval_hint=approval_hint,
+        suggested_policy=suggestion,
     )
 
 
@@ -413,6 +594,16 @@ def evaluate_policy(
     policy = policy_data.get("policy") if isinstance(policy_data.get("policy"), dict) else {}
     violations: list[PolicyViolation] = []
     threshold = policy.get("risk_threshold", {}).get("block", "critical")
+    allowed_groups = policy_groups(policy, "allow")
+    denied_groups = policy_groups(policy, "deny")
+    denied_capability_ids: set[int] = set()
+    mcp_remote_http_hosts = {
+        str(endpoint)
+        for capability in report.capabilities
+        if capability_matches_group(capability, "mcp.remote_http")
+        for endpoint in capability.details.get("endpoints", [])
+        if isinstance(endpoint, str)
+    }
     findings = [*report.findings, *(diff_findings or [])]
     for finding in findings:
         if severity_at_or_above(finding.severity, threshold):
@@ -425,33 +616,134 @@ def evaluate_policy(
                     message,
                     finding.severity,
                     finding=finding,
+                    reason=(
+                        f"`policy.risk_threshold.block` is set to `{threshold}`, "
+                        f"and {finding.rule_id} has severity `{finding.severity}`."
+                    ),
+                    approval_hint=(
+                        "Review or remove the finding, or raise the risk threshold if this "
+                        "severity is acceptable for the repository."
+                    ),
                 )
             )
+
+    def effective_matching_groups(capability: Capability, groups: set[str]) -> set[str]:
+        matched = matching_groups(capability, groups)
+        if (
+            "mcp.remote_http" in groups
+            and capability.type == "network_egress"
+            and capability.resource in mcp_remote_http_hosts
+        ):
+            matched.add("mcp.remote_http")
+        return matched
+
+    for capability in report.capabilities:
+        denied = effective_matching_groups(capability, denied_groups)
+        if denied:
+            denied_capability_ids.add(id(capability))
+            group = sorted(denied)[0]
+            violations.append(
+                violation(
+                    f"Capability group is denied: {group}",
+                    "high",
+                    capability=capability,
+                    reason=(
+                        f"`policy.capabilities.deny` contains `{group}`, which matches this "
+                        f"{capability.type} capability."
+                    ),
+                    approval_hint=(
+                        f"Remove `{group}` from `policy.capabilities.deny` only if this "
+                        "capability group is acceptable."
+                    ),
+                    suggestion=None,
+                )
+            )
+
+    def group_allowed(capability: Capability) -> bool:
+        if capability.type == "remote_download_execution":
+            return False
+        return bool(effective_matching_groups(capability, allowed_groups))
+
     if policy.get("shell", {}).get("allow") is False:
         for capability in report.capabilities:
             if capability.type in {"shell_execution", "remote_download_execution"}:
+                if id(capability) in denied_capability_ids:
+                    continue
+                if group_allowed(capability):
+                    continue
+                if capability.type == "remote_download_execution":
+                    message = "Remote download execution is not allowed"
+                    reason = (
+                        "`policy.shell.allow` is false, and remote download execution cannot "
+                        "be approved by capability groups."
+                    )
+                    hint = (
+                        "Remove the remote execution, pin and review the downloaded artifact, "
+                        "or make a separate human approval decision."
+                    )
+                    suggestion = None
+                else:
+                    message = "Shell execution is not allowed"
+                    command = capability_command(capability) or "<unknown>"
+                    reason = (
+                        "`policy.shell.allow` is false, and this capability invokes local "
+                        f"shell/process execution: {command}."
+                    )
+                    group = group_suggestion_for_capability(capability)
+                    hint = (
+                        f"Approve this command with `policy.shell.commands.allow: [{command}]`"
+                        if command != "<unknown>"
+                        else (
+                            "Approve a narrower shell command pattern if this execution is "
+                            "expected."
+                        )
+                    )
+                    if group:
+                        hint += f" or allow capability group `{group}`."
+                    suggestion = shell_suggestion(capability)
                 violations.append(
-                    violation("Shell execution is not allowed", "high", capability=capability)
+                    violation(
+                        message,
+                        "high",
+                        capability=capability,
+                        reason=reason,
+                        approval_hint=hint,
+                        suggestion=suggestion,
+                    )
                 )
     shell_command_allow = policy.get("shell", {}).get("commands", {}).get("allow")
     if isinstance(shell_command_allow, list):
         patterns = [str(item) for item in shell_command_allow]
         for capability in report.capabilities:
+            if id(capability) in denied_capability_ids or group_allowed(capability):
+                continue
             if capability.type == "shell_execution" and not allowed_by_globs(
                 capability_command(capability), patterns
             ):
                 command = capability_command(capability) or "<unknown>"
+                group = group_suggestion_for_capability(capability)
+                hint = f"Add `{command}` to `policy.shell.commands.allow`."
+                if group:
+                    hint += f" For broader local-script approval, allow `{group}`."
                 violations.append(
                     violation(
                         f"Shell command is not allowlisted: {command}",
                         "high",
                         capability=capability,
+                        reason=(
+                            "A shell command allowlist is configured, and this command did "
+                            "not match any allowed pattern."
+                        ),
+                        approval_hint=hint,
+                        suggestion=shell_suggestion(capability),
                     )
                 )
     write_allow = policy.get("filesystem", {}).get("write")
     if isinstance(write_allow, list):
         patterns = [str(item) for item in write_allow]
         for capability in report.capabilities:
+            if id(capability) in denied_capability_ids:
+                continue
             if capability.type == "filesystem_write" and not allowed_by_globs(
                 capability.resource, patterns
             ):
@@ -461,6 +753,12 @@ def evaluate_policy(
                         f"Filesystem write path is not allowlisted: {resource}",
                         "medium",
                         capability=capability,
+                        reason=(
+                            "A filesystem write allowlist is configured, and this target did "
+                            "not match any allowed pattern."
+                        ),
+                        approval_hint=f"Add `{resource}` to `policy.filesystem.write` if expected.",
+                        suggestion=filesystem_suggestion(capability),
                     )
                 )
     network_allow = policy.get("network", {}).get("allow")
@@ -470,6 +768,8 @@ def evaluate_policy(
         hosts = [str(item) for item in network_allow]
         for capability in report.capabilities:
             if capability.type != "network_egress":
+                continue
+            if id(capability) in denied_capability_ids:
                 continue
             category = host_category(capability.resource)
             if isinstance(network_deny_categories, list) and category in {
@@ -481,19 +781,41 @@ def evaluate_policy(
                         f"Network host category is denied: {resource} ({category})",
                         "medium",
                         capability=capability,
+                        reason=(
+                            f"`policy.network.deny_categories` contains `{category}`, which "
+                            f"matches host `{resource}`."
+                        ),
+                        approval_hint=(
+                            f"Remove `{category}` from `policy.network.deny_categories` only "
+                            "if this category is acceptable."
+                        ),
                     )
                 )
                 continue
             category_allowed = isinstance(network_allow_categories, list) and category in {
                 str(item) for item in network_allow_categories
             }
-            if capability.resource not in hosts and not category_allowed:
+            if (
+                capability.resource not in hosts
+                and not category_allowed
+                and not group_allowed(capability)
+            ):
                 resource = capability.resource or "<unknown>"
+                group = group_suggestion_for_capability(capability)
+                hint = f"Add `{resource}` to `policy.network.allow` if expected."
+                if group:
+                    hint += f" For broader category approval, allow `{group}`."
                 violations.append(
                     violation(
                         f"Network host is not allowlisted: {resource}",
                         "medium",
                         capability=capability,
+                        reason=(
+                            "A network allowlist is configured, and this host did not match "
+                            "an exact host, network category, or allowed capability group."
+                        ),
+                        approval_hint=hint,
+                        suggestion=network_suggestion(capability),
                     )
                 )
     elif isinstance(network_allow_categories, list) or isinstance(network_deny_categories, list):
@@ -510,6 +832,8 @@ def evaluate_policy(
         for capability in report.capabilities:
             if capability.type != "network_egress":
                 continue
+            if id(capability) in denied_capability_ids:
+                continue
             category = host_category(capability.resource)
             resource = capability.resource or "<unknown>"
             if category in denied_categories:
@@ -518,15 +842,37 @@ def evaluate_policy(
                         f"Network host category is denied: {resource} ({category})",
                         "medium",
                         capability=capability,
+                        reason=(
+                            f"`policy.network.deny_categories` contains `{category}`, which "
+                            f"matches host `{resource}`."
+                        ),
+                        approval_hint=(
+                            f"Remove `{category}` from `policy.network.deny_categories` only "
+                            "if this category is acceptable."
+                        ),
                     )
                 )
-            elif allowed_categories is not None and category not in allowed_categories:
+            elif (
+                allowed_categories is not None
+                and category not in allowed_categories
+                and not group_allowed(capability)
+            ):
+                group = group_suggestion_for_capability(capability)
+                hint = f"Add `{category}` to `policy.network.allow_categories` if expected."
+                if group:
+                    hint += f" Or allow capability group `{group}`."
                 violations.append(
                     violation(
                         "Network host category is not allowlisted: "
                         f"{resource} ({category or '<unknown>'})",
                         "medium",
                         capability=capability,
+                        reason=(
+                            "A network category allowlist is configured, and this host category "
+                            "did not match."
+                        ),
+                        approval_hint=hint,
+                        suggestion=network_suggestion(capability),
                     )
                 )
     secrets_deny = policy.get("secrets", {}).get("deny")
@@ -535,6 +881,10 @@ def evaluate_policy(
         allowed_env = [str(item) for item in env_allow] if isinstance(env_allow, list) else []
         for capability in report.capabilities:
             if capability.type == "secret_access":
+                if id(capability) in denied_capability_ids:
+                    continue
+                if group_allowed(capability):
+                    continue
                 resource = capability.resource or "<unknown>"
                 if not allowed_by_globs(capability.resource, allowed_env):
                     violations.append(
@@ -542,13 +892,34 @@ def evaluate_policy(
                             f"Secret access is denied: {resource}",
                             "high",
                             capability=capability,
+                            reason=(
+                                '`policy.secrets.deny` is ["*"], and this secret name is not '
+                                "allowlisted."
+                            ),
+                            approval_hint=(
+                                f"Add `{resource}` to `policy.secrets.env.allow` if expected."
+                            ),
+                            suggestion=secret_suggestion(capability),
                         )
                     )
     if policy.get("mcp", {}).get("require_review_on_change") is True:
         for finding in diff_findings or []:
             if finding.rule_id == "SG010":
                 violations.append(
-                    violation("MCP capability changed from baseline", "high", finding=finding)
+                    violation(
+                        "MCP capability changed from baseline",
+                        "high",
+                        finding=finding,
+                        reason=(
+                            "`policy.mcp.require_review_on_change` is true, and the baseline "
+                            "diff produced SG010."
+                        ),
+                        approval_hint=(
+                            "Review the MCP change and update the approved baseline if expected; "
+                            "do not disable MCP drift review unless the repository no longer "
+                            "needs it."
+                        ),
+                    )
                 )
     unique: dict[str, PolicyViolation] = {}
     for item in violations:

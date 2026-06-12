@@ -7,6 +7,63 @@
     "policy": {
       "additionalProperties": false,
       "properties": {
+        "capabilities": {
+          "additionalProperties": false,
+          "properties": {
+            "allow": {
+              "description": "Allowed named capability groups.",
+              "examples": [
+                [
+                  "network.package_registry",
+                  "shell.local_script"
+                ]
+              ],
+              "items": {
+                "enum": [
+                  "mcp.remote_http",
+                  "network.ai_api",
+                  "network.any",
+                  "network.cloud_metadata",
+                  "network.localhost",
+                  "network.package_registry",
+                  "network.private_network",
+                  "network.public_internet",
+                  "network.source_control",
+                  "secrets.cloud",
+                  "shell.local_script"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "deny": {
+              "description": "Denied named capability groups. Deny groups take precedence over allow groups and exact allowlists.",
+              "examples": [
+                [
+                  "network.cloud_metadata"
+                ]
+              ],
+              "items": {
+                "enum": [
+                  "mcp.remote_http",
+                  "network.ai_api",
+                  "network.any",
+                  "network.cloud_metadata",
+                  "network.localhost",
+                  "network.package_registry",
+                  "network.private_network",
+                  "network.public_internet",
+                  "network.source_control",
+                  "secrets.cloud",
+                  "shell.local_script"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
         "filesystem": {
           "additionalProperties": false,
           "properties": {

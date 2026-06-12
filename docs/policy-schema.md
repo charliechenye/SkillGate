@@ -28,6 +28,13 @@ skillgate policy init --profile mcp
 version: 1
 
 policy:
+  capabilities:
+    allow:
+      - "network.package_registry"
+      - "shell.local_script"
+    deny:
+      - "network.cloud_metadata"
+
   shell:
     allow: false
     commands:
@@ -71,6 +78,50 @@ The top-level `version` field identifies the policy schema version. It must be t
 
 ```yaml
 version: 1
+```
+
+## `policy.capabilities.allow`
+
+`policy.capabilities.allow` accepts named capability groups for common review
+decisions that span lower-level fields.
+
+Supported groups:
+
+- `mcp.remote_http`
+- `network.ai_api`
+- `network.any`
+- `network.cloud_metadata`
+- `network.localhost`
+- `network.package_registry`
+- `network.private_network`
+- `network.public_internet`
+- `network.source_control`
+- `secrets.cloud`
+- `shell.local_script`
+
+```yaml
+policy:
+  capabilities:
+    allow:
+      - "network.package_registry"
+      - "shell.local_script"
+```
+
+Capability groups suppress matching capability-based policy violations, but
+they do not suppress severity threshold findings or remote download execution.
+Exact allowlists still work and are preferred when the expected resource is
+known.
+
+## `policy.capabilities.deny`
+
+`policy.capabilities.deny` blocks named capability groups. Deny groups take
+precedence over allow groups, exact host allowlists, and category allowlists.
+
+```yaml
+policy:
+  capabilities:
+    deny:
+      - "network.cloud_metadata"
 ```
 
 ## `policy.shell.allow`
@@ -232,6 +283,19 @@ policy:
 ```
 
 For example, `block: high` blocks high and critical findings while allowing informational, low, and medium findings unless another policy section blocks their detected capability.
+
+## Dry-Run Suggestions
+
+`skillgate check --dry-run` evaluates the policy and prints the violations that
+would block without exiting with code `1`. Text output includes concise `why`
+and `approve by` lines when SkillGate can propose a narrow approval. JSON output
+includes `policy_result`, `scan_report`, and a `suggestions` array with
+structured policy additions.
+
+Dry-run suggestions are advisory. SkillGate does not suggest approving
+`remote_download_execution`; review, pin, or remove remote execution separately.
+For MCP baseline drift, update the approved baseline after review rather than
+disabling `policy.mcp.require_review_on_change` by default.
 
 ## Policy Template Profiles
 

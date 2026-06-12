@@ -30,6 +30,9 @@ AI-agent skills, instruction files, helper scripts, and MCP configurations.
 **Policy, baselines, and provenance**
 
 - Added YAML policy evaluation for shell, command allowlists, filesystem write allowlists, network host and category allowlists, secret environment allowlists, MCP drift, and severity thresholds.
+- Added named policy capability groups for common shell, network, MCP remote HTTP, and cloud secret review decisions.
+- Added policy violation explanations, approval hints, and structured suggested policy additions.
+- Added `skillgate check --dry-run` for advisory policy blocking output and suggested approvals without a failing exit code.
 - Added line-aware YAML policy diagnostics for parser and schema validation errors.
 - Added a Draft 2020-12 JSON Schema for SkillGate policy files and `skillgate policy schema` for machine-readable schema export.
 - Added `skillgate policy init` starter templates for audit, preinstall, strict, and MCP-focused adoption modes.

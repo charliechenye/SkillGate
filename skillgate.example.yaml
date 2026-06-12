@@ -1,6 +1,13 @@
 version: 1
 
 policy:
+  capabilities:
+    allow:
+      - "network.package_registry"
+      - "shell.local_script"
+    deny:
+      - "network.cloud_metadata"
+
   shell:
     allow: false
     commands:

@@ -683,6 +683,16 @@ def test_invalid_policy_threshold_reports_line_and_column() -> None:
             "policy.network.allow_categories must contain known categories",
         ),
         (
+            "bad-capability-group",
+            "version: 1\npolicy:\n  capabilities:\n    allow:\n      - network.mystery\n",
+            "policy.capabilities.allow must contain known capability groups",
+        ),
+        (
+            "bad-capability-group-type",
+            "version: 1\npolicy:\n  capabilities:\n    deny: network.any\n",
+            "policy.capabilities.deny must be a list of strings",
+        ),
+        (
             "bad-secret-env-allow",
             "version: 1\npolicy:\n  secrets:\n    env:\n      allow: GITHUB_TOKEN\n",
             "policy.secrets.env.allow must be a list of strings",
@@ -783,6 +793,132 @@ def test_policy_network_categories_and_deny_precedence() -> None:
     assert result.blocked
     assert any("Network host category is denied" in item.message for item in result.violations)
     assert not any("api.github.com" in item.message for item in result.violations)
+
+
+def test_policy_capability_groups_allow_network_and_deny_precedence() -> None:
+    workdir = clean_test_dir("policy-capability-network-groups")
+    (workdir / "SKILL.md").write_text("Run `net.py`.\n", encoding="utf-8")
+    (workdir / "net.py").write_text(
+        "\n".join(
+            [
+                "requests.get('https://registry.npmjs.org/package')",
+                "requests.get('https://example.com/api')",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    report = scan_repository(workdir)
+    allowed = evaluate_policy(
+        report,
+        {
+            "version": 1,
+            "policy": {
+                "network": {"allow": []},
+                "capabilities": {"allow": ["network.package_registry"]},
+            },
+        },
+    )
+    assert allowed.blocked
+    assert not any("registry.npmjs.org" in item.message for item in allowed.violations)
+    assert any("example.com" in item.message for item in allowed.violations)
+    denied = evaluate_policy(
+        report,
+        {
+            "version": 1,
+            "policy": {
+                "network": {"allow": ["registry.npmjs.org"]},
+                "capabilities": {
+                    "allow": ["network.any"],
+                    "deny": ["network.package_registry"],
+                },
+            },
+        },
+    )
+    assert denied.blocked
+    assert any(
+        "Capability group is denied: network.package_registry" in item.message
+        for item in denied.violations
+    )
+    assert not any("example.com" in item.message for item in denied.violations)
+
+
+def test_policy_capability_groups_allow_shell_mcp_and_cloud_secrets() -> None:
+    shell_dir = clean_test_dir("policy-capability-shell")
+    scripts = shell_dir / "scripts"
+    scripts.mkdir()
+    (shell_dir / "SKILL.md").write_text("Run `scripts/build.sh`.\n", encoding="utf-8")
+    (scripts / "build.sh").write_text("bash scripts/build.sh\n", encoding="utf-8")
+    shell_result = evaluate_policy(
+        scan_repository(shell_dir),
+        {
+            "version": 1,
+            "policy": {
+                "shell": {"allow": False},
+                "capabilities": {"allow": ["shell.local_script"]},
+            },
+        },
+    )
+    assert not shell_result.blocked
+
+    remote_result = evaluate_policy(
+        scan_repository(FIXTURES / "05-remote-download-execute"),
+        {
+            "version": 1,
+            "policy": {
+                "shell": {"allow": False},
+                "capabilities": {"allow": ["shell.local_script"]},
+            },
+        },
+    )
+    assert remote_result.blocked
+    assert any(
+        "remote download execution" in (item.reason or "").lower()
+        for item in remote_result.violations
+    )
+
+    mcp_result = evaluate_policy(
+        scan_repository(FIXTURES / "16-public-pattern-mcp-http-remote"),
+        {
+            "version": 1,
+            "policy": {
+                "network": {"allow": []},
+                "capabilities": {"allow": ["mcp.remote_http"]},
+            },
+        },
+    )
+    assert not mcp_result.blocked
+
+    secret_dir = clean_test_dir("policy-capability-cloud-secrets")
+    (secret_dir / "SKILL.md").write_text("Use OPENAI_API_KEY.\n", encoding="utf-8")
+    secret_result = evaluate_policy(
+        scan_repository(secret_dir),
+        {
+            "version": 1,
+            "policy": {
+                "secrets": {"deny": ["*"]},
+                "capabilities": {"allow": ["secrets.cloud"]},
+            },
+        },
+    )
+    assert not secret_result.blocked
+
+
+def test_policy_violations_include_explanations_and_suggestions() -> None:
+    workdir = clean_test_dir("policy-explanations")
+    (workdir / "SKILL.md").write_text("Run `net.py`.\n", encoding="utf-8")
+    (workdir / "net.py").write_text(
+        "requests.get('https://registry.npmjs.org/package')\n",
+        encoding="utf-8",
+    )
+    result = evaluate_policy(
+        scan_repository(workdir),
+        {"version": 1, "policy": {"network": {"allow": []}}},
+    )
+    assert result.blocked
+    violation = result.violations[0]
+    assert violation.reason
+    assert violation.approval_hint
+    assert violation.suggested_policy == {"policy": {"network": {"allow": ["registry.npmjs.org"]}}}
 
 
 def test_richer_filesystem_write_extraction() -> None:
@@ -1249,6 +1385,8 @@ def test_policy_schema_reference_documents_supported_fields() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     for field in [
         "version",
+        "policy.capabilities.allow",
+        "policy.capabilities.deny",
         "policy.shell.allow",
         "policy.shell.commands.allow",
         "policy.filesystem.read",
@@ -1369,6 +1507,51 @@ def test_cli_check_blocks() -> None:
     )
     assert result.exit_code == 1
     assert "BLOCKED" in result.output
+
+
+def test_cli_check_dry_run_text_exits_zero_with_explanations() -> None:
+    result = runner.invoke(
+        app,
+        [
+            "check",
+            str(FIXTURES / "05-remote-download-execute"),
+            "--policy",
+            str(ROOT / "skillgate.example.yaml"),
+            "--dry-run",
+        ],
+    )
+    assert result.exit_code == 0
+    assert "DRY RUN: repository would be blocked by policy" in result.output
+    assert "why:" in result.output
+    assert "approve by:" in result.output
+
+
+def test_cli_check_dry_run_json_includes_suggestions() -> None:
+    workdir = clean_test_dir("check-dry-run-json")
+    (workdir / "SKILL.md").write_text("Run `net.py`.\n", encoding="utf-8")
+    (workdir / "net.py").write_text(
+        "requests.get('https://registry.npmjs.org/package')\n",
+        encoding="utf-8",
+    )
+    policy = workdir / "skillgate.yaml"
+    policy.write_text("version: 1\npolicy:\n  network:\n    allow: []\n", encoding="utf-8")
+    result = runner.invoke(
+        app,
+        [
+            "check",
+            str(workdir),
+            "--policy",
+            str(policy),
+            "--dry-run",
+            "--format",
+            "json",
+        ],
+    )
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert data["policy_result"]["blocked"] is True
+    assert data["policy_result"]["violations"][0]["reason"]
+    assert data["suggestions"] == [{"policy": {"network": {"allow": ["registry.npmjs.org"]}}}]
 
 
 def test_cli_baseline_and_diff() -> None:

@@ -35,6 +35,7 @@ from skillgate.reporting import (
     append_scan_failure_text,
     check_text,
     diff_text,
+    policy_suggestions,
     render_diff,
     render_scan,
     write_or_print,
@@ -427,6 +428,13 @@ def check(
         "skillgate.yaml"
     ),
     output_format: Annotated[str, typer.Option("--format", help="Output format.")] = "text",
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run",
+            help="Show policy violations and suggested approvals without failing.",
+        ),
+    ] = False,
     output: Annotated[
         Path | None, typer.Option("--output", "-o", help="Write output to a file.")
     ] = None,
@@ -441,13 +449,19 @@ def check(
     report = scan_repository(path)
     result = evaluate_policy(report, policy_data)
     if output_format == "text":
-        content = check_text(result)
+        content = check_text(result, dry_run=dry_run)
     else:
         content = render_scan(report, output_format)
         if output_format == "json":
-            content = stable_json({"policy_result": result, "scan_report": report})
+            content = stable_json(
+                {
+                    "policy_result": result,
+                    "scan_report": report,
+                    "suggestions": policy_suggestions(result),
+                }
+            )
     write_or_print(content, output, console)
-    raise typer.Exit(1 if result.blocked else 0)
+    raise typer.Exit(0 if dry_run else 1 if result.blocked else 0)
 
 
 @baseline_app.command("create")

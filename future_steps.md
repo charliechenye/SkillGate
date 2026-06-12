@@ -49,13 +49,6 @@ Sources to watch:
 - Explore signed capability manifests for skills and MCP servers, where maintainers declare intended permissions before users install.
 - Support trace import/export using OpenTelemetry-compatible formats in a future release.
 
-## Policy Ergonomics
-
-- Add named capability groups such as `network.any`, `network.package_registry`, `shell.local_script`, `mcp.remote_http`, and `secrets.cloud`.
-- Add policy explanations that describe why a specific violation blocked and which allowlist entry would approve it.
-- Add policy dry-run mode that proposes the smallest policy needed to approve the current baseline.
-- Add JSON Schema examples for each policy profile if the current docs do not already cover the scenario.
-
 ## Creative Ideas
 
 - Add a trust-diff narrative mode that explains capability drift in reviewer-friendly prose.

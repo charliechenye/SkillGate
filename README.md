@@ -151,12 +151,13 @@ See [`skillgate.example.yaml`](skillgate.example.yaml), the full [policy schema 
 
 ```bash
 skillgate check . --policy skillgate.example.yaml
+skillgate check . --policy skillgate.example.yaml --dry-run
 skillgate policy schema
 skillgate policy schema --output skillgate-policy.schema.json
 skillgate policy init --profile strict --output skillgate.yaml
 ```
 
-Policy checks can block shell execution, unallowlisted commands, unallowlisted filesystem writes, unallowlisted network hosts or host categories, denied secret access, high-risk findings, and MCP capability drift. SkillGate validates the policy schema and reports file, line, and column details for YAML and schema errors when available.
+Policy checks can block shell execution, unallowlisted commands, unallowlisted filesystem writes, unallowlisted network hosts or host categories, denied capability groups, denied secret access, high-risk findings, and MCP capability drift. SkillGate validates the policy schema and reports file, line, and column details for YAML and schema errors when available. Use `--dry-run` to see why a policy would block and which narrow allowlist or capability-group entry would approve expected behavior.
 
 Policy templates are available for common adoption modes:
 

@@ -35,11 +35,39 @@ def append_scan_failure_text(content: str, threshold: str) -> str:
     return f"{content}\nFAILED: scan found findings at or above {threshold}\n"
 
 
-def check_text(result: PolicyResult) -> str:
+def policy_suggestions(result: PolicyResult) -> list[dict[str, Any]]:
+    suggestions: list[dict[str, Any]] = []
+    seen = set()
+    for violation in result.violations:
+        if violation.suggested_policy is None:
+            continue
+        key = stable_json(violation.suggested_policy)
+        if key not in seen:
+            seen.add(key)
+            suggestions.append(violation.suggested_policy)
+    return suggestions
+
+
+def check_text(result: PolicyResult, dry_run: bool = False) -> str:
     if not result.blocked:
-        return "ALLOWED: repository policy check passed\n"
-    lines = ["BLOCKED: repository introduces unapproved AI-agent capabilities", "", "Violations:"]
-    lines.extend(f"- {violation.message}" for violation in result.violations)
+        prefix = "DRY RUN: " if dry_run else ""
+        return f"{prefix}ALLOWED: repository policy check passed\n"
+    heading = (
+        "DRY RUN: repository would be blocked by policy"
+        if dry_run
+        else "BLOCKED: repository introduces unapproved AI-agent capabilities"
+    )
+    lines = [heading, "", "Violations:"]
+    for violation in result.violations:
+        lines.append(f"- {violation.message}")
+        if violation.reason:
+            lines.append(f"  why: {violation.reason}")
+        if violation.approval_hint:
+            lines.append(f"  approve by: {violation.approval_hint}")
+    suggestions = policy_suggestions(result)
+    if suggestions:
+        lines.extend(["", "Suggested policy additions:"])
+        lines.extend(f"- {stable_json(suggestion).strip()}" for suggestion in suggestions)
     return "\n".join(lines) + "\n"
 
 
