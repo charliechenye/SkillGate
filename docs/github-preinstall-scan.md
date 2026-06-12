@@ -79,6 +79,16 @@ referenced script, ref resolution, timeout, redirect, or resource limit prevents
 a complete sparse scan, SkillGate exits with code `2` and does not report the
 result as a successful scan.
 
+## GitHub Code Scanning
+
+Remote scan SARIF output uses the `skillgate/remote-github` run category. Each
+finding includes a deterministic `partialFingerprints` entry, capability and
+severity tags, and SkillGate capability taxa. GitHub uses those fields to group
+alerts across repeated uploads, while the displayed location still points to the
+current best line in the sparse scan output. In pull requests, matching alerts
+appear inline when GitHub can map them to changed lines; other findings remain
+available in the code-scanning alert list and uploaded SARIF artifact.
+
 ## What SkillGate Looks For
 
 GitHub pre-install scans use the same static rules as local scans. They can detect shell execution, destructive commands, network egress, remote download execution, secret access, filesystem writes, prompt override language, suspicious Unicode, MCP server configuration, and MCP capability drift when used with baselines.

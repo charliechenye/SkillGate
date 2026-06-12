@@ -45,6 +45,7 @@ AI-agent skills, instruction files, helper scripts, and MCP configurations.
 
 - Added text, JSON, and SARIF 2.1.0 output with deterministic ordering.
 - Added SARIF capability tags, result metadata, and capability taxa for easier GitHub code scanning filtering.
+- Added stable SARIF alert fingerprints and run categories for local repository scans, remote GitHub scans, MCP registry comparisons, and future MCP bundle scans.
 - Added capability inventory output with trust-boundary summaries for local execution, remote endpoints, secrets, generated files, MCP servers, prompt controls, and obfuscation.
 - Added inventory filters for capability type, severity, and source file globs.
 

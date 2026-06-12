@@ -93,6 +93,15 @@ For repositories that want blocking policy enforcement, run `skillgate check . -
 
 The repository also includes `.github/workflows/skillgate.yml` as a complete example workflow.
 
+SARIF uploads appear in GitHub code scanning as SkillGate alerts. Each alert
+includes a deterministic fingerprint that ignores line-number shifts, capability
+tags such as `capability:network_egress`, severity tags, and a stable run
+category such as `skillgate/local-repository` or `skillgate/remote-github`.
+On pull requests, GitHub shows matching alerts inline when locations overlap
+changed lines and lists the remaining findings in the repository code-scanning
+view. Those fields help reviewers filter alerts and keep repeated CI runs from
+creating duplicate findings after unrelated edits.
+
 ## What Does SkillGate Detect?
 
 | Rule | Description | Default severity |
@@ -204,6 +213,10 @@ skillgate mcp registry compare . --server io.example.server --fail-on-drift
 skillgate mcp registry compare fixtures/registry-compare-drift/local \
   --server io.example.registry-drift \
   --registry-url fixtures/registry-compare-drift/registry.json
+skillgate mcp registry compare fixtures/registry-compare-drift/local \
+  --server io.example.registry-drift \
+  --registry-url fixtures/registry-compare-drift/registry.json \
+  --format sarif --output registry-drift.sarif
 ```
 
 Registry scanning is static: SkillGate reads declared MCP registry metadata,
@@ -292,7 +305,11 @@ Yes. `skillgate github scan URL` sparse-scans supported files from a public GitH
 ### Can SkillGate produce SARIF for GitHub code scanning?
 
 Yes. Use `skillgate scan . --format sarif --output skillgate.sarif` and upload the SARIF file in GitHub Actions.
-SARIF output includes SkillGate capability tags and taxa for filtering in code scanning views.
+SARIF output includes stable alert fingerprints, run categories, SkillGate
+capability tags, severity tags, and taxa for filtering in code scanning views.
+Local repository scans use the `skillgate/local-repository` category, remote
+GitHub pre-install scans use `skillgate/remote-github`, and MCP registry
+comparison SARIF uses `skillgate/mcp-registry-compare`.
 
 ### Does SkillGate replace a sandbox?
 

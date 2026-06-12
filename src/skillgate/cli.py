@@ -101,9 +101,14 @@ def scan_failed(report, fail_on: str | None) -> bool:
     return any(severity_at_or_above(finding.severity, fail_on) for finding in report.findings)
 
 
-def render_scan_command_output(report, output_format: str, fail_on: str | None) -> tuple[str, bool]:
+def render_scan_command_output(
+    report,
+    output_format: str,
+    fail_on: str | None,
+    sarif_category: str = "local_repository",
+) -> tuple[str, bool]:
     failed = scan_failed(report, fail_on)
-    content = render_scan(report, output_format)
+    content = render_scan(report, output_format, sarif_category=sarif_category)
     if failed and output_format == "text":
         content = append_scan_failure_text(content, fail_on or "")
     return content, failed
@@ -148,7 +153,7 @@ def mcp_registry_compare(
     ] = None,
 ) -> None:
     """Compare local MCP metadata with remote registry metadata."""
-    output_format = validate_format(output_format, {"text", "json"})
+    output_format = validate_format(output_format, {"text", "json", "sarif"})
     if not server:
         console.file.write("Error: --server is required\n")
         raise typer.Exit(2)
@@ -157,7 +162,16 @@ def mcp_registry_compare(
     except RegistryMetadataError as exc:
         console.file.write(f"Error: {exc}\n")
         raise typer.Exit(2) from exc
-    content = stable_json(report) if output_format == "json" else registry_scan_text(report)
+    if output_format == "json":
+        content = stable_json(report)
+    elif output_format == "sarif":
+        content = render_scan(
+            report,
+            output_format,
+            sarif_category="mcp_registry_compare",
+        )
+    else:
+        content = registry_scan_text(report)
     write_or_print(content, output, console)
     raise typer.Exit(1 if fail_on_drift and report.findings else 0)
 
@@ -297,7 +311,12 @@ def github_scan(
             failed = scan_failed(report, fail_on)
             content = stable_json({"scan_report": report, "remote_manifest": sparse.manifest})
         else:
-            content, failed = render_scan_command_output(report, output_format, fail_on)
+            content, failed = render_scan_command_output(
+                report,
+                output_format,
+                fail_on,
+                sarif_category="remote_github",
+            )
         write_or_print(content, output, console)
         raise typer.Exit(1 if failed else 0)
     except SourceError as exc:

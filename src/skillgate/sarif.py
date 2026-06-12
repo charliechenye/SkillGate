@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from skillgate.models import ScanReport
+import hashlib
+import json
+from typing import Literal
+
+from skillgate.models import Finding, ScanReport
 from skillgate.rule_docs import RULE_DOCS
 
 RULES = {
@@ -29,6 +33,19 @@ LEVELS = {
     "critical": "error",
 }
 RULE_DOC_BY_ID = {rule.rule_id: rule for rule in RULE_DOCS}
+SARIF_RUN_CATEGORIES = {
+    "local_repository": "skillgate/local-repository",
+    "remote_github": "skillgate/remote-github",
+    "mcp_registry_compare": "skillgate/mcp-registry-compare",
+    "mcp_bundle": "skillgate/mcp-bundle",
+}
+SarifRunCategory = Literal[
+    "local_repository",
+    "remote_github",
+    "mcp_registry_compare",
+    "mcp_bundle",
+]
+FINGERPRINT_KEY = "skillgateFinding/v1"
 
 
 def rule_tags(rule_id: str) -> list[str]:
@@ -50,7 +67,33 @@ def capability_taxa() -> list[dict[str, object]]:
     ]
 
 
-def sarif_report(report: ScanReport) -> dict[str, object]:
+def sarif_run_category(category: SarifRunCategory | str = "local_repository") -> str:
+    return SARIF_RUN_CATEGORIES.get(category, category)
+
+
+def normalized_path(path: str) -> str:
+    return path.replace("\\", "/")
+
+
+def finding_fingerprint(finding: Finding) -> str:
+    payload = {
+        "capability": finding.capability,
+        "description": finding.description,
+        "evidence": finding.evidence,
+        "file_path": normalized_path(finding.file_path),
+        "remediation": finding.remediation,
+        "rule_id": finding.rule_id,
+        "severity": finding.severity,
+        "title": finding.title,
+    }
+    data = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(data).hexdigest()
+
+
+def sarif_report(
+    report: ScanReport,
+    category: SarifRunCategory | str = "local_repository",
+) -> dict[str, object]:
     used_rule_ids = {finding.rule_id for finding in report.findings}
     rules = [
         {
@@ -69,10 +112,11 @@ def sarif_report(report: ScanReport) -> dict[str, object]:
             "ruleId": finding.rule_id,
             "level": LEVELS[finding.severity],
             "message": {"text": f"{finding.title}: {finding.evidence or finding.description}"},
+            "partialFingerprints": {FINGERPRINT_KEY: finding_fingerprint(finding)},
             "locations": [
                 {
                     "physicalLocation": {
-                        "artifactLocation": {"uri": finding.file_path},
+                        "artifactLocation": {"uri": normalized_path(finding.file_path)},
                         "region": {"startLine": finding.line_number or 1},
                     }
                 }
@@ -99,6 +143,7 @@ def sarif_report(report: ScanReport) -> dict[str, object]:
         "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
         "runs": [
             {
+                "automationDetails": {"id": sarif_run_category(category)},
                 "tool": {
                     "driver": {
                         "name": "SkillGate",

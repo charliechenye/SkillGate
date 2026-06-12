@@ -97,11 +97,15 @@ def diff_text(report: DiffReport) -> str:
     return "\n".join(lines) + "\n"
 
 
-def render_scan(report: ScanReport, output_format: str) -> str:
+def render_scan(
+    report: ScanReport,
+    output_format: str,
+    sarif_category: str = "local_repository",
+) -> str:
     if output_format == "json":
         return stable_json(report)
     if output_format == "sarif":
-        return stable_json(sarif_report(report))
+        return stable_json(sarif_report(report, category=sarif_category))
     return scan_text(report)
 
 

@@ -33,20 +33,6 @@ workflow is widely usable.
 * Add a release checklist covering tests, linting, snapshots, benchmark fixture
   verification, package build verification, changelog updates, and release notes.
 
-### Add Stable SARIF Alert Identity
-
-* Emit deterministic SARIF `partialFingerprints` so GitHub code-scanning alerts
-  remain stable across repeated runs and line shifts.
-* Add stable SARIF run categories for:
-
-  * local repository scans
-  * remote GitHub scans
-  * MCP registry comparisons
-  * future MCP bundle scans
-* Add tests that verify fingerprint stability when unrelated lines change.
-* Document how SkillGate findings appear in pull requests and GitHub code
-  scanning.
-
 ### Add Reviewable Policy Waivers
 
 * Support narrow policy waivers with:
