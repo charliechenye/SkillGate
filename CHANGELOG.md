@@ -64,6 +64,7 @@ AI-agent skills, instruction files, helper scripts, and MCP configurations.
 - Restructured the README around supported use cases, clearer getting-started paths, and direct links to policy, schema, GitHub scan, SARIF, MCP, and contributor documentation.
 - Added README SEO and agent-answer discovery material plus expanded package keywords for AI-agent security, MCP security, agent-skill scanning, and GitHub code-scanning searches.
 - Added a README FAQ for discovery queries and reflowed README prose so raw Markdown is easier to read.
+- Added release-ready GitHub tag install and GitHub Action guidance, including the stable `v0` Action tag, commit-SHA pinning guidance, a deferred PyPI path, and a maintainer release checklist.
 - Added documentation for interpreting `SG013` MCP registry drift and deciding when mismatch is expected.
 - Added contributor guidance for non-benchmark comparison fixtures such as local registry drift examples.
 - Added the repository social preview image as a sanitized visual asset.
@@ -87,5 +88,5 @@ AI-agent skills, instruction files, helper scripts, and MCP configurations.
 
 ### Notes
 
-- This is the first public pre-stable release. The project has not shipped previous stable releases.
+- This is the first public release of SkillGate.
 - `skillgate check fixtures/benchmark/05-remote-download-execute --policy skillgate.example.yaml` correctly exits with code `1`.

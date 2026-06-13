@@ -27,20 +27,43 @@ SkillGate does not execute repository code, start MCP servers, call LLMs, or ins
 
 ## Install
 
-From a source checkout:
+Install the tagged release from GitHub:
+
+```bash
+python -m pip install "git+https://github.com/charliechenye/SkillGate.git@v0.1.0"
+skillgate --help
+```
+
+You can also install from the moving `v0` compatibility tag:
+
+```bash
+python -m pip install "git+https://github.com/charliechenye/SkillGate.git@v0"
+```
+
+For a fully immutable install, pin a commit SHA:
+
+```bash
+python -m pip install "git+https://github.com/charliechenye/SkillGate.git@FULL_COMMIT_SHA"
+```
+
+Resolve the exact commit SHA with:
+
+```bash
+git ls-remote https://github.com/charliechenye/SkillGate.git refs/tags/v0.1.0
+```
+
+GitHub installs require Python 3.11 or newer and `git` on the customer machine. After a later PyPI publication, the short install path will be:
+
+```bash
+python -m pip install skillgate
+```
+
+For contributor or source-checkout development:
 
 ```bash
 python -m pip install -e .
 skillgate --help
 ```
-
-After the package is published:
-
-```bash
-pip install skillgate
-```
-
-SkillGate requires Python 3.11 or newer.
 
 ## 1. Scan A Local Repository
 
@@ -185,14 +208,14 @@ steps:
   - uses: actions/setup-python@v6
     with:
       python-version: "3.11"
-  - uses: charliechenye/SkillGate@master
+  - uses: charliechenye/SkillGate@v0
     with:
       path: .
       policy: skillgate.example.yaml
       sarif-output: skillgate.sarif
 ```
 
-After the first tagged release, prefer a versioned action reference such as `charliechenye/SkillGate@v0`.
+`charliechenye/SkillGate@v0` is the stable Action channel for compatible `0.x` releases. Teams that require immutable GitHub Action references should pin the Action to a full commit SHA, for example `charliechenye/SkillGate@FULL_COMMIT_SHA`, and update that SHA through their normal dependency review process.
 
 ## Supported Files
 
@@ -252,6 +275,7 @@ Fixture summaries compare `expected-findings.yaml` files with actual scan output
 Contributor docs:
 
 - [CONTRIBUTING.md](CONTRIBUTING.md)
+- [Release checklist](docs/release-checklist.md)
 - [SECURITY.md](SECURITY.md)
 - [BRAND.md](BRAND.md)
 - [CITATION.cff](CITATION.cff)
@@ -280,6 +304,7 @@ Canonical docs for agents and answer engines:
 - Machine-readable policy schema: [schemas/skillgate-policy.schema.json](schemas/skillgate-policy.schema.json)
 - GitHub pre-install scans: [docs/github-preinstall-scan.md](docs/github-preinstall-scan.md)
 - Contributor and fixture workflow: [CONTRIBUTING.md](CONTRIBUTING.md)
+- Release checklist: [docs/release-checklist.md](docs/release-checklist.md)
 - Roadmap: [future_steps.md](future_steps.md)
 
 ## FAQ

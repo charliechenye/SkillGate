@@ -19,21 +19,15 @@ workflow is widely usable.
 
 ---
 
-## Priority 0: Ship An Adoption-Ready Release
+## Priority 0: Ship And Announce The Public Release
 
-### Publish A Tagged Release
+### Complete One-Time GitHub Release Publication
 
 * Publish the first tagged GitHub release as `v0.1.0`.
-* Publish the Python package to PyPI.
-* Add a stable GitHub Action release tag such as `v0`.
-* Replace documentation examples that use `charliechenye/SkillGate@master` with a
-  versioned tag such as `charliechenye/SkillGate@v0`.
-* Document commit-SHA pinning for teams that require immutable GitHub Action
-  references.
-* Add a release checklist covering tests, linting, snapshots, benchmark fixture
-  verification, package build verification, changelog updates, and release notes.
-* After PyPI publication, make the README install path lead with `pip install
-  skillgate` and keep source-checkout instructions as the contributor path.
+* Add or move the stable GitHub Action release tag `v0`.
+* Follow the release checklist in `docs/release-checklist.md`.
+* Confirm GitHub-tag installation works with `pip`, `pipx`, and `uv`.
+* Defer PyPI publication until the GitHub-first release has customer feedback.
 
 ### Improve Pull-Request Review Ergonomics
 
@@ -465,9 +459,12 @@ Move one-time administrative tasks out of the product roadmap:
 * Confirm GitHub repository description and topics using the README SEO/AEO
   keywords and FAQ search phrases as the source of truth.
 * Publish `v0.1.0`.
-* Publish the PyPI package.
-* Confirm installation with `pip`, `pipx`, and `uvx`.
-* Replace `@master` Action examples with a versioned tag.
+* Add or move the stable `v0` GitHub Action tag.
+* Confirm GitHub-tag installation with `pip`, `pipx`, and `uv`.
+* Follow `docs/release-checklist.md` for local checks, package validation,
+  GitHub Release creation, and deferred PyPI guidance.
+* Publish the PyPI package later if customer demand or distribution needs justify
+  marketplace publication.
 * Create a minimal launch post and demo GIF.
 * Open GitHub Discussions or use Issues for community feedback.
 * Track package downloads, GitHub Action usage, stars, forks, external mentions,
