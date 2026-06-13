@@ -196,15 +196,16 @@ POLICY_JSON_SCHEMA: dict[str, Any] = {
                             "type": "boolean",
                             "default": False,
                             "description": (
-                                "Allow broad finding waiver selectors. Keep false for normal "
-                                "policy files."
+                                "Allow broad finding waiver selectors only for controlled "
+                                "fixtures or exceptional review workflows."
                             ),
                         },
                         "entries": {
                             "type": "array",
                             "description": (
-                                "Expiring, audited finding waivers. Use capability approval "
-                                "allowlists for expected capabilities instead."
+                                "Expiring, audited finding waivers. Prefer finding.fingerprint "
+                                "selectors and use capability approval allowlists for expected "
+                                "capabilities instead."
                             ),
                             "items": {
                                 "type": "object",
@@ -238,6 +239,10 @@ POLICY_JSON_SCHEMA: dict[str, Any] = {
                                             "rule_id": {"type": "string"},
                                             "capability": {"type": "string"},
                                             "file_path": {"type": "string"},
+                                            "fingerprint": {
+                                                "type": "string",
+                                                "pattern": "^sha256:[0-9a-f]{64}$",
+                                            },
                                             "title": {"type": "string"},
                                             "evidence": {"type": "string"},
                                         },

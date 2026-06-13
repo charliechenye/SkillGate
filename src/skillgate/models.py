@@ -98,7 +98,19 @@ class PolicyResult(StableModel):
 
 def model_to_data(value: Any) -> Any:
     if isinstance(value, BaseModel):
-        return value.model_dump(mode="json")
+        data = value.model_dump(mode="json")
+        if isinstance(value, Finding):
+            from skillgate.identity import finding_fingerprint
+
+            data["fingerprint"] = finding_fingerprint(value)
+        if isinstance(value, ScanReport | DiffReport):
+            from skillgate.identity import finding_fingerprint
+
+            data["findings"] = [
+                {**item, "fingerprint": finding_fingerprint(finding)}
+                for item, finding in zip(data["findings"], value.findings, strict=True)
+            ]
+        return data
     if isinstance(value, list):
         return [model_to_data(item) for item in value]
     if isinstance(value, dict):

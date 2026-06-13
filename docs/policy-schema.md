@@ -331,16 +331,18 @@ policy:
         expires_on: 2026-02-01
         ticket: SEC-123
         finding:
-          rule_id: SG004
-          file_path: scripts/install.sh
-          evidence: "curl https://example.com/bootstrap.sh | bash"
+          fingerprint: "sha256:..."
 ```
 
 Each entry requires `owner`, `reason`, `created_on`, `expires_on`, and a
-`finding` selector. The selector supports glob matching for `id`, `rule_id`,
-`capability`, `file_path`, `title`, and `evidence`. By default, broad selectors
-such as only `rule_id: SG004` are rejected; set
-`allow_broad_selectors: true` only for an explicitly reviewed temporary policy.
+`finding` selector. Prefer `fingerprint` selectors for reviewed findings because
+they are stable across unrelated line shifts while changing when the evidence
+changes. The selector also supports glob matching for `id`, `rule_id`,
+`capability`, `file_path`, `title`, and `evidence`; `fingerprint` must be an
+exact `sha256:<64 lowercase hex>` value and never supports wildcards. By
+default, broad selectors such as only `rule_id: SG004` are rejected. Broad
+selectors are not recommended for production and should be used only for
+controlled fixtures or exceptional review workflows with explicit review.
 Expired waivers block `skillgate check` until renewed or removed.
 
 ## Dry-Run Suggestions

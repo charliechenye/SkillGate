@@ -10,6 +10,7 @@ from typing import Any
 import yaml
 from yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
 
+from skillgate.identity import finding_fingerprint
 from skillgate.models import (
     Capability,
     Finding,
@@ -77,6 +78,7 @@ NETWORK_GROUP_BY_CATEGORY = {
 CLOUD_SECRET_RE = re.compile(
     r"(?i)(AWS_|AZURE_|GOOGLE_|GCP_|OPENAI_|ANTHROPIC_|CLOUD_|API_KEY|SERVICE_ACCOUNT)"
 )
+FINGERPRINT_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 REMOTE_HTTP_TRANSPORTS = {"http", "sse", "streamable-http", "websocket"}
 
 
@@ -224,15 +226,23 @@ def sequence_item_node(node: Node | None, index: int) -> Node | None:
     return node
 
 
-FINDING_WAIVER_SELECTOR_KEYS = {"id", "rule_id", "capability", "file_path", "title", "evidence"}
-NARROW_FINDING_SELECTOR_KEYS = {"id", "file_path", "title", "evidence"}
+FINDING_WAIVER_SELECTOR_KEYS = {
+    "id",
+    "rule_id",
+    "capability",
+    "file_path",
+    "title",
+    "evidence",
+    "fingerprint",
+}
+NARROW_FINDING_SELECTOR_KEYS = {"id", "file_path", "title", "evidence", "fingerprint"}
 
 
 def is_broad_selector(selector: dict[str, object]) -> bool:
     string_values = [value for value in selector.values() if isinstance(value, str)]
     if not selector or any(value.strip() in {"", "*", "**"} for value in string_values):
         return True
-    if "id" in selector:
+    if "id" in selector or "fingerprint" in selector:
         return False
     if len(selector) < 2:
         return True
@@ -348,10 +358,23 @@ def validate_waiver_entry(
             child_node(finding_node if isinstance(finding_node, MappingNode) else None, key),
             f"policy.waivers.entries.finding.{key}",
         )
+    fingerprint = finding.get("fingerprint")
+    if isinstance(fingerprint, str) and not FINGERPRINT_RE.fullmatch(fingerprint):
+        raise_policy_error(
+            "policy.waivers.entries.finding.fingerprint must be sha256 followed by "
+            "64 lowercase hex characters",
+            path,
+            child_node(
+                finding_node if isinstance(finding_node, MappingNode) else None,
+                "fingerprint",
+            ),
+        )
     if not allow_broad and is_broad_selector(finding):
         raise_policy_error(
-            "policy.waivers.entries.finding selector is too broad; add id, file_path plus rule_id, "
-            "or set policy.waivers.allow_broad_selectors to true",
+            "policy.waivers.entries.finding selector is too broad; use finding.fingerprint, "
+            "finding.id, or file_path plus rule_id/title/evidence. Set "
+            "policy.waivers.allow_broad_selectors to true only for controlled fixtures or "
+            "exceptional review workflows.",
             path,
             finding_node,
         )
@@ -765,6 +788,8 @@ def waiver_expires_on(entry: dict[str, Any]) -> date:
 
 
 def finding_value(finding: Finding, key: str) -> str | None:
+    if key == "fingerprint":
+        return finding_fingerprint(finding)
     value = getattr(finding, key)
     return value if isinstance(value, str) else None
 
@@ -777,7 +802,13 @@ def finding_matches_waiver(finding: Finding, entry: dict[str, Any]) -> bool:
         if not isinstance(pattern, str):
             return False
         value = finding_value(finding, key)
-        if value is None or not fnmatch.fnmatch(value, pattern):
+        if value is None:
+            return False
+        if key == "fingerprint":
+            if pattern != value:
+                return False
+            continue
+        if not fnmatch.fnmatch(value, pattern):
             return False
     return True
 
@@ -1186,6 +1217,9 @@ def evaluate_policy(
             waived_violations.append(
                 {
                     "finding_id": item.finding_id,
+                    "fingerprint": finding_fingerprint(findings_by_id[item.finding_id])
+                    if item.finding_id in findings_by_id
+                    else None,
                     "message": item.message,
                     "severity": item.severity,
                     "waiver": waiver,

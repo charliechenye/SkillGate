@@ -9,9 +9,9 @@ inputs:
     required: false
     default: "."
   policy:
-    description: Policy file path.
+    description: Policy file path in the repository being scanned. Required for blocking policy checks.
     required: false
-    default: "skillgate.example.yaml"
+    default: ""
   baseline:
     description: Optional baseline lockfile path for diff checks.
     required: false
@@ -29,19 +29,32 @@ runs:
   steps:
     - name: Install SkillGate
       shell: bash
-      run: python -m pip install .
+      run: python -m pip install "${{ github.action_path }}"
     - name: Verify SkillGate provenance
       if: ${{ inputs.provenance != '' }}
       shell: bash
       run: skillgate provenance verify --manifest "${{ inputs.provenance }}"
     - name: Run SkillGate policy check
+      if: ${{ inputs.policy != '' }}
       shell: bash
       run: skillgate check "${{ inputs.path }}" --policy "${{ inputs.policy }}"
+    - name: Run SkillGate scan
+      if: ${{ inputs.policy == '' }}
+      shell: bash
+      run: skillgate scan "${{ inputs.path }}"
     - name: Run SkillGate baseline diff
-      if: ${{ inputs.baseline != '' }}
+      if: ${{ inputs.baseline != '' && inputs.policy != '' }}
       shell: bash
       run: skillgate diff "${{ inputs.path }}" --baseline "${{ inputs.baseline }}" --policy "${{ inputs.policy }}"
+    - name: Run SkillGate baseline diff without policy
+      if: ${{ inputs.baseline != '' && inputs.policy == '' }}
+      shell: bash
+      run: skillgate diff "${{ inputs.path }}" --baseline "${{ inputs.baseline }}"
+    - name: Generate policy-aware SARIF
+      if: ${{ always() && inputs.sarif-output != '' && inputs.policy != '' }}
+      shell: bash
+      run: skillgate check "${{ inputs.path }}" --policy "${{ inputs.policy }}" --format sarif --output "${{ inputs.sarif-output }}" --dry-run
     - name: Generate SARIF
-      if: ${{ inputs.sarif-output != '' }}
+      if: ${{ always() && inputs.sarif-output != '' && inputs.policy == '' }}
       shell: bash
       run: skillgate scan "${{ inputs.path }}" --format sarif --output "${{ inputs.sarif-output }}"

@@ -17,6 +17,7 @@ from skillgate import __version__
 from skillgate.baseline import create_baseline, diff_against_baseline
 from skillgate.cli import app
 from skillgate.discovery import discover_paths, scan_file_metadata
+from skillgate.identity import finding_fingerprint
 from skillgate.mcp_registry import (
     RegistryMetadataError,
     collect_registry_servers,
@@ -34,6 +35,7 @@ from skillgate.sources import (
     fetch_github_sparse,
     installed_skill_roots,
     parse_github_repo_url,
+    read_response_bounded,
     referenced_script_paths,
     relevant_remote_paths,
     resolve_github_ref,
@@ -46,6 +48,10 @@ REGISTRY_COMPARE_FIXTURE = ROOT / "fixtures" / "registry-compare-drift"
 TEST_OUTPUTS = ROOT / "test-outputs"
 runner = CliRunner()
 FAKE_COMMIT_SHA = "0123456789abcdef0123456789abcdef01234567"
+FINGERPRINT_ERROR = (
+    "policy.waivers.entries.finding.fingerprint must be sha256 followed by "
+    "64 lowercase hex characters"
+)
 
 
 def rule_ids(path: str) -> set[str]:
@@ -217,11 +223,17 @@ def test_sarif_structure() -> None:
     assert sarif["version"] == "2.1.0"
     assert sarif["runs"][0]["automationDetails"]["id"] == "skillgate/local-repository"
     assert sarif["runs"][0]["tool"]["driver"]["name"] == "SkillGate"
+    assert (
+        sarif["runs"][0]["tool"]["driver"]["informationUri"]
+        == "https://github.com/charliechenye/SkillGate"
+    )
+    assert sarif["runs"][0]["taxonomies"][0]["organization"] == "Chenye Zhu / SkillGate"
     assert sarif["runs"][0]["results"][0]["ruleId"]
     rules = {rule["id"]: rule for rule in sarif["runs"][0]["tool"]["driver"]["rules"]}
     assert "capability:remote_download_execution" in rules["SG004"]["properties"]["tags"]
     result = sarif["runs"][0]["results"][0]
     assert result["partialFingerprints"][FINGERPRINT_KEY]
+    assert result["partialFingerprints"][FINGERPRINT_KEY].startswith("sha256:")
     assert result["properties"]["capability"]
     assert result["properties"]["severity"]
     assert result["taxa"][0]["toolComponent"]["name"] == "SkillGate capabilities"
@@ -254,6 +266,7 @@ def test_sarif_fingerprints_are_stable_across_line_shifts() -> None:
     assert first == second
     assert first == line_shifted
     assert first != identity_changed
+    assert first == finding_fingerprint(finding)
 
 
 def test_sarif_run_categories() -> None:
@@ -834,6 +847,36 @@ def test_invalid_policy_threshold_reports_line_and_column() -> None:
             ),
             "policy.waivers.entries.finding selector is too broad",
         ),
+        (
+            "bad-waiver-fingerprint-wildcard",
+            (
+                "version: 1\npolicy:\n  waivers:\n    entries:\n"
+                "      - owner: sec\n        reason: reviewed\n"
+                "        created_on: 2026-01-01\n        expires_on: 2026-02-01\n"
+                "        finding:\n          fingerprint: 'sha256:*'\n"
+            ),
+            FINGERPRINT_ERROR,
+        ),
+        (
+            "bad-waiver-fingerprint-prefix",
+            (
+                "version: 1\npolicy:\n  waivers:\n    entries:\n"
+                "      - owner: sec\n        reason: reviewed\n"
+                "        created_on: 2026-01-01\n        expires_on: 2026-02-01\n"
+                "        finding:\n          fingerprint: 'sha256:abc*'\n"
+            ),
+            FINGERPRINT_ERROR,
+        ),
+        (
+            "bad-waiver-fingerprint-uppercase",
+            (
+                "version: 1\npolicy:\n  waivers:\n    entries:\n"
+                "      - owner: sec\n        reason: reviewed\n"
+                "        created_on: 2026-01-01\n        expires_on: 2026-02-01\n"
+                f"        finding:\n          fingerprint: 'sha256:{'A' * 64}'\n"
+            ),
+            FINGERPRINT_ERROR,
+        ),
     ],
 )
 def test_policy_schema_validation_reports_line_and_column(
@@ -878,6 +921,63 @@ def test_policy_waiver_broad_selector_requires_explicit_opt_in() -> None:
     )
     data = load_policy(policy)
     assert data["policy"]["waivers"]["entries"][0]["finding"]["rule_id"] == "SG004"
+
+
+def test_policy_fingerprint_waiver_survives_line_shift_but_not_evidence_change() -> None:
+    report = scan_repository(FIXTURES / "05-remote-download-execute")
+    finding = next(item for item in report.findings if item.rule_id == "SG004")
+    shifted = finding.model_copy(update={"line_number": (finding.line_number or 1) + 100})
+    changed = finding.model_copy(update={"evidence": f"{finding.evidence} changed"})
+    policy = {
+        "version": 1,
+        "policy": {
+            "risk_threshold": {"block": "high"},
+            "waivers": {
+                "entries": [
+                    {
+                        "id": "waive-fingerprint",
+                        "owner": "security",
+                        "reason": "reviewed stable finding",
+                        "created_on": "2026-06-13",
+                        "expires_on": "2026-07-13",
+                        "finding": {"fingerprint": finding_fingerprint(finding)},
+                    }
+                ]
+            },
+        },
+    }
+
+    shifted_result = evaluate_policy(report.model_copy(update={"findings": [shifted]}), policy)
+    changed_result = evaluate_policy(report.model_copy(update={"findings": [changed]}), policy)
+
+    assert not shifted_result.blocked
+    assert shifted_result.waived_violations[0]["fingerprint"] == finding_fingerprint(finding)
+    assert changed_result.blocked
+
+
+def test_policy_valid_fingerprint_waiver_loads() -> None:
+    workdir = clean_test_dir("policy-valid-fingerprint-waiver")
+    policy = workdir / "skillgate.yaml"
+    fingerprint = f"sha256:{'0' * 64}"
+    policy.write_text(
+        "\n".join(
+            [
+                "version: 1",
+                "policy:",
+                "  waivers:",
+                "    entries:",
+                "      - owner: security",
+                "        reason: reviewed stable finding",
+                "        created_on: 2026-06-13",
+                "        expires_on: 2026-07-13",
+                "        finding:",
+                f"          fingerprint: {fingerprint}",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    data = load_policy(policy)
+    assert data["policy"]["waivers"]["entries"][0]["finding"]["fingerprint"] == fingerprint
 
 
 def test_policy_command_allowlist_blocks_unapproved_shell_commands() -> None:
@@ -1689,6 +1789,7 @@ def test_policy_schema_reference_documents_supported_fields() -> None:
         "allow_broad_selectors",
         "created_on",
         "expires_on",
+        "fingerprint",
     ]:
         assert field in reference
     assert "docs/policy-schema.md" in readme
@@ -1702,11 +1803,54 @@ def test_policy_schema_reference_documents_supported_fields() -> None:
 def test_release_notes_keep_current_changes_under_010() -> None:
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    future_steps = (ROOT / "future_steps.md").read_text(encoding="utf-8")
+    release_checklist = (ROOT / "docs" / "release-checklist.md").read_text(encoding="utf-8")
+    assert pyproject["project"]["name"] == "openevalgate-skillgate"
+    assert pyproject["project"]["authors"] == [{"name": "Chenye Zhu"}]
     assert pyproject["project"]["version"] == "0.1.0"
     assert __version__ == "0.1.0"
     assert "## Unreleased" not in changelog
     assert "## 0.4.0" not in changelog
     assert "## 0.1.0 - Initial public release" in changelog
+    assert "Publish the first tagged GitHub release as `v0.1.0`" not in future_steps
+    assert "already published" in release_checklist
+
+
+def test_action_uses_action_path_and_explicit_policy_behavior() -> None:
+    action_text = (ROOT / "action.yml").read_text(encoding="utf-8")
+    action = yaml.safe_load((ROOT / "action.yml").read_text(encoding="utf-8"))
+    assert "python -m pip install ." not in action_text
+    assert action["inputs"]["policy"]["default"] == ""
+    steps = {step["name"]: step for step in action["runs"]["steps"]}
+    assert steps["Install SkillGate"]["run"] == 'python -m pip install "${{ github.action_path }}"'
+    assert steps["Run SkillGate policy check"]["if"] == "${{ inputs.policy != '' }}"
+    assert steps["Run SkillGate scan"]["if"] == "${{ inputs.policy == '' }}"
+    assert steps["Generate policy-aware SARIF"]["if"] == (
+        "${{ always() && inputs.sarif-output != '' && inputs.policy != '' }}"
+    )
+    assert "--dry-run" in steps["Generate policy-aware SARIF"]["run"]
+    assert "--format sarif" in steps["Generate policy-aware SARIF"]["run"]
+    assert steps["Generate policy-aware SARIF"]["run"].startswith("skillgate check ")
+    assert steps["Generate SARIF"]["if"] == (
+        "${{ always() && inputs.sarif-output != '' && inputs.policy == '' }}"
+    )
+    step_names = [step["name"] for step in action["runs"]["steps"]]
+    assert step_names.index("Run SkillGate policy check") < step_names.index(
+        "Generate policy-aware SARIF"
+    )
+
+
+def test_docs_are_main_branch_and_discovery_friendly() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "skillgate.yml").read_text())
+    discovery = (ROOT / "docs" / "discovery.md").read_text(encoding="utf-8")
+    assert "branch=main" in readme
+    assert "## SEO And Agent Discovery" not in readme
+    assert "openevalgate-skillgate" in readme
+    assert "policy-aware SARIF" in readme
+    assert "AI-agent security scanner" in discovery
+    workflow_triggers = workflow.get("on") or workflow.get(True)
+    assert workflow_triggers["push"]["branches"] == ["main"]
 
 
 def test_contributing_documents_rule_fixture_test_workflow() -> None:
@@ -2135,7 +2279,12 @@ def fake_github_subtree(monkeypatch: pytest.MonkeyPatch, tmp_roots: list[Path]) 
             }
         raise AssertionError(f"Unexpected JSON request: {url}")
 
-    def fake_request_text(url: str, timeout: int = 30, redirect_limit: int = 3) -> str:
+    def fake_request_text(
+        url: str,
+        timeout: int = 30,
+        redirect_limit: int = 3,
+        max_bytes: int | None = None,
+    ) -> str:
         requested_urls.append(url)
         if url.endswith("/skills/demo/SKILL.md"):
             return "Run `scripts/install.sh` and `../../scripts/root.sh`.\n"
@@ -2201,7 +2350,12 @@ def fake_github(monkeypatch: pytest.MonkeyPatch, tmp_roots: list[Path]) -> None:
             }
         raise AssertionError(f"Unexpected JSON request: {url}")
 
-    def fake_request_text(url: str, timeout: int = 30, redirect_limit: int = 3) -> str:
+    def fake_request_text(
+        url: str,
+        timeout: int = 30,
+        redirect_limit: int = 3,
+        max_bytes: int | None = None,
+    ) -> str:
         if url.endswith("/SKILL.md"):
             return "Run `scripts/install.sh`.\n"
         if url.endswith("/scripts/install.sh"):
@@ -2294,7 +2448,12 @@ def test_fetch_github_sparse_missing_reference_fails_with_manifest(
             return {"tree": [{"path": "SKILL.md", "type": "blob"}]}
         raise AssertionError(f"Unexpected JSON request: {url}")
 
-    def fake_request_text(url: str, timeout: int = 30, redirect_limit: int = 3) -> str:
+    def fake_request_text(
+        url: str,
+        timeout: int = 30,
+        redirect_limit: int = 3,
+        max_bytes: int | None = None,
+    ) -> str:
         if url.endswith("/SKILL.md"):
             return "Run `scripts/missing.sh`.\n"
         raise AssertionError(f"Unexpected text request: {url}")
@@ -2328,7 +2487,12 @@ def test_fetch_github_sparse_passes_timeout_and_redirect_limits(
             return {"tree": [{"path": "SKILL.md", "type": "blob"}]}
         raise AssertionError(f"Unexpected JSON request: {url}")
 
-    def fake_request_text(url: str, timeout: int = 30, redirect_limit: int = 3) -> str:
+    def fake_request_text(
+        url: str,
+        timeout: int = 30,
+        redirect_limit: int = 3,
+        max_bytes: int | None = None,
+    ) -> str:
         seen.append(("text", timeout, redirect_limit))
         return "Safe skill.\n"
 
@@ -2345,6 +2509,33 @@ def test_fetch_github_sparse_passes_timeout_and_redirect_limits(
     sparse.cleanup()
     assert seen
     assert all(timeout == 7 and redirect == 2 for _kind, timeout, redirect in seen)
+
+
+class FakeResponse:
+    def __init__(self, data: bytes, content_length: str | None = None) -> None:
+        self.data = data
+        self.headers = {}
+        if content_length is not None:
+            self.headers["Content-Length"] = content_length
+        self.read_size: int | None = None
+
+    def read(self, size: int = -1) -> bytes:
+        self.read_size = size
+        return self.data if size < 0 else self.data[:size]
+
+
+def test_bounded_response_rejects_large_content_length_without_unbounded_read() -> None:
+    response = FakeResponse(b"small", content_length="100")
+    with pytest.raises(SourceError):
+        read_response_bounded(response, max_bytes=10, description="GitHub file response", url="u")
+    assert response.read_size is None
+
+
+def test_bounded_response_rejects_stream_without_content_length() -> None:
+    response = FakeResponse(b"x" * 12)
+    with pytest.raises(SourceError):
+        read_response_bounded(response, max_bytes=10, description="GitHub file response", url="u")
+    assert response.read_size == 11
 
 
 def test_cli_github_scan_mocked(monkeypatch: pytest.MonkeyPatch) -> None:

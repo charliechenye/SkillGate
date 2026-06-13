@@ -210,11 +210,11 @@
           "properties": {
             "allow_broad_selectors": {
               "default": false,
-              "description": "Allow broad finding waiver selectors. Keep false for normal policy files.",
+              "description": "Allow broad finding waiver selectors only for controlled fixtures or exceptional review workflows.",
               "type": "boolean"
             },
             "entries": {
-              "description": "Expiring, audited finding waivers. Use capability approval allowlists for expected capabilities instead.",
+              "description": "Expiring, audited finding waivers. Prefer finding.fingerprint selectors and use capability approval allowlists for expected capabilities instead.",
               "items": {
                 "additionalProperties": false,
                 "properties": {
@@ -237,6 +237,10 @@
                         "type": "string"
                       },
                       "file_path": {
+                        "type": "string"
+                      },
+                      "fingerprint": {
+                        "pattern": "^sha256:[0-9a-f]{64}$",
                         "type": "string"
                       },
                       "id": {

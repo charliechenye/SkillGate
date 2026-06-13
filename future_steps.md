@@ -19,17 +19,18 @@ workflow is widely usable.
 
 ---
 
-## Priority 0: Ship And Announce The Public Release
+## Priority 0: Post-Release Adoption
 
-### Complete One-Time GitHub Release Publication
+### Complete Launch Follow-Through
 
-* Publish the first tagged GitHub release as `v0.1.0`.
-* Add or move the stable GitHub Action release tag `v0`.
-* Follow the release checklist in `docs/release-checklist.md`.
+* Keep the published `v0.1.0` GitHub Release and stable `v0` Action tag
+  healthy as fixes are reviewed.
 * Confirm GitHub-tag installation works with `pip`, `pipx`, and `uv`.
 * Defer PyPI publication until the GitHub-first release has customer feedback.
 
-### Improve Pull-Request Review Ergonomics
+---
+
+## Priority 1: Improve Pull-Request Review Ergonomics
 
 * Add reviewer-friendly Markdown summary output for GitHub Actions.
 * Summarize:
@@ -46,10 +47,11 @@ workflow is widely usable.
 * Add automated PR comments only after the summary format is stable and concise.
 * Make `SG013` registry drift easier to review through before-and-after tables
   and artifact-friendly JSON output.
+* Do not block the `v0.1.0` release correction on this work.
 
 ---
 
-## Priority 1: Align With Agent Skills And MCP Installation Artifacts
+## Priority 2: Align With Agent Skills And MCP Installation Artifacts
 
 ### Add Agent Skills Specification Validation
 
@@ -177,7 +179,7 @@ repository scans.
 
 ---
 
-## Priority 1: Add MCP Security Review Packs
+## Priority 2: Add MCP Security Review Packs
 
 ### Add MCP Remote-Server Security Linting
 
@@ -262,7 +264,7 @@ Keep this opt-in and deterministic.
 
 ---
 
-## Priority 1: Build A Public Benchmark
+## Priority 2: Build A Public Benchmark
 
 ### Add Contributor-Facing Fixture Verification
 
@@ -311,7 +313,7 @@ scope precisely.
 
 ---
 
-## Priority 2: Add Provenance And Attestation
+## Priority 3: Add Provenance And Attestation
 
 ### Verify Existing Provenance More Rigorously
 
@@ -365,7 +367,7 @@ For SkillGate's own releases:
 
 ---
 
-## Priority 2: Bridge Static Analysis And Runtime Evidence
+## Priority 3: Bridge Static Analysis And Runtime Evidence
 
 ### Align Trace Import With OpenTelemetry MCP Semantics
 
@@ -434,7 +436,7 @@ exists.
 
 ---
 
-## Priority 3: Ecosystem Watch Items
+## Priority 4: Ecosystem Watch Items
 
 Track, but do not prioritize implementation until formats stabilize:
 
@@ -458,11 +460,11 @@ Move one-time administrative tasks out of the product roadmap:
 * Confirm the social-preview image renders correctly on GitHub.
 * Confirm GitHub repository description and topics using the README SEO/AEO
   keywords and FAQ search phrases as the source of truth.
-* Publish `v0.1.0`.
-* Add or move the stable `v0` GitHub Action tag.
+* Confirm the published `v0.1.0` release and stable `v0` Action tag point to
+  the intended release commit.
 * Confirm GitHub-tag installation with `pip`, `pipx`, and `uv`.
 * Follow `docs/release-checklist.md` for local checks, package validation,
-  GitHub Release creation, and deferred PyPI guidance.
+  replacement-release guidance, and deferred PyPI guidance.
 * Publish the PyPI package later if customer demand or distribution needs justify
   marketplace publication.
 * Create a minimal launch post and demo GIF.

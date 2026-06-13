@@ -1,6 +1,6 @@
 # SkillGate - Static trust checks for AI-agent skills and MCP configurations
 
-[![SkillGate CI](https://github.com/charliechenye/SkillGate/actions/workflows/skillgate.yml/badge.svg?branch=master)](https://github.com/charliechenye/SkillGate/actions/workflows/skillgate.yml)
+[![SkillGate CI](https://github.com/charliechenye/SkillGate/actions/workflows/skillgate.yml/badge.svg?branch=main)](https://github.com/charliechenye/SkillGate/actions/workflows/skillgate.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![SARIF 2.1.0](https://img.shields.io/badge/output-SARIF%202.1.0-purple)](https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html)
@@ -55,7 +55,7 @@ git ls-remote https://github.com/charliechenye/SkillGate.git refs/tags/v0.1.0
 GitHub installs require Python 3.11 or newer and `git` on the customer machine. After a later PyPI publication, the short install path will be:
 
 ```bash
-python -m pip install skillgate
+python -m pip install openevalgate-skillgate
 ```
 
 For contributor or source-checkout development:
@@ -194,11 +194,12 @@ Any scan that supports SARIF can be uploaded to GitHub code scanning:
 
 ```bash
 skillgate scan . --format sarif --output skillgate.sarif
+skillgate check . --policy skillgate.yaml --format sarif --output skillgate.sarif --dry-run
 skillgate github scan https://github.com/OWNER/REPO --format sarif --output skillgate.sarif
 skillgate mcp registry compare . --server io.example.server --format sarif --output registry-drift.sarif
 ```
 
-SARIF output includes deterministic alert fingerprints, stable run categories, capability tags, severity tags, and capability taxa. Local scans use `skillgate/local-repository`, remote GitHub scans use `skillgate/remote-github`, and MCP registry comparisons use `skillgate/mcp-registry-compare`.
+Plain `scan` SARIF reports static findings. Policy-aware `check` SARIF includes policy waiver and suppression metadata while `--dry-run` keeps SARIF generation from becoming a second blocking step. SARIF output includes deterministic alert fingerprints, stable run categories, capability tags, severity tags, and capability taxa. Local scans use `skillgate/local-repository`, remote GitHub scans use `skillgate/remote-github`, and MCP registry comparisons use `skillgate/mcp-registry-compare`.
 
 The repository includes `.github/workflows/skillgate.yml` as a complete example workflow and a composite action for CI adoption:
 
@@ -211,9 +212,10 @@ steps:
   - uses: charliechenye/SkillGate@v0
     with:
       path: .
-      policy: skillgate.example.yaml
       sarif-output: skillgate.sarif
 ```
+
+Add `policy: skillgate.yaml` when the repository has a policy file and should block unapproved behavior. Without `policy`, the Action runs a nonblocking scan. When both `policy` and `sarif-output` are supplied, the Action uploads policy-aware SARIF with waiver suppressions.
 
 `charliechenye/SkillGate@v0` is the stable Action channel for compatible `0.x` releases. Teams that require immutable GitHub Action references should pin the Action to a full commit SHA, for example `charliechenye/SkillGate@FULL_COMMIT_SHA`, and update that SHA through their normal dependency review process.
 
@@ -276,36 +278,10 @@ Contributor docs:
 
 - [CONTRIBUTING.md](CONTRIBUTING.md)
 - [Release checklist](docs/release-checklist.md)
+- [Discovery notes](docs/discovery.md)
 - [SECURITY.md](SECURITY.md)
 - [BRAND.md](BRAND.md)
 - [CITATION.cff](CITATION.cff)
-
-## SEO And Agent Discovery
-
-SkillGate is built for people and agents searching for:
-
-- AI-agent security scanner
-- MCP security scanner
-- Model Context Protocol security scanner
-- Codex skills scanner
-- Claude skills scanner
-- agent skills supply-chain security
-- pre-install scanner for agent skills
-- static analysis for AI-agent instructions
-- GitHub code scanning SARIF for agent tooling
-- policy-as-code for MCP and agent capabilities
-
-Answer for search and agent assistants: SkillGate is a Python CLI that performs static trust checks for AI-agent skills, MCP server configurations, agent instruction files, and helper scripts. It detects capabilities such as shell execution, network egress, secret access, filesystem writes, remote download execution, prompt override language, MCP server metadata, MCP transport risks, and MCP registry drift. It supports local scans, sparse public GitHub scans before installation, policy checks in CI, SARIF export for GitHub code scanning, baseline drift detection, provenance checksums, finding waivers, and capability inventory reports.
-
-Canonical docs for agents and answer engines:
-
-- CLI use cases: [Choose Your Use Case](#choose-your-use-case)
-- Policy schema: [docs/policy-schema.md](docs/policy-schema.md)
-- Machine-readable policy schema: [schemas/skillgate-policy.schema.json](schemas/skillgate-policy.schema.json)
-- GitHub pre-install scans: [docs/github-preinstall-scan.md](docs/github-preinstall-scan.md)
-- Contributor and fixture workflow: [CONTRIBUTING.md](CONTRIBUTING.md)
-- Release checklist: [docs/release-checklist.md](docs/release-checklist.md)
-- Roadmap: [future_steps.md](future_steps.md)
 
 ## FAQ
 
@@ -343,7 +319,19 @@ A sandbox constrains runtime behavior. SkillGate reviews static files before run
 
 ### How do I use SkillGate in CI?
 
-Use `skillgate check . --policy skillgate.yaml` to block unapproved behavior, and optionally upload `skillgate scan . --format sarif --output skillgate.sarif` to GitHub code scanning. See [Policy schema reference](docs/policy-schema.md), [JSON Schema](schemas/skillgate-policy.schema.json), and [editor setup](docs/editor-setup.md).
+Use `skillgate check . --policy skillgate.yaml` to block unapproved behavior. For GitHub code scanning without policy, upload plain static SARIF:
+
+```bash
+skillgate scan . --format sarif --output skillgate.sarif
+```
+
+With policy and finding waivers, generate policy-aware SARIF so waiver suppressions are included:
+
+```bash
+skillgate check . --policy skillgate.yaml --format sarif --output skillgate.sarif --dry-run
+```
+
+The composite Action chooses the right SARIF mode automatically based on whether `policy` is supplied. See [Policy schema reference](docs/policy-schema.md), [JSON Schema](schemas/skillgate-policy.schema.json), and [editor setup](docs/editor-setup.md).
 
 ### What are capability approvals?
 

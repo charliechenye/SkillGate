@@ -3,13 +3,13 @@ requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "skillgate"
+name = "openevalgate-skillgate"
 version = "0.1.0"
 description = "Pre-merge and pre-install trust checks for AI-agent skills and MCP configurations. Scan capabilities, detect risky changes, and block unapproved agent behavior in CI."
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
-authors = [{name = "OpenEvalGate"}]
+authors = [{name = "Chenye Zhu"}]
 keywords = [
   "ai-agent-security",
   "ai-agent-scanner",

@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import hashlib
-import json
 from typing import Literal
 
+from skillgate.identity import finding_fingerprint, normalized_path
 from skillgate.models import Finding, PolicyResult, ScanReport
 from skillgate.rule_docs import RULE_DOCS
 
@@ -71,25 +70,6 @@ def sarif_run_category(category: SarifRunCategory | str = "local_repository") ->
     return SARIF_RUN_CATEGORIES.get(category, category)
 
 
-def normalized_path(path: str) -> str:
-    return path.replace("\\", "/")
-
-
-def finding_fingerprint(finding: Finding) -> str:
-    payload = {
-        "capability": finding.capability,
-        "description": finding.description,
-        "evidence": finding.evidence,
-        "file_path": normalized_path(finding.file_path),
-        "remediation": finding.remediation,
-        "rule_id": finding.rule_id,
-        "severity": finding.severity,
-        "title": finding.title,
-    }
-    data = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    return hashlib.sha256(data).hexdigest()
-
-
 def sarif_report(
     report: ScanReport,
     category: SarifRunCategory | str = "local_repository",
@@ -149,14 +129,14 @@ def sarif_report(
             "driver": {
                 "name": "SkillGate",
                 "semanticVersion": report.tool_version,
-                "informationUri": "https://github.com/OpenEvalGate/skillgate",
+                "informationUri": "https://github.com/charliechenye/SkillGate",
                 "rules": rules,
             }
         },
         "taxonomies": [
             {
                 "name": "SkillGate capabilities",
-                "organization": "OpenEvalGate",
+                "organization": "Chenye Zhu / SkillGate",
                 "taxa": capability_taxa(),
             }
         ],
@@ -179,8 +159,9 @@ def sarif_report(
 
 def result_suppressions(finding: Finding, policy_result: PolicyResult) -> list[dict[str, object]]:
     suppressions = []
+    fingerprint = finding_fingerprint(finding)
     for item in policy_result.waived_violations:
-        if item.get("finding_id") != finding.id:
+        if item.get("finding_id") != finding.id and item.get("fingerprint") != fingerprint:
             continue
         waiver = item.get("waiver")
         if not isinstance(waiver, dict):

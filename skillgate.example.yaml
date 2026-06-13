@@ -41,8 +41,18 @@ policy:
     require_review_on_change: true
 
   waivers:
+    # Prefer finding.fingerprint for production waivers. Broad selectors are
+    # for controlled fixtures or exceptional review workflows only.
     allow_broad_selectors: false
-    entries: []
+    entries:
+      # - id: reviewed-installer-2026-01
+      #   owner: security@example.com
+      #   reason: Reviewed pinned installer script before migration.
+      #   created_on: 2026-01-01
+      #   expires_on: 2026-02-01
+      #   ticket: SEC-123
+      #   finding:
+      #     fingerprint: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
 
   risk_threshold:
     block: high

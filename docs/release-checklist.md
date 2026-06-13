@@ -1,8 +1,8 @@
 # SkillGate Release Checklist
 
-Use this checklist for the first public `v0.1.0` GitHub release and later
-maintenance releases. Run commands from a clean main branch unless a step says
-otherwise.
+Use this checklist for maintaining the published `v0.1.0` GitHub release and
+for later maintenance releases. Run commands from a clean `main` branch unless a
+step says otherwise.
 
 ## What Assistant Cannot Do For You
 
@@ -28,11 +28,13 @@ Confirm release notes and planning state:
 
 ```powershell
 Select-String -Path CHANGELOG.md -Pattern "## 0.1.0 - Initial public release"
-Select-String -Path CHANGELOG.md -Pattern "## Unreleased"
 Select-String -Path future_steps.md -Pattern "Operational Launch Checklist"
 ```
 
-`CHANGELOG.md` should not contain an `Unreleased` section for this release.
+For the published `v0.1.0` release, `CHANGELOG.md` should keep the
+`## 0.1.0 - Initial public release` heading. Future development can use an
+`Unreleased` section above it, but do not mix pending-release wording into the
+published `0.1.0` notes.
 
 ## 2. Tests And Static Checks
 
@@ -41,6 +43,7 @@ python -m pytest
 python -m ruff check .
 python -m ruff format --check .
 python tools\update_snapshots.py --check
+python tools\validate_social_preview.py
 ```
 
 If snapshot output changed intentionally, review the artifacts and then run:
@@ -86,17 +89,39 @@ Create a disposable virtual environment and install the wheel:
 ```powershell
 python -m venv .venv-release
 .\.venv-release\Scripts\python -m pip install --upgrade pip
-.\.venv-release\Scripts\python -m pip install dist\skillgate-0.1.0-py3-none-any.whl
+.\.venv-release\Scripts\python -m pip install dist\openevalgate_skillgate-0.1.0-py3-none-any.whl
 .\.venv-release\Scripts\skillgate rules list
 ```
 
 Delete `.venv-release` after the smoke test if you do not want to keep it.
 
-## 6. Create GitHub Tags
+## 6. Replace Or Create GitHub Tags
 
-Create the immutable release tag:
+The `v0.1.0` release and `v0` Action tag are already published. For a normal
+future release, create a new tag instead of replacing `v0.1.0`. Only replace
+`v0.1.0` when intentionally correcting the first release.
+
+Before replacing tags, make sure the repository default branch is `main`. If the
+branch has not been migrated yet:
 
 ```powershell
+git branch -m master main
+git push origin main
+```
+
+Then change the default branch to `main` in GitHub repository settings. Only
+after that succeeds, optionally delete the old remote branch:
+
+```powershell
+git push origin --delete master
+```
+
+For a replacement of the first release, delete and recreate the release tag:
+
+```powershell
+gh release delete v0.1.0 --yes
+git tag -d v0.1.0 v0
+git push origin :refs/tags/v0.1.0 :refs/tags/v0
 git tag -a v0.1.0 -m "SkillGate v0.1.0"
 git push origin v0.1.0
 ```
@@ -152,7 +177,7 @@ python -m twine upload dist\*
 If you use TestPyPI first, upload to TestPyPI, install from TestPyPI in a clean
 environment, and rebuild clean artifacts before the production PyPI upload. Once
 PyPI publication is complete, update the README so `python -m pip install
-skillgate` is the first install path.
+openevalgate-skillgate` is the first install path.
 
 ## 10. Post-Release Verification
 
@@ -162,4 +187,4 @@ Also verify:
 - README Action examples use `charliechenye/SkillGate@v0`.
 - README install instructions lead with a GitHub-tag install.
 - The social preview renders correctly on GitHub.
-- Repository description and topics match the README SEO and FAQ language.
+- Repository description and topics match the README FAQ and discovery notes.

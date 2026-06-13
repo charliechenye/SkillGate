@@ -47,6 +47,8 @@ AI-agent skills, instruction files, helper scripts, and MCP configurations.
 - Added text, JSON, and SARIF 2.1.0 output with deterministic ordering.
 - Added SARIF capability tags, result metadata, and capability taxa for easier GitHub code scanning filtering.
 - Added stable SARIF alert fingerprints and run categories for local repository scans, remote GitHub scans, MCP registry comparisons, and future MCP bundle scans.
+- Added shared stable finding fingerprints for SARIF, JSON output, and reviewable finding waivers.
+- Added exact validation and matching for fingerprint-based finding waivers.
 - Added capability inventory output with trust-boundary summaries for local execution, remote endpoints, secrets, generated files, MCP servers, prompt controls, and obfuscation.
 - Added inventory filters for capability type, severity, and source file globs.
 
@@ -65,6 +67,8 @@ AI-agent skills, instruction files, helper scripts, and MCP configurations.
 - Added README SEO and agent-answer discovery material plus expanded package keywords for AI-agent security, MCP security, agent-skill scanning, and GitHub code-scanning searches.
 - Added a README FAQ for discovery queries and reflowed README prose so raw Markdown is easier to read.
 - Added release-ready GitHub tag install and GitHub Action guidance, including the stable `v0` Action tag, commit-SHA pinning guidance, a deferred PyPI path, and a maintainer release checklist.
+- Added release trust fixes for the GitHub-first `v0.1.0` release, including the noncolliding `openevalgate-skillgate` distribution name, canonical repository metadata, explicit Action policy behavior, and bounded remote reads.
+- Added release polish for policy-aware SARIF Action ordering, published-release roadmap state, and safer waiver guidance.
 - Added documentation for interpreting `SG013` MCP registry drift and deciding when mismatch is expected.
 - Added contributor guidance for non-benchmark comparison fixtures such as local registry drift examples.
 - Added the repository social preview image as a sanitized visual asset.

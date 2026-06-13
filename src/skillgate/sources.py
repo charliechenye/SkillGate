@@ -21,6 +21,7 @@ from skillgate.models import SCHEMA_VERSION
 GITHUB_API = "https://api.github.com"
 GITHUB_RAW = "https://raw.githubusercontent.com"
 GIT_SHA_RE = re.compile(r"^[0-9a-fA-F]{40}$")
+GITHUB_JSON_MAX_BYTES = 10_485_760
 
 
 class SourceError(RuntimeError):
@@ -151,6 +152,26 @@ def urlopen_limited(
     return opener.open(request, timeout=timeout)
 
 
+def response_content_length(response: Any) -> int | None:
+    value = response.headers.get("Content-Length") if hasattr(response, "headers") else None
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def read_response_bounded(response: Any, *, max_bytes: int, description: str, url: str) -> bytes:
+    length = response_content_length(response)
+    if length is not None and length > max_bytes:
+        raise SourceError(f"{description} exceeded maximum response size: {url}")
+    data = response.read(max_bytes + 1)
+    if len(data) > max_bytes:
+        raise SourceError(f"{description} exceeded maximum response size: {url}")
+    return data
+
+
 def request_json(
     url: str,
     timeout: int = 30,
@@ -159,7 +180,13 @@ def request_json(
     request = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json"})
     try:
         with urlopen_limited(request, timeout=timeout, redirect_limit=redirect_limit) as response:
-            return json.loads(response.read().decode("utf-8"))
+            data = read_response_bounded(
+                response,
+                max_bytes=GITHUB_JSON_MAX_BYTES,
+                description="GitHub API response",
+                url=url,
+            )
+            return json.loads(data.decode("utf-8"))
     except SourceError:
         raise
     except urllib.error.HTTPError as exc:
@@ -172,11 +199,20 @@ def request_text(
     url: str,
     timeout: int = 30,
     redirect_limit: int = 3,
+    max_bytes: int | None = None,
 ) -> str:
     request = urllib.request.Request(url, headers={"Accept": "text/plain"})
     try:
         with urlopen_limited(request, timeout=timeout, redirect_limit=redirect_limit) as response:
-            return response.read().decode("utf-8", errors="replace")
+            if max_bytes is None:
+                return response.read().decode("utf-8", errors="replace")
+            data = read_response_bounded(
+                response,
+                max_bytes=max_bytes,
+                description="GitHub file response",
+                url=url,
+            )
+            return data.decode("utf-8", errors="replace")
     except SourceError:
         raise
     except urllib.error.HTTPError as exc:
@@ -457,9 +493,15 @@ def fetch_text_with_limits(
             raw_url(repo, commit_sha, remote_path),
             timeout=limits.request_timeout,
             redirect_limit=limits.redirect_limit,
+            max_bytes=limits.max_file_bytes,
         )
     except SourceError as exc:
-        add_skipped(manifest, remote_path, "download_failed")
+        reason = (
+            "max_file_bytes_exceeded"
+            if "exceeded maximum response size" in str(exc)
+            else "download_failed"
+        )
+        add_skipped(manifest, remote_path, reason)
         raise SourceError(
             f"Remote scan incomplete: failed to download {remote_path}: {exc}", manifest
         ) from exc
