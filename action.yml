@@ -16,6 +16,10 @@ inputs:
     description: Optional baseline lockfile path for diff checks.
     required: false
     default: ""
+  fail-on-drift:
+    description: Exit nonzero when baseline drift is detected without requiring a policy file.
+    required: false
+    default: "false"
   provenance:
     description: Optional provenance manifest path for policy and baseline checksum verification.
     required: false
@@ -47,9 +51,13 @@ runs:
       shell: bash
       run: skillgate diff "${{ inputs.path }}" --baseline "${{ inputs.baseline }}" --policy "${{ inputs.policy }}"
     - name: Run SkillGate baseline diff without policy
-      if: ${{ inputs.baseline != '' && inputs.policy == '' }}
+      if: ${{ inputs.baseline != '' && inputs.policy == '' && inputs.fail-on-drift != 'true' }}
       shell: bash
       run: skillgate diff "${{ inputs.path }}" --baseline "${{ inputs.baseline }}"
+    - name: Run blocking SkillGate baseline diff without policy
+      if: ${{ inputs.baseline != '' && inputs.policy == '' && inputs.fail-on-drift == 'true' }}
+      shell: bash
+      run: skillgate diff "${{ inputs.path }}" --baseline "${{ inputs.baseline }}" --fail-on-drift
     - name: Generate policy-aware SARIF
       if: ${{ always() && inputs.sarif-output != '' && inputs.policy != '' }}
       shell: bash

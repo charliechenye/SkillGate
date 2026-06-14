@@ -13,6 +13,28 @@ SkillGate is a local-first static trust gate for AI-agent skills, instruction fi
 
 SkillGate does not execute repository code, start MCP servers, call LLMs, or install remote packages. It scans files, reports capabilities and findings, and lets teams block unapproved behavior with policy-as-code.
 
+## 30-Second Demo
+
+Scan a public agent-skill repository before installing it:
+
+```bash
+python -m pip install "git+https://github.com/charliechenye/SkillGate.git@v0.1.0"
+skillgate github scan https://github.com/addyosmani/agent-skills/tree/main/skills --fail-on high
+```
+
+Scan the current repository locally:
+
+```bash
+skillgate scan .
+```
+
+Generate a starter policy when you are ready to block unapproved behavior:
+
+```bash
+skillgate policy init --profile strict --output skillgate.yaml
+skillgate check . --policy skillgate.yaml
+```
+
 ## Choose Your Use Case
 
 | Use case | Start here | What you get |
@@ -50,7 +72,12 @@ Resolve the exact commit SHA with:
 
 ```bash
 git ls-remote https://github.com/charliechenye/SkillGate.git refs/tags/v0.1.0
+git ls-remote https://github.com/charliechenye/SkillGate.git refs/tags/v0
 ```
+
+`v0.1.0` is the release tag. `v0` is the moving compatibility tag for compatible
+`0.x` Action releases. Teams that require maximum reproducibility should pin the
+full commit SHA in install commands and GitHub Action references.
 
 GitHub installs require Python 3.11 or newer and `git` on the customer machine. After a later PyPI publication, the short install path will be:
 
@@ -141,10 +168,16 @@ Use baselines when you want to approve the current capability set and catch futu
 ```bash
 skillgate baseline create . --output skillgate.lock
 skillgate diff . --baseline skillgate.lock
+skillgate diff . --baseline skillgate.lock --fail-on-drift
 skillgate diff . --baseline skillgate.lock --policy skillgate.yaml
 ```
 
-Baseline diffs produce `SG010` for MCP capability drift. Review expected MCP changes, then update the baseline. Do not disable drift review just to make CI green.
+Baseline diffs are advisory by default and exit `0` so reviewers can inspect
+drift before enforcing it. Add `--fail-on-drift` to block CI on any file,
+capability, or MCP drift without a full policy file. Add `--policy` when drift
+should be evaluated through policy rules such as `policy.mcp.require_review_on_change`.
+Baseline diffs produce `SG010` for MCP capability drift. Review expected MCP
+changes, then update the baseline. Do not disable drift review just to make CI green.
 
 Teams that want provenance for approved policy and baseline files can create a checksum manifest:
 
@@ -216,6 +249,8 @@ steps:
 ```
 
 Add `policy: skillgate.yaml` when the repository has a policy file and should block unapproved behavior. Without `policy`, the Action runs a nonblocking scan. When both `policy` and `sarif-output` are supplied, the Action uploads policy-aware SARIF with waiver suppressions.
+
+Copy-pasteable workflows: [Minimal GitHub Action examples](docs/examples/github-action-minimal.md).
 
 `charliechenye/SkillGate@v0` is the stable Action channel for compatible `0.x` releases. Teams that require immutable GitHub Action references should pin the Action to a full commit SHA, for example `charliechenye/SkillGate@FULL_COMMIT_SHA`, and update that SHA through their normal dependency review process.
 

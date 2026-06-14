@@ -21,7 +21,7 @@ from skillgate.mcp_registry import (
     registry_scan_text,
     scan_registry_path,
 )
-from skillgate.models import SEVERITY_ORDER, severity_at_or_above, stable_json
+from skillgate.models import SEVERITY_ORDER, DiffReport, severity_at_or_above, stable_json
 from skillgate.policy import evaluate_policy, load_policy
 from skillgate.policy_schema import POLICY_JSON_SCHEMA
 from skillgate.policy_templates import POLICY_PROFILES, policy_template_yaml
@@ -547,6 +547,10 @@ def diff(
     policy: Annotated[
         Path | None, typer.Option("--policy", help="Optional policy YAML file.")
     ] = None,
+    fail_on_drift: Annotated[
+        bool,
+        typer.Option("--fail-on-drift", help="Exit 1 when baseline drift is detected."),
+    ] = False,
     output_format: Annotated[str, typer.Option("--format", help="Output format.")] = "text",
 ) -> None:
     """Compare a repository against an approved baseline."""
@@ -571,3 +575,19 @@ def diff(
         console.file.write(content)
         raise typer.Exit(1 if result.blocked else 0)
     console.file.write(render_diff(report, output_format))
+    if fail_on_drift and baseline_drift_detected(report):
+        raise typer.Exit(1)
+
+
+def baseline_drift_detected(report: DiffReport) -> bool:
+    return any(
+        getattr(report, field)
+        for field in [
+            "added_files",
+            "removed_files",
+            "modified_files",
+            "added_capabilities",
+            "removed_capabilities",
+            "findings",
+        ]
+    )

@@ -21,12 +21,49 @@ workflow is widely usable.
 
 ## Priority 0: Post-Release Adoption
 
-### Complete Launch Follow-Through
+### Release State
 
 * Keep the published `v0.1.0` GitHub Release and stable `v0` Action tag
-  healthy as fixes are reviewed.
+  healthy as post-release polish is reviewed.
+* Treat `v0.1.0` as the immutable release tag and `v0` as the moving
+  compatibility tag for compatible `0.x` Action releases.
+* Keep release replacement guidance in `docs/release-checklist.md`; do not
+  treat publishing the first `v0.1.0` release as pending product work.
+
+### Tighten GitHub Action Adoption
+
+* Keep the composite Action install path verified through `github.action_path`.
+* Maintain explicit policy behavior:
+
+  * no `policy` means nonblocking scan
+  * supplied `policy` means blocking policy check
+  * supplied `policy` plus `sarif-output` means policy-aware SARIF
+
+* Maintain `fail-on-drift` so baseline drift can block CI without a full policy
+  file.
+* Maintain minimal copy-paste Action examples for:
+
+  * nonblocking scan with SARIF
+  * blocking policy check with policy-aware SARIF
+  * baseline drift blocking
+
+### Improve Release Verification
+
+* Document how users can verify `v0.1.0` and `v0` tags.
+* Encourage commit-SHA pinning for high-trust environments.
+* Confirm release install paths from a clean environment after each release.
 * Confirm GitHub-tag installation works with `pip`, `pipx`, and `uv`.
 * Defer PyPI publication until the GitHub-first release has customer feedback.
+
+### Explore Node-Ecosystem Distribution
+
+* Keep the Python scanner as the canonical implementation.
+* Explore a thin npm launcher so users can run `npx skillgate scan .`.
+* Do not maintain a second TypeScript scanner.
+* Prefer a verified platform-specific binary or another reproducible wrapper
+  strategy.
+* Avoid requiring Python, pip, pipx, or uv for npm users once the npm path
+  exists.
 
 ---
 
@@ -458,8 +495,8 @@ Track, but do not prioritize implementation until formats stabilize:
 Move one-time administrative tasks out of the product roadmap:
 
 * Confirm the social-preview image renders correctly on GitHub.
-* Confirm GitHub repository description and topics using the README SEO/AEO
-  keywords and FAQ search phrases as the source of truth.
+* Confirm GitHub repository description and topics using the discovery notes and
+  README FAQ search phrases as the source of truth.
 * Confirm the published `v0.1.0` release and stable `v0` Action tag point to
   the intended release commit.
 * Confirm GitHub-tag installation with `pip`, `pipx`, and `uv`.

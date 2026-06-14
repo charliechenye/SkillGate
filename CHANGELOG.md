@@ -64,11 +64,12 @@ AI-agent skills, instruction files, helper scripts, and MCP configurations.
 - Added a composite GitHub Action and example GitHub Actions workflow with SARIF upload and optional provenance verification support.
 - Added README documentation, policy schema reference, schema-aware editor setup snippets, GitHub pre-install scan docs, contributor workflow guidance, security policy, MIT license, citation metadata, and brand asset provenance.
 - Restructured the README around supported use cases, clearer getting-started paths, and direct links to policy, schema, GitHub scan, SARIF, MCP, and contributor documentation.
-- Added README SEO and agent-answer discovery material plus expanded package keywords for AI-agent security, MCP security, agent-skill scanning, and GitHub code-scanning searches.
+- Added discovery and agent-answer documentation plus expanded package keywords for AI-agent security, MCP security, agent-skill scanning, and GitHub code-scanning searches.
 - Added a README FAQ for discovery queries and reflowed README prose so raw Markdown is easier to read.
 - Added release-ready GitHub tag install and GitHub Action guidance, including the stable `v0` Action tag, commit-SHA pinning guidance, a deferred PyPI path, and a maintainer release checklist.
 - Added release trust fixes for the GitHub-first `v0.1.0` release, including the noncolliding `openevalgate-skillgate` distribution name, canonical repository metadata, explicit Action policy behavior, and bounded remote reads.
 - Added release polish for policy-aware SARIF Action ordering, published-release roadmap state, and safer waiver guidance.
+- Added baseline drift blocking with `skillgate diff --fail-on-drift`, a matching composite Action input, minimal GitHub Action examples, release tag verification guidance, and Dependabot configuration.
 - Added documentation for interpreting `SG013` MCP registry drift and deciding when mismatch is expected.
 - Added contributor guidance for non-benchmark comparison fixtures such as local registry drift examples.
 - Added the repository social preview image as a sanitized visual asset.

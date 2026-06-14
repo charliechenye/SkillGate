@@ -1812,7 +1812,11 @@ def test_release_notes_keep_current_changes_under_010() -> None:
     assert "## Unreleased" not in changelog
     assert "## 0.4.0" not in changelog
     assert "## 0.1.0 - Initial public release" in changelog
+    assert "README SEO" not in changelog
+    assert "skillgate diff --fail-on-drift" in changelog
     assert "Publish the first tagged GitHub release as `v0.1.0`" not in future_steps
+    assert "Maintain `fail-on-drift`" in future_steps
+    assert "Explore Node-Ecosystem Distribution" in future_steps
     assert "already published" in release_checklist
 
 
@@ -1821,10 +1825,23 @@ def test_action_uses_action_path_and_explicit_policy_behavior() -> None:
     action = yaml.safe_load((ROOT / "action.yml").read_text(encoding="utf-8"))
     assert "python -m pip install ." not in action_text
     assert action["inputs"]["policy"]["default"] == ""
+    assert action["inputs"]["fail-on-drift"]["default"] == "false"
     steps = {step["name"]: step for step in action["runs"]["steps"]}
     assert steps["Install SkillGate"]["run"] == 'python -m pip install "${{ github.action_path }}"'
     assert steps["Run SkillGate policy check"]["if"] == "${{ inputs.policy != '' }}"
     assert steps["Run SkillGate scan"]["if"] == "${{ inputs.policy == '' }}"
+    assert steps["Run SkillGate baseline diff without policy"]["if"] == (
+        "${{ inputs.baseline != '' && inputs.policy == '' && inputs.fail-on-drift != 'true' }}"
+    )
+    assert steps["Run SkillGate baseline diff without policy"]["run"] == (
+        'skillgate diff "${{ inputs.path }}" --baseline "${{ inputs.baseline }}"'
+    )
+    assert steps["Run blocking SkillGate baseline diff without policy"]["if"] == (
+        "${{ inputs.baseline != '' && inputs.policy == '' && inputs.fail-on-drift == 'true' }}"
+    )
+    assert steps["Run blocking SkillGate baseline diff without policy"]["run"] == (
+        'skillgate diff "${{ inputs.path }}" --baseline "${{ inputs.baseline }}" --fail-on-drift'
+    )
     assert steps["Generate policy-aware SARIF"]["if"] == (
         "${{ always() && inputs.sarif-output != '' && inputs.policy != '' }}"
     )
@@ -1844,11 +1861,26 @@ def test_docs_are_main_branch_and_discovery_friendly() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "skillgate.yml").read_text())
     discovery = (ROOT / "docs" / "discovery.md").read_text(encoding="utf-8")
+    action_examples = (ROOT / "docs" / "examples" / "github-action-minimal.md").read_text(
+        encoding="utf-8"
+    )
+    dependabot = yaml.safe_load((ROOT / ".github" / "dependabot.yml").read_text())
     assert "branch=main" in readme
+    assert "## 30-Second Demo" in readme
+    assert "docs/examples/github-action-minimal.md" in readme
+    assert "refs/tags/v0.1.0" in readme
+    assert "refs/tags/v0" in readme
+    assert "--fail-on-drift" in readme
     assert "## SEO And Agent Discovery" not in readme
     assert "openevalgate-skillgate" in readme
     assert "policy-aware SARIF" in readme
     assert "AI-agent security scanner" in discovery
+    assert 'fail-on-drift: "true"' in action_examples
+    assert "github/codeql-action/upload-sarif@v4" in action_examples
+    assert dependabot["version"] == 2
+    assert {
+        item["package-ecosystem"]: item["schedule"]["interval"] for item in dependabot["updates"]
+    } == {"github-actions": "weekly", "pip": "weekly"}
     workflow_triggers = workflow.get("on") or workflow.get(True)
     assert workflow_triggers["push"]["branches"] == ["main"]
 
@@ -2153,6 +2185,30 @@ def test_cli_baseline_and_diff() -> None:
     )
     assert diff.exit_code == 0
     assert "SG010" in diff.output
+    blocking_diff = runner.invoke(
+        app,
+        [
+            "diff",
+            str(FIXTURES / "12-mcp-capability-drift-after"),
+            "--baseline",
+            str(lock),
+            "--fail-on-drift",
+        ],
+    )
+    assert blocking_diff.exit_code == 1
+    assert "SG010" in blocking_diff.output
+    clean_diff = runner.invoke(
+        app,
+        [
+            "diff",
+            str(FIXTURES / "11-mcp-capability-drift-before"),
+            "--baseline",
+            str(lock),
+            "--fail-on-drift",
+        ],
+    )
+    assert clean_diff.exit_code == 0
+    assert "Findings: 0" in clean_diff.output
     policy_diff = runner.invoke(
         app,
         [
