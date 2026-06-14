@@ -19,6 +19,31 @@ from skillgate.models import (
     ScanReport,
     severity_at_or_above,
 )
+from skillgate.policy_waivers import (
+    FINDING_WAIVER_SELECTOR_KEYS as FINDING_WAIVER_SELECTOR_KEYS,
+)
+from skillgate.policy_waivers import (
+    FINGERPRINT_RE as FINGERPRINT_RE,
+)
+from skillgate.policy_waivers import (
+    NARROW_FINDING_SELECTOR_KEYS as NARROW_FINDING_SELECTOR_KEYS,
+)
+from skillgate.policy_waivers import (
+    finding_matches_waiver as finding_matches_waiver,
+)
+from skillgate.policy_waivers import (
+    finding_value as finding_value,
+)
+from skillgate.policy_waivers import (
+    is_broad_selector,
+    matching_waiver_for_violation,
+    policy_waiver_entries,
+    waiver_expires_on,
+    waiver_summary,
+)
+from skillgate.policy_waivers import (
+    waiver_selector_label as waiver_selector_label,
+)
 
 NETWORK_CATEGORIES = {
     "source_control",
@@ -78,7 +103,6 @@ NETWORK_GROUP_BY_CATEGORY = {
 CLOUD_SECRET_RE = re.compile(
     r"(?i)(AWS_|AZURE_|GOOGLE_|GCP_|OPENAI_|ANTHROPIC_|CLOUD_|API_KEY|SERVICE_ACCOUNT)"
 )
-FINGERPRINT_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 REMOTE_HTTP_TRANSPORTS = {"http", "sse", "streamable-http", "websocket"}
 
 
@@ -224,29 +248,6 @@ def sequence_item_node(node: Node | None, index: int) -> Node | None:
     if isinstance(node, SequenceNode) and index < len(node.value):
         return node.value[index]
     return node
-
-
-FINDING_WAIVER_SELECTOR_KEYS = {
-    "id",
-    "rule_id",
-    "capability",
-    "file_path",
-    "title",
-    "evidence",
-    "fingerprint",
-}
-NARROW_FINDING_SELECTOR_KEYS = {"id", "file_path", "title", "evidence", "fingerprint"}
-
-
-def is_broad_selector(selector: dict[str, object]) -> bool:
-    string_values = [value for value in selector.values() if isinstance(value, str)]
-    if not selector or any(value.strip() in {"", "*", "**"} for value in string_values):
-        return True
-    if "id" in selector or "fingerprint" in selector:
-        return False
-    if len(selector) < 2:
-        return True
-    return not bool(NARROW_FINDING_SELECTOR_KEYS & set(selector))
 
 
 def validate_waivers(
@@ -746,87 +747,6 @@ def secret_suggestion(capability: Capability) -> dict[str, Any] | None:
         return {"policy": {"secrets": {"env": {"allow": [capability.resource]}}}}
     group = group_suggestion_for_capability(capability)
     return suggested_capability_group(group) if group else None
-
-
-def policy_waiver_entries(policy: dict[str, Any]) -> list[dict[str, Any]]:
-    waivers = policy.get("waivers")
-    if not isinstance(waivers, dict):
-        return []
-    entries = waivers.get("entries")
-    if not isinstance(entries, list):
-        return []
-    return [entry for entry in entries if isinstance(entry, dict)]
-
-
-def waiver_selector_label(entry: dict[str, Any]) -> str:
-    waiver_id = entry.get("id")
-    if isinstance(waiver_id, str) and waiver_id:
-        return waiver_id
-    finding = entry.get("finding")
-    if isinstance(finding, dict):
-        return ", ".join(f"{key}={finding[key]}" for key in sorted(finding))
-    return "<unknown waiver>"
-
-
-def waiver_summary(entry: dict[str, Any]) -> dict[str, Any]:
-    summary = {
-        "id": entry.get("id"),
-        "owner": entry.get("owner"),
-        "reason": entry.get("reason"),
-        "created_on": entry.get("created_on"),
-        "expires_on": entry.get("expires_on"),
-        "ticket": entry.get("ticket"),
-        "finding": entry.get("finding"),
-        "selector": waiver_selector_label(entry),
-    }
-    return {key: value for key, value in summary.items() if value is not None}
-
-
-def waiver_expires_on(entry: dict[str, Any]) -> date:
-    value = entry.get("expires_on")
-    return date.fromisoformat(value) if isinstance(value, str) else date.min
-
-
-def finding_value(finding: Finding, key: str) -> str | None:
-    if key == "fingerprint":
-        return finding_fingerprint(finding)
-    value = getattr(finding, key)
-    return value if isinstance(value, str) else None
-
-
-def finding_matches_waiver(finding: Finding, entry: dict[str, Any]) -> bool:
-    selector = entry.get("finding")
-    if not isinstance(selector, dict):
-        return False
-    for key, pattern in selector.items():
-        if not isinstance(pattern, str):
-            return False
-        value = finding_value(finding, key)
-        if value is None:
-            return False
-        if key == "fingerprint":
-            if pattern != value:
-                return False
-            continue
-        if not fnmatch.fnmatch(value, pattern):
-            return False
-    return True
-
-
-def matching_waiver_for_violation(
-    item: PolicyViolation,
-    findings_by_id: dict[str, Finding],
-    active_waivers: list[dict[str, Any]],
-) -> dict[str, Any] | None:
-    if item.finding_id is None:
-        return None
-    finding = findings_by_id.get(item.finding_id)
-    if finding is None:
-        return None
-    for waiver in active_waivers:
-        if finding_matches_waiver(finding, waiver):
-            return waiver_summary(waiver)
-    return None
 
 
 def violation(

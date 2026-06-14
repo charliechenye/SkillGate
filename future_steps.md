@@ -50,6 +50,13 @@ workflow is widely usable.
 * Keep example workflows complete, including SARIF generation and explicit
   `github/codeql-action/upload-sarif` upload steps.
 
+### Maintain Developer Ergonomics
+
+* Keep regression tests split by subsystem so future work can load focused
+  context instead of the full suite.
+* Prefer small private helper modules for dense policy and MCP internals when
+  the boundary is already clear and behavior remains unchanged.
+
 ### Improve Release Verification
 
 * Document how users can verify `v0.1.0` and `v0` tags.

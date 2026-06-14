@@ -74,6 +74,7 @@ AI-agent skills, instruction files, helper scripts, and MCP configurations.
 - Added documentation for interpreting `SG013` MCP registry drift and deciding when mismatch is expected.
 - Added contributor guidance for non-benchmark comparison fixtures such as local registry drift examples.
 - Added the repository social preview image as a sanitized visual asset.
+- Split the monolithic regression test module into focused test files and extracted policy waiver helpers without changing public behavior.
 
 ### Changed
 
