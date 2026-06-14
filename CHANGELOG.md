@@ -70,6 +70,7 @@ AI-agent skills, instruction files, helper scripts, and MCP configurations.
 - Added release trust fixes for the GitHub-first `v0.1.0` release, including the noncolliding `openevalgate-skillgate` distribution name, canonical repository metadata, explicit Action policy behavior, and bounded remote reads.
 - Added release polish for policy-aware SARIF Action ordering, published-release roadmap state, and safer waiver guidance.
 - Added baseline drift blocking with `skillgate diff --fail-on-drift`, a matching composite Action input, minimal GitHub Action examples, release tag verification guidance, and Dependabot configuration.
+- Expanded release-polish regression coverage for baseline drift blocking, exact fingerprint waivers, composite Action behavior, and complete SARIF upload examples.
 - Added documentation for interpreting `SG013` MCP registry drift and deciding when mismatch is expected.
 - Added contributor guidance for non-benchmark comparison fixtures such as local registry drift examples.
 - Added the repository social preview image as a sanitized visual asset.

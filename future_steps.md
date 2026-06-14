@@ -47,6 +47,9 @@ workflow is widely usable.
   * blocking policy check with policy-aware SARIF
   * baseline drift blocking
 
+* Keep example workflows complete, including SARIF generation and explicit
+  `github/codeql-action/upload-sarif` upload steps.
+
 ### Improve Release Verification
 
 * Document how users can verify `v0.1.0` and `v0` tags.

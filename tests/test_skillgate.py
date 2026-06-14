@@ -877,6 +877,36 @@ def test_invalid_policy_threshold_reports_line_and_column() -> None:
             ),
             FINGERPRINT_ERROR,
         ),
+        (
+            "bad-waiver-fingerprint-short",
+            (
+                "version: 1\npolicy:\n  waivers:\n    entries:\n"
+                "      - owner: sec\n        reason: reviewed\n"
+                "        created_on: 2026-01-01\n        expires_on: 2026-02-01\n"
+                "        finding:\n          fingerprint: 'sha256:abc123'\n"
+            ),
+            FINGERPRINT_ERROR,
+        ),
+        (
+            "bad-waiver-fingerprint-invalid-hex",
+            (
+                "version: 1\npolicy:\n  waivers:\n    entries:\n"
+                "      - owner: sec\n        reason: reviewed\n"
+                "        created_on: 2026-01-01\n        expires_on: 2026-02-01\n"
+                f"        finding:\n          fingerprint: 'sha256:{'g' * 64}'\n"
+            ),
+            FINGERPRINT_ERROR,
+        ),
+        (
+            "bad-waiver-fingerprint-uppercase-prefix",
+            (
+                "version: 1\npolicy:\n  waivers:\n    entries:\n"
+                "      - owner: sec\n        reason: reviewed\n"
+                "        created_on: 2026-01-01\n        expires_on: 2026-02-01\n"
+                f"        finding:\n          fingerprint: 'SHA256:{'a' * 64}'\n"
+            ),
+            FINGERPRINT_ERROR,
+        ),
     ],
 )
 def test_policy_schema_validation_reports_line_and_column(
@@ -947,9 +977,12 @@ def test_policy_fingerprint_waiver_survives_line_shift_but_not_evidence_change()
         },
     }
 
+    exact_result = evaluate_policy(report.model_copy(update={"findings": [finding]}), policy)
     shifted_result = evaluate_policy(report.model_copy(update={"findings": [shifted]}), policy)
     changed_result = evaluate_policy(report.model_copy(update={"findings": [changed]}), policy)
 
+    assert not exact_result.blocked
+    assert exact_result.waived_violations[0]["fingerprint"] == finding_fingerprint(finding)
     assert not shifted_result.blocked
     assert shifted_result.waived_violations[0]["fingerprint"] == finding_fingerprint(finding)
     assert changed_result.blocked
@@ -1842,6 +1875,7 @@ def test_action_uses_action_path_and_explicit_policy_behavior() -> None:
     assert steps["Run blocking SkillGate baseline diff without policy"]["run"] == (
         'skillgate diff "${{ inputs.path }}" --baseline "${{ inputs.baseline }}" --fail-on-drift'
     )
+    assert action_text.count("--fail-on-drift") == 1
     assert steps["Generate policy-aware SARIF"]["if"] == (
         "${{ always() && inputs.sarif-output != '' && inputs.policy != '' }}"
     )
@@ -1875,8 +1909,15 @@ def test_docs_are_main_branch_and_discovery_friendly() -> None:
     assert "openevalgate-skillgate" in readme
     assert "policy-aware SARIF" in readme
     assert "AI-agent security scanner" in discovery
+    assert "SkillGate generates SARIF" in action_examples
+    assert "GitHub's upload action" in action_examples
+    assert "uploads that SARIF file" in action_examples
+    assert action_examples.count("name: SkillGate") == 3
+    assert action_examples.count("security-events: write") == 3
+    assert action_examples.count("sarif-output: skillgate.sarif") == 3
+    assert action_examples.count("github/codeql-action/upload-sarif@v4") == 3
+    assert action_examples.count("if: always()") == 3
     assert 'fail-on-drift: "true"' in action_examples
-    assert "github/codeql-action/upload-sarif@v4" in action_examples
     assert dependabot["version"] == 2
     assert {
         item["package-ecosystem"]: item["schedule"]["interval"] for item in dependabot["updates"]

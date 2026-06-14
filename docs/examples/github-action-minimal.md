@@ -1,7 +1,9 @@
 # Minimal GitHub Action Examples
 
-These examples use the stable `charliechenye/SkillGate@v0` Action tag. Teams that
-require immutable Action references should pin a full commit SHA instead.
+These examples use the stable `charliechenye/SkillGate@v0` Action tag. Teams
+that require immutable Action references should pin a full commit SHA instead.
+SkillGate generates SARIF when `sarif-output` is supplied; GitHub's upload action
+uploads that SARIF file to code scanning.
 
 ## Nonblocking Scan With SARIF
 
@@ -99,6 +101,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      security-events: write
 
     steps:
       - uses: actions/checkout@v6
@@ -110,5 +113,11 @@ jobs:
         with:
           path: .
           baseline: skillgate.lock
+          sarif-output: skillgate.sarif
           fail-on-drift: "true"
+
+      - uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: skillgate.sarif
 ```
