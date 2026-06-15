@@ -71,6 +71,7 @@ AI-agent skills, instruction files, helper scripts, and MCP configurations.
 - Added release polish for policy-aware SARIF Action ordering, published-release roadmap state, and safer waiver guidance.
 - Added baseline drift blocking with `skillgate diff --fail-on-drift`, a matching composite Action input, minimal GitHub Action examples, release tag verification guidance, and Dependabot configuration.
 - Expanded release-polish regression coverage for baseline drift blocking, exact fingerprint waivers, composite Action behavior, and complete SARIF upload examples.
+- Modernized package license metadata to use SPDX-style `license` and `license-files` fields without deprecated license classifiers.
 - Added documentation for interpreting `SG013` MCP registry drift and deciding when mismatch is expected.
 - Added contributor guidance for non-benchmark comparison fixtures such as local registry drift examples.
 - Added the repository social preview image as a sanitized visual asset.

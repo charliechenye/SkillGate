@@ -194,6 +194,9 @@ def test_release_notes_keep_current_changes_under_010() -> None:
     assert pyproject["project"]["name"] == "openevalgate-skillgate"
     assert pyproject["project"]["authors"] == [{"name": "Chenye Zhu"}]
     assert pyproject["project"]["version"] == "0.1.0"
+    assert pyproject["project"]["license"] == "MIT"
+    assert pyproject["project"]["license-files"] == ["LICENSE"]
+    assert "License :: OSI Approved :: MIT License" not in pyproject["project"]["classifiers"]
     assert __version__ == "0.1.0"
     assert "## Unreleased" not in changelog
     assert "## 0.4.0" not in changelog
