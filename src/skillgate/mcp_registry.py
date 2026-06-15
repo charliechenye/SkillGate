@@ -572,6 +572,70 @@ def registry_scan_text(report: ScanReport) -> str:
     return "\n".join(lines) + "\n"
 
 
+def registry_drift_rows(report: ScanReport) -> list[dict[str, Any]]:
+    summary_rows = report.summary.get("registry_drift")
+    if isinstance(summary_rows, list):
+        return [row for row in summary_rows if isinstance(row, dict)]
+    rows = []
+    for capability in report.capabilities:
+        if capability.type != "mcp_registry_drift":
+            continue
+        rows.append(
+            {
+                "server": capability.details.get("server") or "",
+                "field": capability.details.get("field") or "",
+                "local": capability.details.get("local"),
+                "registry": capability.details.get("registry"),
+                "source_file": capability.source_file,
+                "registry_url": capability.details.get("registry_url") or "",
+            }
+        )
+    return rows
+
+
+def markdown_cell(value: object) -> str:
+    text = json.dumps(value, sort_keys=True) if isinstance(value, dict | list) else str(value)
+    text = " ".join(text.split())
+    if len(text) > 180:
+        text = text[:177] + "..."
+    return text.replace("|", "\\|")
+
+
+def registry_compare_markdown(report: ScanReport) -> str:
+    rows = registry_drift_rows(report)
+    lines = [
+        "# SkillGate MCP Registry Comparison",
+        "",
+        f"Findings: {len([finding for finding in report.findings if finding.rule_id == 'SG013'])}",
+        "",
+        "## Registry Drift",
+    ]
+    if not rows:
+        lines.append("None.")
+        return "\n".join(lines) + "\n"
+    lines.extend(
+        [
+            "| Field | Local | Registry | Source |",
+            "| --- | --- | --- | --- |",
+        ]
+    )
+    for row in rows:
+        source = f"{row.get('source_file')} via {row.get('registry_url')}"
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    markdown_cell(row.get("field")),
+                    markdown_cell(row.get("local")),
+                    markdown_cell(row.get("registry")),
+                    markdown_cell(source),
+                ]
+            )
+            + " |"
+        )
+    return "\n".join(lines) + "\n"
+
+
 def fetch_registry_index(url: str) -> dict[str, Any]:
     local_path = Path(url)
     if local_path.exists():
@@ -657,7 +721,18 @@ def compare_registry_metadata(
     report = scan_registry_path(path)
     findings = list(report.findings)
     capabilities = list(report.capabilities)
+    drift_rows = []
     for field, local_value, remote_value in compare_values(local, remote):
+        drift_rows.append(
+            {
+                "server": server_name,
+                "field": field,
+                "local": local_value,
+                "registry": remote_value,
+                "source_file": local.source_file,
+                "registry_url": registry_url,
+            }
+        )
         evidence = (
             f"{server_name} {field}: local={json.dumps(local_value, sort_keys=True)} "
             f"registry={json.dumps(remote_value, sort_keys=True)}"
@@ -694,6 +769,9 @@ def compare_registry_metadata(
         update={
             "findings": findings,
             "capabilities": capabilities,
-            "summary": findings_summary(findings, len(report.scanned_files), len(capabilities)),
+            "summary": {
+                **findings_summary(findings, len(report.scanned_files), len(capabilities)),
+                "registry_drift": drift_rows,
+            },
         }
     )

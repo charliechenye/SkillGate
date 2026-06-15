@@ -28,6 +28,18 @@ inputs:
     description: Optional SARIF output path.
     required: false
     default: ""
+  summary-output:
+    description: Optional Markdown review summary output path.
+    required: false
+    default: ""
+  json-output:
+    description: Optional machine-readable review JSON output path.
+    required: false
+    default: ""
+  step-summary:
+    description: Append the Markdown review summary to the GitHub Step Summary.
+    required: false
+    default: "false"
 runs:
   using: composite
   steps:
@@ -66,3 +78,28 @@ runs:
       if: ${{ always() && inputs.sarif-output != '' && inputs.policy == '' }}
       shell: bash
       run: skillgate scan "${{ inputs.path }}" --format sarif --output "${{ inputs.sarif-output }}"
+    - name: Generate SkillGate review summary
+      if: ${{ always() && (inputs.summary-output != '' || inputs.json-output != '' || inputs.step-summary == 'true') }}
+      shell: bash
+      run: |
+        summary_output="${{ inputs.summary-output }}"
+        if [ "$summary_output" = "" ]; then
+          summary_output="$RUNNER_TEMP/skillgate-summary.md"
+        fi
+        args=(review summary "${{ inputs.path }}" --output "$summary_output")
+        if [ "${{ inputs.baseline }}" != "" ]; then
+          args+=(--baseline "${{ inputs.baseline }}")
+        fi
+        if [ "${{ inputs.policy }}" != "" ]; then
+          args+=(--policy "${{ inputs.policy }}")
+        fi
+        if [ "${{ inputs.sarif-output }}" != "" ]; then
+          args+=(--sarif-artifact "${{ inputs.sarif-output }}")
+        fi
+        if [ "${{ inputs.json-output }}" != "" ]; then
+          args+=(--json-output "${{ inputs.json-output }}" --json-artifact "${{ inputs.json-output }}")
+        fi
+        skillgate "${args[@]}"
+        if [ "${{ inputs.step-summary }}" = "true" ]; then
+          cat "$summary_output" >> "$GITHUB_STEP_SUMMARY"
+        fi

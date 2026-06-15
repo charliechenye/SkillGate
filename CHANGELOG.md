@@ -1,5 +1,31 @@
 # Change Log
 
+## 0.1.1 - Pull-request review ergonomics (planned)
+
+`0.1.1` is planned and not yet published. Install examples should continue to
+use the stable `v0` compatibility tag until this release is published.
+
+### Added
+
+- Added `skillgate review summary` for reviewer-friendly Markdown and JSON
+  summaries of introduced capabilities, removed capabilities, changed trust
+  boundaries, high-risk findings, policy violations, active waivers, and
+  artifact locations.
+- Added optional composite Action inputs for Markdown review summaries,
+  machine-readable review JSON artifacts, and GitHub Step Summary output.
+- Added Markdown output for `skillgate mcp registry compare` so `SG013`
+  registry drift is easier to review through before-and-after tables.
+
+### Changed
+
+- Extended MCP registry comparison JSON summaries with structured
+  `registry_drift` rows for artifact-friendly review.
+- Updated GitHub Action examples to include review summaries, downloadable
+  review JSON artifacts, and standard artifact upload steps.
+- Added README release and product-attribute badges that showcase the latest
+  release, static analysis, no runtime execution, and policy-as-code without
+  surfacing early social-traction counters.
+
 ## 0.1.0 - Initial public release
 
 Initial public release of SkillGate, a deterministic static-analysis tool for

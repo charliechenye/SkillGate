@@ -193,13 +193,15 @@ def test_release_notes_keep_current_changes_under_010() -> None:
     release_checklist = (ROOT / "docs" / "release-checklist.md").read_text(encoding="utf-8")
     assert pyproject["project"]["name"] == "openevalgate-skillgate"
     assert pyproject["project"]["authors"] == [{"name": "Chenye Zhu"}]
-    assert pyproject["project"]["version"] == "0.1.0"
+    assert pyproject["project"]["version"] == "0.1.1"
     assert pyproject["project"]["license"] == "MIT"
     assert pyproject["project"]["license-files"] == ["LICENSE"]
     assert "License :: OSI Approved :: MIT License" not in pyproject["project"]["classifiers"]
-    assert __version__ == "0.1.0"
+    assert __version__ == "0.1.1"
     assert "## Unreleased" not in changelog
     assert "## 0.4.0" not in changelog
+    assert "## 0.1.1 - Pull-request review ergonomics (planned)" in changelog
+    assert "`0.1.1` is planned and not yet published" in changelog
     assert "## 0.1.0 - Initial public release" in changelog
     assert "README SEO" not in changelog
     assert "skillgate diff --fail-on-drift" in changelog
@@ -215,6 +217,9 @@ def test_action_uses_action_path_and_explicit_policy_behavior() -> None:
     assert "python -m pip install ." not in action_text
     assert action["inputs"]["policy"]["default"] == ""
     assert action["inputs"]["fail-on-drift"]["default"] == "false"
+    assert action["inputs"]["summary-output"]["default"] == ""
+    assert action["inputs"]["json-output"]["default"] == ""
+    assert action["inputs"]["step-summary"]["default"] == "false"
     steps = {step["name"]: step for step in action["runs"]["steps"]}
     assert steps["Install SkillGate"]["run"] == 'python -m pip install "${{ github.action_path }}"'
     assert steps["Run SkillGate policy check"]["if"] == "${{ inputs.policy != '' }}"
@@ -241,9 +246,19 @@ def test_action_uses_action_path_and_explicit_policy_behavior() -> None:
     assert steps["Generate SARIF"]["if"] == (
         "${{ always() && inputs.sarif-output != '' && inputs.policy == '' }}"
     )
+    assert steps["Generate SkillGate review summary"]["if"] == (
+        "${{ always() && (inputs.summary-output != '' || inputs.json-output != '' || "
+        "inputs.step-summary == 'true') }}"
+    )
+    assert 'skillgate "${args[@]}"' in steps["Generate SkillGate review summary"]["run"]
+    assert "--json-output" in steps["Generate SkillGate review summary"]["run"]
+    assert "$GITHUB_STEP_SUMMARY" in steps["Generate SkillGate review summary"]["run"]
     step_names = [step["name"] for step in action["runs"]["steps"]]
     assert step_names.index("Run SkillGate policy check") < step_names.index(
         "Generate policy-aware SARIF"
+    )
+    assert step_names.index("Generate SARIF") < step_names.index(
+        "Generate SkillGate review summary"
     )
 
 
@@ -258,8 +273,17 @@ def test_docs_are_main_branch_and_discovery_friendly() -> None:
     assert "branch=main" in readme
     assert "## 30-Second Demo" in readme
     assert "docs/examples/github-action-minimal.md" in readme
-    assert "refs/tags/v0.1.0" in readme
     assert "refs/tags/v0" in readme
+    assert 'SkillGate.git@v0"' in readme
+    assert "SkillGate.git@v0.1.1" not in readme
+    assert "latest compatible GitHub release tag" in readme
+    assert "img.shields.io/github/v/release/charliechenye/SkillGate" in readme
+    assert "analysis-static" in readme
+    assert "runtime-no%20execution" in readme
+    assert "policy-as%20code" in readme
+    assert "img.shields.io/github/stars" not in readme
+    assert "img.shields.io/github/issues" not in readme
+    assert "img.shields.io/github/forks" not in readme
     assert "--fail-on-drift" in readme
     assert "## SEO And Agent Discovery" not in readme
     assert "openevalgate-skillgate" in readme
@@ -271,8 +295,11 @@ def test_docs_are_main_branch_and_discovery_friendly() -> None:
     assert action_examples.count("name: SkillGate") == 3
     assert action_examples.count("security-events: write") == 3
     assert action_examples.count("sarif-output: skillgate.sarif") == 3
+    assert action_examples.count('step-summary: "true"') == 3
+    assert action_examples.count("json-output: skillgate-review.json") == 3
     assert action_examples.count("github/codeql-action/upload-sarif@v4") == 3
-    assert action_examples.count("if: always()") == 3
+    assert action_examples.count("actions/upload-artifact@v4") == 3
+    assert action_examples.count("if: always()") == 6
     assert 'fail-on-drift: "true"' in action_examples
     assert dependabot["version"] == 2
     assert {

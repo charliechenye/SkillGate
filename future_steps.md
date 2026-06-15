@@ -64,6 +64,9 @@ workflow is widely usable.
 * Confirm release install paths from a clean environment after each release.
 * Confirm GitHub-tag installation works with `pip`, `pipx`, and `uv`.
 * Defer PyPI publication until the GitHub-first release has customer feedback.
+* Keep README badges focused on release status and product attributes. Avoid
+  stars, issues, forks, or download counters until they provide useful adoption
+  signal.
 
 ### Explore Node-Ecosystem Distribution
 
@@ -77,24 +80,21 @@ workflow is widely usable.
 
 ---
 
-## Priority 1: Improve Pull-Request Review Ergonomics
+## Priority 1: Stabilize Pull-Request Review Ergonomics
 
-* Add reviewer-friendly Markdown summary output for GitHub Actions.
-* Summarize:
+SkillGate `0.1.1` is planned to add reviewer-friendly Markdown/JSON summaries,
+optional GitHub Step Summary output, and before/after `SG013` registry drift
+tables. The next review milestone should stabilize that format before adding
+noisier automation.
 
-  * newly introduced capabilities
-  * removed capabilities
-  * changed trust boundaries
-  * new high-risk findings
-  * policy violations
-  * active waivers
-  * links to SARIF findings and downloadable JSON artifacts
-* Add an optional GitHub Step Summary integration before implementing automated
-  pull-request comments.
-* Add automated PR comments only after the summary format is stable and concise.
-* Make `SG013` registry drift easier to review through before-and-after tables
-  and artifact-friendly JSON output.
-* Do not block the `v0.1.0` release correction on this work.
+* Collect feedback on the `skillgate review summary` Markdown structure in real
+  pull requests.
+* Add automated PR comments only after the Step Summary format is stable and
+  concise.
+* Add direct links from summaries to uploaded workflow artifacts when GitHub
+  exposes stable artifact URLs to the job.
+* Consider a compact Markdown capability diff report for teams that want a
+  standalone file separate from the full review summary.
 
 ---
 

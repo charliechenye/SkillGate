@@ -117,6 +117,31 @@ def test_cli_mcp_registry_compare_fixture_reports_sg013() -> None:
     assert drift_findings
     assert any("repository" in finding["evidence"] for finding in drift_findings)
     assert any(capability["type"] == "mcp_registry_drift" for capability in data["capabilities"])
+    assert data["summary"]["registry_drift"]
+    assert "repository" in {row["field"] for row in data["summary"]["registry_drift"]}
+
+
+def test_cli_mcp_registry_compare_markdown_renders_drift_table() -> None:
+    result = runner.invoke(
+        app,
+        [
+            "mcp",
+            "registry",
+            "compare",
+            str(REGISTRY_COMPARE_FIXTURE / "local"),
+            "--server",
+            "io.example.registry-drift",
+            "--registry-url",
+            str(REGISTRY_COMPARE_FIXTURE / "registry.json"),
+            "--format",
+            "markdown",
+        ],
+    )
+    assert result.exit_code == 0
+    assert "# SkillGate MCP Registry Comparison" in result.output
+    assert "| Field | Local | Registry | Source |" in result.output
+    assert "repository" in result.output
+    assert "remote_urls" in result.output
 
 
 def test_cli_mcp_registry_compare_sarif_category_and_exit_codes() -> None:
