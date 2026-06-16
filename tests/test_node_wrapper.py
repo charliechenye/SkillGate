@@ -350,6 +350,7 @@ def test_release_manifest_builder_and_workflow_use_stable_assets() -> None:
     workflow = yaml.safe_load(
         (ROOT / ".github" / "workflows" / "release-binaries.yml").read_text(encoding="utf-8")
     )
+    assert workflow["env"]["FORCE_JAVASCRIPT_ACTIONS_TO_NODE24"] is True
     assert workflow["jobs"]["resolve-tag"]["outputs"]["release_tag"] == (
         "${{ steps.tag.outputs.value }}"
     )
@@ -363,12 +364,21 @@ def test_release_manifest_builder_and_workflow_use_stable_assets() -> None:
     )
     matrix = workflow["jobs"]["build"]["strategy"]["matrix"]["include"]
     assert {item["asset"] for item in matrix} == set(ASSET_NAMES.values())
+    runners = {item["platform"]: item["runner"] for item in matrix}
+    assert runners["darwin-x64"] == "macos-15-intel"
+    assert runners["darwin-arm64"] == "macos-14"
     workflow_text = (ROOT / ".github" / "workflows" / "release-binaries.yml").read_text(
         encoding="utf-8"
     )
+    assert "macos-13" not in workflow_text
     assert "skillgate-release.json" in workflow_text
     assert '--version "${{ needs.resolve-tag.outputs.release_tag }}"' in workflow_text
     assert 'gh release upload "${{ needs.resolve-tag.outputs.release_tag }}"' in workflow_text
+    assert "actions/upload-artifact@v6" in workflow_text
+    assert "actions/download-artifact@v7" in workflow_text
+    assert "actions/upload-artifact@v4" not in workflow_text
+    assert "actions/download-artifact@v4" not in workflow_text
+    assert "ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION" not in workflow_text
 
 
 def test_package_json_exposes_github_npx_launcher_without_npm_claim() -> None:
