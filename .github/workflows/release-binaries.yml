@@ -78,7 +78,7 @@ jobs:
           shutil.copy2(Path('dist') / '${{ matrix.executable }}',
           Path('release-assets') / '${{ matrix.asset }}')"
       - name: Upload build artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.asset }}
           path: release-assets/${{ matrix.asset }}
