@@ -10,27 +10,26 @@ The project should answer one practical question better than anyone else:
 
 SkillGate should stay focused on pre-install and pre-merge review. It should not become a hosted dashboard, generic agent framework, runtime gateway, or broad observability platform until the core trust-gate workflow is widely useful.
 
-The next milestones should prioritize:
+With `v0.1.1` published as the stable release, the next milestones should prioritize:
 
-1. Release consistency and distribution hardening
-2. Safe pre-install scanning for concrete installation artifacts
-3. Standards-aligned Agent Skills inspection
-4. MCP-specific security review packs
-5. Public benchmark credibility
-6. Provenance and artifact verification
-7. A controlled bridge from static analysis to runtime evidence
+1. Safe pre-install scanning for concrete installation artifacts
+2. Standards-aligned Agent Skills inspection
+3. MCP-specific security review packs
+4. Public benchmark credibility
+5. Provenance and artifact verification
+6. A controlled bridge from static analysis to runtime evidence
 
 ---
 
-## Immediate Fixes: Do Now Before Broader Promotion
+## Completed `v0.1.1` Release-Consistency Fixes
 
-These are not long-term roadmap items. They are release-consistency and trust issues that should be fixed before a larger launch post, community push, or broader social sharing.
+These release-consistency and trust issues were addressed for the stable `v0.1.1` release. Keep this section as release context, but do not treat it as the next roadmap focus.
 
-### 1. Validate Stable `v0` Action After `v0.1.1`
+### 1. Stable `v0` Action Matches Public Docs
 
-Status: pending maintainer release validation. The repo should keep README and
-example workflows on `charliechenye/SkillGate@v0`; publishing `v0.1.1` and
-moving the stable `v0` tag is the intended fix.
+Status: completed with the stable `v0.1.1` release. README and example workflows
+can stay on `charliechenye/SkillGate@v0`, and that stable tag now represents the
+review-summary Action inputs documented publicly.
 
 Current issue:
 
@@ -133,7 +132,10 @@ Acceptance criteria:
 * Existing tests pass.
 * New tests cover oversized manifest, oversized binary, cached binary verification, and checksum mismatch.
 
-### 5. Maintainer Validation And Publication For `v0.1.1`
+### 5. Stable `v0.1.1` Release Published
+
+Status: completed. Keep post-release smoke checks and issue monitoring active,
+but treat broader roadmap work as the next focus.
 
 `v0.1.1` should be treated as a release-consistency and adoption-hardening release, not a large feature release.
 
@@ -828,3 +830,7 @@ For each release, ask:
 If yes, prioritize it.
 
 If no, defer it.
+
+For release notes, keep active `CHANGELOG.md` entries as one complete sentence
+per physical line. Avoid hard-wrapping bullets or paragraphs mid-sentence so
+GitHub release notes preserve the intended bullet readability.
