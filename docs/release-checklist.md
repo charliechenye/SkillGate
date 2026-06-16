@@ -129,6 +129,8 @@ gh run watch
 The release-binary workflow must build from the same tag that receives the
 assets. Confirm the workflow uses `needs.resolve-tag.outputs.release_tag` for
 build checkout, publish checkout, manifest version, and release upload.
+The `darwin-x64` matrix entry should use the current Intel macOS runner label
+`macos-15-intel`; do not revert it to deprecated `macos-13`.
 
 After the workflow completes, verify the uploaded assets:
 
