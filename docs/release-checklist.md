@@ -163,10 +163,36 @@ uv tool install "git+https://github.com/charliechenye/SkillGate.git@v0.1.0"
 GitHub installs require `git` on the customer machine. For teams that require
 immutable installs, replace `v0.1.0` with the full release commit SHA.
 
-## 9. Deferred PyPI Publication
+## 9. Deferred npm Publication
+
+Do not publish the root npm package until the package name and distribution
+strategy are intentionally chosen. The root `package.json` is marked
+`"private": true` so `npm publish` is blocked by default.
+
+When npm publication is ready:
+
+```powershell
+npm pack --dry-run
+npm publish --dry-run
+```
+
+Before the real publish, remove `"private": true`, confirm the npm package name,
+confirm 2FA, automation token, or npm provenance requirements, and verify the
+packed files only include the intended launcher, README, and license. After the
+real publish, test from a clean environment with:
+
+```powershell
+npx skillgate scan .
+```
+
+Only then update README and `docs/node-wrapper.md` to promote bare
+`npx skillgate scan .` as a supported install path.
+
+## 10. Deferred PyPI Publication
 
 Do not upload to PyPI for the first GitHub-first release. When you decide to
-publish to PyPI later, rebuild clean artifacts, validate them, and upload:
+publish to PyPI later, choose between trusted publishing and credential-based
+upload, rebuild clean artifacts, validate them, and upload:
 
 ```powershell
 python -m build
@@ -176,10 +202,11 @@ python -m twine upload dist\*
 
 If you use TestPyPI first, upload to TestPyPI, install from TestPyPI in a clean
 environment, and rebuild clean artifacts before the production PyPI upload. Once
-PyPI publication is complete, update the README so `python -m pip install
-openevalgate-skillgate` is the first install path.
+PyPI publication is complete, verify `python -m pip install
+openevalgate-skillgate` from a clean environment and update the README so that
+command is the first install path.
 
-## 10. Post-Release Verification
+## 11. Post-Release Verification
 
 Also verify:
 

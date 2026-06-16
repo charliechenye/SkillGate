@@ -14,7 +14,8 @@ npx --yes github:charliechenye/SkillGate#v0 -- scan .
 ```
 
 Bare `npx skillgate scan .` is intentionally documented as future work because
-it requires an npm package name to be published.
+it requires an npm package name to be published. The root `package.json` stays
+`"private": true` until that publication strategy is chosen.
 
 ## Release Assets
 
@@ -46,12 +47,25 @@ The manifest contains the release version, asset names, sizes, and SHA-256
 hashes. The wrapper verifies the hash before executing a downloaded binary and
 caches binaries by release version.
 
+Downloads are bounded before buffering:
+
+- `skillgate-release.json` is limited to 1 MB.
+- Binary downloads are limited by the selected asset's `size_bytes` value.
+- Responses with `Content-Length` larger than the limit are rejected.
+- Streams that exceed the limit while downloading are aborted.
+
+Network downloads use HTTPS by default. `file:` URLs remain supported for local
+tests. Insecure `http:` URLs are rejected unless
+`SKILLGATE_ALLOW_INSECURE_HTTP_FOR_TESTS=1` is set for a test-only fixture.
+
 Useful environment variables:
 
 - `SKILLGATE_VERSION`: pin the downloaded binary release tag.
 - `SKILLGATE_CACHE_DIR`: choose a cache directory for CI.
 - `SKILLGATE_NO_UPDATE_CHECK=1`: run the currently cached binary without
   network access.
+- `SKILLGATE_ALLOW_INSECURE_HTTP_FOR_TESTS=1`: allow `http:` downloads only in
+  tests.
 
 For immutable environments, pin both the wrapper ref and the binary version:
 

@@ -76,6 +76,9 @@ Acceptance criteria:
 
 ### 3. Prevent Accidental npm Publication
 
+Status: addressed in the current distribution-hardening work. Keep this guard in
+place until npm registry publication is intentionally chosen.
+
 Current issue:
 
 The root `package.json` uses the package name `skillgate`, but the project currently documents GitHub-first `npx` usage rather than npm registry publication.
@@ -97,6 +100,9 @@ Acceptance criteria:
 * Docs continue to say that bare `npx skillgate scan .` is future work unless an npm registry package is intentionally published.
 
 ### 4. Add Bounded Downloads To The Node Wrapper
+
+Status: addressed in the current distribution-hardening work. Keep these limits
+covered by wrapper tests as the release manifest evolves.
 
 Current issue:
 
@@ -158,6 +164,7 @@ Keep the composite Action behavior explicit:
 * supplied `policy` plus `sarif-output` means policy-aware SARIF
 * supplied `baseline` plus `fail-on-drift` means baseline drift can block CI without a full policy file
 * supplied `step-summary` means a Markdown summary is appended to GitHub Step Summary
+* Maintain `fail-on-drift` examples for teams that want baseline drift to block without a policy file
 
 Maintain copy-paste examples for:
 
@@ -210,6 +217,23 @@ npx skillgate scan .
 ```
 
 until an npm registry package is intentionally published.
+
+When npm publication is ready, remove `"private": true` only as part of the
+release checklist, verify `npm pack --dry-run` and `npm publish --dry-run`, and
+then update README and wrapper docs to promote:
+
+```bash
+npx skillgate scan .
+```
+
+When PyPI publication is ready, publish `openevalgate-skillgate` through the
+release checklist, verify a clean install, and then update README to make:
+
+```bash
+python -m pip install openevalgate-skillgate
+```
+
+the primary Python install path.
 
 ### Add Dogfood Evidence
 

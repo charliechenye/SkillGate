@@ -14,6 +14,8 @@ const REPOSITORY = "charliechenye/SkillGate";
 const DEFAULT_RELEASE_BASE = `https://github.com/${REPOSITORY}/releases`;
 const MANIFEST_NAME = "skillgate-release.json";
 const MAX_REDIRECTS = 5;
+const MANIFEST_BYTE_LIMIT = 1024 * 1024;
+const INSECURE_HTTP_TEST_FLAG = "SKILLGATE_ALLOW_INSECURE_HTTP_FOR_TESTS";
 
 function platformKey() {
   if (process.env.SKILLGATE_PLATFORM_KEY) {
@@ -50,22 +52,76 @@ function readJsonFile(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf8"));
 }
 
-function download(url, redirects = 0) {
+function validateByteLimit(byteLimit, label) {
+  if (!Number.isSafeInteger(byteLimit) || byteLimit < 0) {
+    throw new Error(`${label} byte limit must be a non-negative integer`);
+  }
+}
+
+function validateProtocol(parsed) {
+  if (parsed.protocol === "https:" || parsed.protocol === "file:") {
+    return;
+  }
+  if (parsed.protocol === "http:" && process.env[INSECURE_HTTP_TEST_FLAG] === "1") {
+    return;
+  }
+  if (parsed.protocol === "http:") {
+    throw new Error(`insecure HTTP download requires ${INSECURE_HTTP_TEST_FLAG}=1`);
+  }
+  throw new Error(`unsupported download protocol: ${parsed.protocol}`);
+}
+
+function rejectIfContentLengthExceeds(response, byteLimit, url) {
+  const contentLength = response.headers["content-length"];
+  if (contentLength === undefined) {
+    return;
+  }
+  if (!/^\d+$/.test(contentLength)) {
+    throw new Error(`invalid Content-Length while fetching ${url}`);
+  }
+  const expectedBytes = Number(contentLength);
+  if (!Number.isSafeInteger(expectedBytes)) {
+    throw new Error(`Content-Length is too large while fetching ${url}`);
+  }
+  if (expectedBytes > byteLimit) {
+    throw new Error(
+      `download for ${url} exceeds limit of ${byteLimit} bytes from Content-Length`,
+    );
+  }
+}
+
+function download(url, byteLimit, redirects = 0) {
+  try {
+    validateByteLimit(byteLimit, "download");
+  } catch (error) {
+    return Promise.reject(error);
+  }
   return new Promise((resolve, reject) => {
     let parsed;
     try {
       parsed = new URL(url);
+      validateProtocol(parsed);
     } catch (error) {
-      reject(new Error(`invalid URL: ${url}`));
+      reject(error);
       return;
     }
     if (parsed.protocol === "file:") {
-      fs.readFile(parsed, (error, data) => {
-        if (error) {
-          reject(error);
-        } else {
-          resolve(data);
+      fs.stat(parsed, (statError, stats) => {
+        if (statError) {
+          reject(statError);
+          return;
         }
+        if (stats.size > byteLimit) {
+          reject(new Error(`download for ${url} exceeds limit of ${byteLimit} bytes`));
+          return;
+        }
+        fs.readFile(parsed, (error, data) => {
+          if (error) {
+            reject(error);
+          } else {
+            resolve(data);
+          }
+        });
       });
       return;
     }
@@ -81,7 +137,9 @@ function download(url, redirects = 0) {
           reject(new Error(`too many redirects while fetching ${url}`));
           return;
         }
-        resolve(download(new URL(response.headers.location, parsed).toString(), redirects + 1));
+        resolve(
+          download(new URL(response.headers.location, parsed).toString(), byteLimit, redirects + 1),
+        );
         return;
       }
       if (response.statusCode !== 200) {
@@ -89,19 +147,48 @@ function download(url, redirects = 0) {
         reject(new Error(`HTTP ${response.statusCode} while fetching ${url}`));
         return;
       }
+      try {
+        rejectIfContentLengthExceeds(response, byteLimit, url);
+      } catch (error) {
+        response.resume();
+        reject(error);
+        return;
+      }
       const chunks = [];
-      response.on("data", (chunk) => chunks.push(chunk));
+      let totalBytes = 0;
+      let exceeded = false;
+      response.on("data", (chunk) => {
+        if (exceeded) {
+          return;
+        }
+        totalBytes += chunk.length;
+        if (totalBytes > byteLimit) {
+          exceeded = true;
+          response.destroy(new Error(`download for ${url} exceeds limit of ${byteLimit} bytes`));
+          return;
+        }
+        chunks.push(chunk);
+      });
       response.on("end", () => resolve(Buffer.concat(chunks)));
+      response.on("error", reject);
     });
     request.on("error", reject);
   });
+}
+
+function assetByteLimit(asset) {
+  const sizeBytes = asset && asset.size_bytes;
+  if (!Number.isSafeInteger(sizeBytes) || sizeBytes < 0) {
+    throw new Error("release asset size_bytes must be a non-negative integer");
+  }
+  return sizeBytes;
 }
 
 async function loadManifest() {
   if (process.env.SKILLGATE_MANIFEST_PATH) {
     return readJsonFile(process.env.SKILLGATE_MANIFEST_PATH);
   }
-  return JSON.parse((await download(manifestUrl())).toString("utf8"));
+  return JSON.parse((await download(manifestUrl(), MANIFEST_BYTE_LIMIT)).toString("utf8"));
 }
 
 function sha256(buffer) {
@@ -153,7 +240,7 @@ async function ensureBinary() {
   if (fs.existsSync(destination)) {
     return verifyCached({ path: destination, sha256: asset.sha256 });
   }
-  const data = await download(assetUrl(asset));
+  const data = await download(assetUrl(asset), assetByteLimit(asset));
   const actual = sha256(data);
   if (actual !== asset.sha256) {
     throw new Error(`SkillGate checksum mismatch: expected ${asset.sha256}, got ${actual}`);
@@ -212,6 +299,7 @@ module.exports = {
   assetUrl,
   binaryPath,
   cacheRoot,
+  download,
   ensureBinary,
   loadManifest,
   platformKey,

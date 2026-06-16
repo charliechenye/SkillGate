@@ -18,6 +18,8 @@ use the stable `v0` compatibility tag until this release is published.
 - Added a GitHub-first Node wrapper for `npx --yes github:charliechenye/SkillGate#v0 -- ...`
   usage, backed by checksummed GitHub Release binaries instead of PyPI or npm
   registry publication.
+- Added bounded Node wrapper downloads so release manifests are limited to 1 MB
+  and binary downloads are capped by `asset.size_bytes` before buffering.
 
 ### Changed
 
@@ -30,6 +32,10 @@ use the stable `v0` compatibility tag until this release is published.
   surfacing early social-traction counters.
 - Added a release-binary workflow and manifest builder so future stable GitHub
   Releases can publish verified platform binaries for the Node wrapper.
+- Marked the root npm package private to prevent accidental registry
+  publication until the package name and npm strategy are intentionally chosen.
+- Documented the Node wrapper's HTTPS default, test-only insecure HTTP escape
+  hatch, and future npm and PyPI publication steps.
 
 ## 0.1.0 - Initial public release
 

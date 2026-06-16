@@ -99,7 +99,8 @@ npx --yes github:charliechenye/SkillGate#v0 -- scan .
 
 This GitHub-first `npx` path does not require PyPI or npm registry publication.
 Bare `npx skillgate scan .` remains future work because it requires an npm
-package name. Details: [GitHub-first Node wrapper](docs/node-wrapper.md).
+package name and an intentional npm publication strategy. The root npm package
+is marked private until then. Details: [GitHub-first Node wrapper](docs/node-wrapper.md).
 
 For contributor or source-checkout development:
 
