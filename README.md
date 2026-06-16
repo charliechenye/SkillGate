@@ -91,6 +91,16 @@ GitHub installs require Python 3.11 or newer and `git` on the customer machine. 
 python -m pip install openevalgate-skillgate
 ```
 
+Experimental Node wrapper, after standalone GitHub Release assets are published:
+
+```bash
+npx --yes github:charliechenye/SkillGate#v0 -- scan .
+```
+
+This GitHub-first `npx` path does not require PyPI or npm registry publication.
+Bare `npx skillgate scan .` remains future work because it requires an npm
+package name. Details: [GitHub-first Node wrapper](docs/node-wrapper.md).
+
 For contributor or source-checkout development:
 
 ```bash

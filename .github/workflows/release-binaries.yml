@@ -1,0 +1,93 @@
+name: SkillGate release binaries
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to upload assets to, for example v0.1.1.
+        required: true
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-x64
+            runner: ubuntu-latest
+            asset: skillgate-linux-x64
+            executable: skillgate
+          - platform: linux-arm64
+            runner: ubuntu-24.04-arm
+            asset: skillgate-linux-arm64
+            executable: skillgate
+          - platform: darwin-x64
+            runner: macos-13
+            asset: skillgate-darwin-x64
+            executable: skillgate
+          - platform: darwin-arm64
+            runner: macos-14
+            asset: skillgate-darwin-arm64
+            executable: skillgate
+          - platform: win32-x64
+            runner: windows-latest
+            asset: skillgate-win32-x64.exe
+            executable: skillgate.exe
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install build dependencies
+        run: python -m pip install -e . pyinstaller
+      - name: Build standalone binary
+        run: python -m PyInstaller --onefile --name skillgate src/skillgate/__main__.py
+      - name: Prepare release asset
+        run: >
+          python -c "from pathlib import Path; import shutil;
+          Path('release-assets').mkdir(exist_ok=True);
+          shutil.copy2(Path('dist') / '${{ matrix.executable }}',
+          Path('release-assets') / '${{ matrix.asset }}')"
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: release-assets/${{ matrix.asset }}
+          if-no-files-found: error
+
+  publish:
+    name: Publish release assets
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+      - name: Resolve release tag
+        id: tag
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            echo "value=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Build release manifest
+        run: >
+          python tools/build_release_manifest.py
+          --asset-dir release-assets
+          --version "${{ steps.tag.outputs.value }}"
+          --output release-assets/skillgate-release.json
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ steps.tag.outputs.value }}" release-assets/* --clobber

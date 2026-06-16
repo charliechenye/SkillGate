@@ -15,6 +15,9 @@ use the stable `v0` compatibility tag until this release is published.
   machine-readable review JSON artifacts, and GitHub Step Summary output.
 - Added Markdown output for `skillgate mcp registry compare` so `SG013`
   registry drift is easier to review through before-and-after tables.
+- Added a GitHub-first Node wrapper for `npx --yes github:charliechenye/SkillGate#v0 -- ...`
+  usage, backed by checksummed GitHub Release binaries instead of PyPI or npm
+  registry publication.
 
 ### Changed
 
@@ -25,6 +28,8 @@ use the stable `v0` compatibility tag until this release is published.
 - Added README release and product-attribute badges that showcase the latest
   release, static analysis, no runtime execution, and policy-as-code without
   surfacing early social-traction counters.
+- Added a release-binary workflow and manifest builder so future stable GitHub
+  Releases can publish verified platform binaries for the Node wrapper.
 
 ## 0.1.0 - Initial public release
 

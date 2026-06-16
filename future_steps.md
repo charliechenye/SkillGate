@@ -68,15 +68,21 @@ workflow is widely usable.
   stars, issues, forks, or download counters until they provide useful adoption
   signal.
 
-### Explore Node-Ecosystem Distribution
+### Stabilize GitHub-First Node Distribution
 
 * Keep the Python scanner as the canonical implementation.
-* Explore a thin npm launcher so users can run `npx skillgate scan .`.
 * Do not maintain a second TypeScript scanner.
-* Prefer a verified platform-specific binary or another reproducible wrapper
-  strategy.
-* Avoid requiring Python, pip, pipx, or uv for npm users once the npm path
-  exists.
+* Validate the thin Node wrapper against real GitHub Release binary assets.
+* Keep the GitHub-only command documented as:
+
+  ```bash
+  npx --yes github:charliechenye/SkillGate#v0 -- scan .
+  ```
+
+* Avoid documenting bare `npx skillgate scan .` until an npm registry package is
+  intentionally published.
+* Keep PyPI and npm publication deferred until customer demand justifies those
+  channels.
 
 ---
 

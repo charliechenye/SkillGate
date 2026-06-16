@@ -207,7 +207,7 @@ def test_release_notes_keep_current_changes_under_010() -> None:
     assert "skillgate diff --fail-on-drift" in changelog
     assert "Publish the first tagged GitHub release as `v0.1.0`" not in future_steps
     assert "Maintain `fail-on-drift`" in future_steps
-    assert "Explore Node-Ecosystem Distribution" in future_steps
+    assert "Stabilize GitHub-First Node Distribution" in future_steps
     assert "already published" in release_checklist
 
 

@@ -1,0 +1,24 @@
+{
+  "name": "skillgate",
+  "version": "0.1.1",
+  "description": "Thin GitHub-release launcher for the SkillGate Python scanner.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/charliechenye/SkillGate.git"
+  },
+  "bin": {
+    "skillgate": "npm/bin/skillgate.js"
+  },
+  "files": [
+    "LICENSE",
+    "README.md",
+    "npm/bin/skillgate.js"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test:wrapper": "node --test tests/node/skillgate-wrapper.test.js"
+  }
+}
