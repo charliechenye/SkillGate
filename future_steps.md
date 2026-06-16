@@ -26,7 +26,11 @@ The next milestones should prioritize:
 
 These are not long-term roadmap items. They are release-consistency and trust issues that should be fixed before a larger launch post, community push, or broader social sharing.
 
-### 1. Fix Documentation Versus Stable `v0` Action Mismatch
+### 1. Validate Stable `v0` Action After `v0.1.1`
+
+Status: pending maintainer release validation. The repo should keep README and
+example workflows on `charliechenye/SkillGate@v0`; publishing `v0.1.1` and
+moving the stable `v0` tag is the intended fix.
 
 Current issue:
 
@@ -56,6 +60,9 @@ If `v0.1.1` is not ready, update the README and examples to mark review-summary 
 Do not leave public docs showing stable Action inputs that the stable Action does not support.
 
 ### 2. Harden Release-Binary Workflow Checkout Ref
+
+Status: addressed in the current release-prep work. Keep this covered by
+workflow structure assertions so release assets are built from the uploaded tag.
 
 Current issue:
 
@@ -126,7 +133,7 @@ Acceptance criteria:
 * Existing tests pass.
 * New tests cover oversized manifest, oversized binary, cached binary verification, and checksum mismatch.
 
-### 5. Validate And Publish `v0.1.1` If Ready
+### 5. Maintainer Validation And Publication For `v0.1.1`
 
 `v0.1.1` should be treated as a release-consistency and adoption-hardening release, not a large feature release.
 

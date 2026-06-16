@@ -200,15 +200,21 @@ def test_release_notes_keep_current_changes_under_010() -> None:
     assert __version__ == "0.1.1"
     assert "## Unreleased" not in changelog
     assert "## 0.4.0" not in changelog
-    assert "## 0.1.1 - Pull-request review ergonomics (planned)" in changelog
-    assert "`0.1.1` is planned and not yet published" in changelog
+    assert "## 0.1.1 - Release consistency and review ergonomics" in changelog
+    assert "`0.1.1` is planned and not yet published" not in changelog
     assert "## 0.1.0 - Initial public release" in changelog
     assert "README SEO" not in changelog
     assert "skillgate diff --fail-on-drift" in changelog
     assert "Publish the first tagged GitHub release as `v0.1.0`" not in future_steps
     assert "Maintain `fail-on-drift`" in future_steps
     assert "Stabilize GitHub-First Node Distribution" in future_steps
-    assert "already published" in release_checklist
+    assert "For `v0.1.1`, both version commands should print `0.1.1`." in release_checklist
+    assert 'git tag -a v0.1.1 -m "SkillGate v0.1.1"' in release_checklist
+    assert "gh release create v0.1.1" in release_checklist
+    assert 'SKILLGATE_VERSION="v0.1.1"' in release_checklist
+    assert "git tag -f v0 v0.1.1" in release_checklist
+    assert "Do not publish the root npm package" in release_checklist
+    assert "Do not upload to PyPI for this GitHub-first release" in release_checklist
 
 
 def test_action_uses_action_path_and_explicit_policy_behavior() -> None:

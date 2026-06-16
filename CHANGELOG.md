@@ -1,9 +1,6 @@
 # Change Log
 
-## 0.1.1 - Pull-request review ergonomics (planned)
-
-`0.1.1` is planned and not yet published. Install examples should continue to
-use the stable `v0` compatibility tag until this release is published.
+## 0.1.1 - Release consistency and review ergonomics
 
 ### Added
 
@@ -32,6 +29,8 @@ use the stable `v0` compatibility tag until this release is published.
   surfacing early social-traction counters.
 - Added a release-binary workflow and manifest builder so future stable GitHub
   Releases can publish verified platform binaries for the Node wrapper.
+- Hardened the release-binary workflow so manual dispatch and release-published
+  runs check out the exact tag that receives the uploaded assets.
 - Marked the root npm package private to prevent accidental registry
   publication until the package name and npm strategy are intentionally chosen.
 - Documented the Node wrapper's HTTPS default, test-only insecure HTTP escape

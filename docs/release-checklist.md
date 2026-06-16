@@ -1,16 +1,14 @@
 # SkillGate Release Checklist
 
-Use this checklist for maintaining the published `v0.1.0` GitHub release and
-for later maintenance releases. Run commands from a clean `main` branch unless a
-step says otherwise.
+Use this checklist to publish and validate `v0.1.1`. Run commands from a clean
+`main` branch unless a step says otherwise.
 
 ## What Assistant Cannot Do For You
 
-Assistant can prepare files, run local checks, and build artifacts. Pushing tags and
-creating the GitHub Release require your repository credentials and final
-maintainer approval. Uploading distributions to PyPI is intentionally deferred
-for the first release; if you publish there later, it also requires PyPI
-credentials or trusted publisher setup.
+Assistant can prepare files, run local checks, and build artifacts. Pushing tags,
+creating the GitHub Release, moving the stable `v0` tag, and validating GitHub
+Actions require your repository credentials and final maintainer approval.
+Uploading distributions to npm or PyPI is intentionally deferred.
 
 ## 1. Preflight
 
@@ -22,19 +20,17 @@ python -c "import tomllib, pathlib; print(tomllib.loads(pathlib.Path('pyproject.
 python -c "from skillgate import __version__; print(__version__)"
 ```
 
-For `v0.1.0`, both version commands should print `0.1.0`.
+For `v0.1.1`, both version commands should print `0.1.1`.
 
-Confirm release notes and planning state:
+Confirm release notes and release-prep state:
 
 ```powershell
-Select-String -Path CHANGELOG.md -Pattern "## 0.1.0 - Initial public release"
-Select-String -Path future_steps.md -Pattern "Operational Launch Checklist"
+Select-String -Path CHANGELOG.md -Pattern "## 0.1.1 - Release consistency and review ergonomics"
+Select-String -Path future_steps.md -Pattern "Maintainer Validation And Publication For `v0.1.1`"
+Select-String -Path .github\workflows\release-binaries.yml -Pattern "needs.resolve-tag.outputs.release_tag"
 ```
 
-For the published `v0.1.0` release, `CHANGELOG.md` should keep the
-`## 0.1.0 - Initial public release` heading. Future development can use an
-`Unreleased` section above it, but do not mix pending-release wording into the
-published `0.1.0` notes.
+The `0.1.1` changelog entry should be release-ready, not marked planned.
 
 ## 2. Tests And Static Checks
 
@@ -89,81 +85,112 @@ Create a disposable virtual environment and install the wheel:
 ```powershell
 python -m venv .venv-release
 .\.venv-release\Scripts\python -m pip install --upgrade pip
-.\.venv-release\Scripts\python -m pip install dist\openevalgate_skillgate-0.1.0-py3-none-any.whl
+.\.venv-release\Scripts\python -m pip install dist\openevalgate_skillgate-0.1.1-py3-none-any.whl
 .\.venv-release\Scripts\skillgate rules list
 ```
 
 Delete `.venv-release` after the smoke test if you do not want to keep it.
 
-## 6. Replace Or Create GitHub Tags
+## 6. Create The `v0.1.1` Tag
 
-The `v0.1.0` release and `v0` Action tag are already published. For a normal
-future release, create a new tag instead of replacing `v0.1.0`. Only replace
-`v0.1.0` when intentionally correcting the first release.
-
-Before replacing tags, make sure the repository default branch is `main`. If the
-branch has not been migrated yet:
+Make sure local `main` has the exact commit you intend to release:
 
 ```powershell
-git branch -m master main
-git push origin main
+git switch main
+git pull --ff-only
+git status --short
+git tag -a v0.1.1 -m "SkillGate v0.1.1"
+git push origin v0.1.1
 ```
 
-Then change the default branch to `main` in GitHub repository settings. Only
-after that succeeds, optionally delete the old remote branch:
-
-```powershell
-git push origin --delete master
-```
-
-For a replacement of the first release, delete and recreate the release tag:
-
-```powershell
-gh release delete v0.1.0 --yes
-git tag -d v0.1.0 v0
-git push origin :refs/tags/v0.1.0 :refs/tags/v0
-git tag -a v0.1.0 -m "SkillGate v0.1.0"
-git push origin v0.1.0
-```
-
-Create or move the stable `v0` GitHub Action tag to the same commit:
-
-```powershell
-git tag -f v0 v0.1.0
-git push origin v0 --force
-```
-
-`v0` is a moving compatibility tag for `0.x` releases. Teams that require
-immutable GitHub Action references should pin to a full commit SHA instead.
+Do not move the stable `v0` tag yet. Move it only after the release and assets
+are validated.
 
 ## 7. Create The GitHub Release
 
-Create the release from the pushed `v0.1.0` tag in the GitHub UI, or use the
+Create the release from the pushed `v0.1.1` tag in the GitHub UI, or use the
 GitHub CLI:
 
 ```powershell
-gh release create v0.1.0 dist\* --title "SkillGate v0.1.0" --notes-file CHANGELOG.md
+gh release create v0.1.1 --title "SkillGate v0.1.1" --notes-file CHANGELOG.md
+gh run list --workflow release-binaries.yml --limit 5
 ```
 
-Review the rendered release notes before announcing the release.
+The release-published event should trigger the release-binary workflow. If it
+does not, manually dispatch the workflow against the same tag:
 
-## 8. Verify GitHub Install Paths
+```powershell
+gh workflow run release-binaries.yml -f tag=v0.1.1
+gh run watch
+```
 
-After the tag is pushed, verify tagged installs through the paths customers are
+## 8. Verify Release Binary Assets
+
+The release-binary workflow must build from the same tag that receives the
+assets. Confirm the workflow uses `needs.resolve-tag.outputs.release_tag` for
+build checkout, publish checkout, manifest version, and release upload.
+
+After the workflow completes, verify the uploaded assets:
+
+```powershell
+gh release view v0.1.1 --json tagName,assets
+gh release download v0.1.1 -p skillgate-release.json -D test-outputs\release-v0.1.1
+Get-Content test-outputs\release-v0.1.1\skillgate-release.json
+```
+
+The release should include:
+
+- `skillgate-release.json`
+- `skillgate-linux-x64`
+- `skillgate-linux-arm64`
+- `skillgate-darwin-x64`
+- `skillgate-darwin-arm64`
+- `skillgate-win32-x64.exe`
+
+The manifest should record `v0.1.1`, SHA-256 hashes, and positive `size_bytes`
+values for every platform asset.
+
+## 9. Verify GitHub Install Paths
+
+Before moving `v0`, verify tagged installs through the paths customers are
 expected to use:
 
 ```powershell
-python -m pip install "git+https://github.com/charliechenye/SkillGate.git@v0.1.0"
+python -m pip install --force-reinstall "git+https://github.com/charliechenye/SkillGate.git@v0.1.1"
 skillgate rules list
-pipx install "git+https://github.com/charliechenye/SkillGate.git@v0.1.0"
-pipx run --spec "git+https://github.com/charliechenye/SkillGate.git@v0.1.0" skillgate rules list
-uv tool install "git+https://github.com/charliechenye/SkillGate.git@v0.1.0"
+pipx run --spec "git+https://github.com/charliechenye/SkillGate.git@v0.1.1" skillgate rules list
+$env:SKILLGATE_VERSION="v0.1.1"; npx --yes github:charliechenye/SkillGate#v0.1.1 -- scan .
 ```
 
 GitHub installs require `git` on the customer machine. For teams that require
-immutable installs, replace `v0.1.0` with the full release commit SHA.
+immutable installs, replace `v0.1.1` with the full release commit SHA.
 
-## 9. Deferred npm Publication
+## 10. Move And Verify Stable `v0`
+
+After the `v0.1.1` release assets and install paths are validated, move the
+stable `v0` compatibility tag:
+
+```powershell
+git tag -f v0 v0.1.1
+git push origin v0 --force
+git ls-remote https://github.com/charliechenye/SkillGate.git refs/tags/v0
+git ls-remote https://github.com/charliechenye/SkillGate.git refs/tags/v0.1.1
+```
+
+Then verify the public examples:
+
+```powershell
+npx --yes github:charliechenye/SkillGate#v0 -- scan .
+```
+
+In a test repository, verify README and `docs/examples/github-action-minimal.md`
+workflows using `charliechenye/SkillGate@v0`, including:
+
+- `step-summary`
+- `summary-output`
+- `json-output`
+
+## 11. Deferred npm Publication
 
 Do not publish the root npm package until the package name and distribution
 strategy are intentionally chosen. The root `package.json` is marked
@@ -188,11 +215,11 @@ npx skillgate scan .
 Only then update README and `docs/node-wrapper.md` to promote bare
 `npx skillgate scan .` as a supported install path.
 
-## 10. Deferred PyPI Publication
+## 12. Deferred PyPI Publication
 
-Do not upload to PyPI for the first GitHub-first release. When you decide to
-publish to PyPI later, choose between trusted publishing and credential-based
-upload, rebuild clean artifacts, validate them, and upload:
+Do not upload to PyPI for this GitHub-first release. When you decide to publish
+to PyPI later, choose between trusted publishing and credential-based upload,
+rebuild clean artifacts, validate them, and upload:
 
 ```powershell
 python -m build
@@ -206,11 +233,11 @@ PyPI publication is complete, verify `python -m pip install
 openevalgate-skillgate` from a clean environment and update the README so that
 command is the first install path.
 
-## 11. Post-Release Verification
+## 13. Post-Release Verification
 
 Also verify:
 
-- GitHub shows the `v0.1.0` release and the `v0` tag.
+- GitHub shows the `v0.1.1` release and the `v0` tag.
 - README Action examples use `charliechenye/SkillGate@v0`.
 - README install instructions lead with a GitHub-tag install.
 - The social preview renders correctly on GitHub.

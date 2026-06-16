@@ -350,11 +350,25 @@ def test_release_manifest_builder_and_workflow_use_stable_assets() -> None:
     workflow = yaml.safe_load(
         (ROOT / ".github" / "workflows" / "release-binaries.yml").read_text(encoding="utf-8")
     )
+    assert workflow["jobs"]["resolve-tag"]["outputs"]["release_tag"] == (
+        "${{ steps.tag.outputs.value }}"
+    )
+    assert workflow["jobs"]["build"]["needs"] == "resolve-tag"
+    assert workflow["jobs"]["build"]["steps"][0]["with"]["ref"] == (
+        "${{ needs.resolve-tag.outputs.release_tag }}"
+    )
+    assert workflow["jobs"]["publish"]["needs"] == ["resolve-tag", "build"]
+    assert workflow["jobs"]["publish"]["steps"][0]["with"]["ref"] == (
+        "${{ needs.resolve-tag.outputs.release_tag }}"
+    )
     matrix = workflow["jobs"]["build"]["strategy"]["matrix"]["include"]
     assert {item["asset"] for item in matrix} == set(ASSET_NAMES.values())
-    assert "skillgate-release.json" in (
-        ROOT / ".github" / "workflows" / "release-binaries.yml"
-    ).read_text(encoding="utf-8")
+    workflow_text = (ROOT / ".github" / "workflows" / "release-binaries.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "skillgate-release.json" in workflow_text
+    assert '--version "${{ needs.resolve-tag.outputs.release_tag }}"' in workflow_text
+    assert 'gh release upload "${{ needs.resolve-tag.outputs.release_tag }}"' in workflow_text
 
 
 def test_package_json_exposes_github_npx_launcher_without_npm_claim() -> None:

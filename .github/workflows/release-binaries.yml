@@ -13,8 +13,25 @@ permissions:
   contents: write
 
 jobs:
+  resolve-tag:
+    name: Resolve release tag
+    runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.tag.outputs.value }}
+    steps:
+      - name: Resolve release tag
+        id: tag
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            echo "value=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
     name: Build ${{ matrix.platform }}
+    needs: resolve-tag
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -42,6 +59,8 @@ jobs:
             executable: skillgate.exe
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.resolve-tag.outputs.release_tag }}
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
@@ -64,30 +83,23 @@ jobs:
 
   publish:
     name: Publish release assets
-    needs: build
+    needs: [resolve-tag, build]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.resolve-tag.outputs.release_tag }}
       - uses: actions/download-artifact@v4
         with:
           path: release-assets
           merge-multiple: true
-      - name: Resolve release tag
-        id: tag
-        shell: bash
-        run: |
-          if [ "${{ github.event_name }}" = "release" ]; then
-            echo "value=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "value=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
-          fi
       - name: Build release manifest
         run: >
           python tools/build_release_manifest.py
           --asset-dir release-assets
-          --version "${{ steps.tag.outputs.value }}"
+          --version "${{ needs.resolve-tag.outputs.release_tag }}"
           --output release-assets/skillgate-release.json
       - name: Upload release assets
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${{ steps.tag.outputs.value }}" release-assets/* --clobber
+        run: gh release upload "${{ needs.resolve-tag.outputs.release_tag }}" release-assets/* --clobber
