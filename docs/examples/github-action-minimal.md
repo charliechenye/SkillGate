@@ -36,11 +36,22 @@ jobs:
         with:
           path: .
           sarif-output: skillgate.sarif
+          step-summary: "true"
+          summary-output: skillgate-summary.md
+          json-output: skillgate-review.json
 
       - uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: skillgate.sarif
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: skillgate-review
+          path: |
+            skillgate-summary.md
+            skillgate-review.json
 ```
 
 ## Blocking Policy Check With Policy-Aware SARIF
@@ -76,11 +87,22 @@ jobs:
           path: .
           policy: skillgate.yaml
           sarif-output: skillgate.sarif
+          step-summary: "true"
+          summary-output: skillgate-summary.md
+          json-output: skillgate-review.json
 
       - uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: skillgate.sarif
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: skillgate-review
+          path: |
+            skillgate-summary.md
+            skillgate-review.json
 ```
 
 ## Baseline Drift Blocking
@@ -114,10 +136,21 @@ jobs:
           path: .
           baseline: skillgate.lock
           sarif-output: skillgate.sarif
+          step-summary: "true"
+          summary-output: skillgate-summary.md
+          json-output: skillgate-review.json
           fail-on-drift: "true"
 
       - uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: skillgate.sarif
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: skillgate-review
+          path: |
+            skillgate-summary.md
+            skillgate-review.json
 ```

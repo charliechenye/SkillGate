@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "openevalgate-skillgate"
-version = "0.1.0"
+version = "0.1.1"
 description = "Pre-merge and pre-install trust checks for AI-agent skills and MCP configurations. Scan capabilities, detect risky changes, and block unapproved agent behavior in CI."
 readme = "README.md"
 requires-python = ">=3.11"

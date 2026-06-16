@@ -1,9 +1,13 @@
 # SkillGate - Static trust checks for AI-agent skills and MCP configurations
 
 [![SkillGate CI](https://github.com/charliechenye/SkillGate/actions/workflows/skillgate.yml/badge.svg?branch=main)](https://github.com/charliechenye/SkillGate/actions/workflows/skillgate.yml)
+[![Latest release](https://img.shields.io/github/v/release/charliechenye/SkillGate?sort=semver&display_name=tag&label=release)](https://github.com/charliechenye/SkillGate/releases/latest)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![SARIF 2.1.0](https://img.shields.io/badge/output-SARIF%202.1.0-purple)](https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html)
+![Static analysis](https://img.shields.io/badge/analysis-static-blue)
+![No runtime execution](https://img.shields.io/badge/runtime-no%20execution-green)
+![Policy as code](https://img.shields.io/badge/policy-as%20code-purple)
 
 ![SkillGate social preview: static trust checks for AI-agent skills and MCP configurations](docs/assets/repo_image.png)
 
@@ -18,7 +22,7 @@ SkillGate does not execute repository code, start MCP servers, call LLMs, or ins
 Scan a public agent-skill repository before installing it:
 
 ```bash
-python -m pip install "git+https://github.com/charliechenye/SkillGate.git@v0.1.0"
+python -m pip install "git+https://github.com/charliechenye/SkillGate.git@v0"
 skillgate github scan https://github.com/addyosmani/agent-skills/tree/main/skills --fail-on high
 ```
 
@@ -49,18 +53,16 @@ skillgate check . --policy skillgate.yaml
 
 ## Install
 
-Install the tagged release from GitHub:
-
-```bash
-python -m pip install "git+https://github.com/charliechenye/SkillGate.git@v0.1.0"
-skillgate --help
-```
-
-You can also install from the moving `v0` compatibility tag:
+Install the latest compatible GitHub release tag:
 
 ```bash
 python -m pip install "git+https://github.com/charliechenye/SkillGate.git@v0"
+skillgate --help
 ```
+
+`v0` is the moving compatibility tag for the latest compatible published `0.x`
+release. For a concrete release tag, use the latest published version from
+[GitHub Releases](https://github.com/charliechenye/SkillGate/releases/latest).
 
 For a fully immutable install, pin a commit SHA:
 
@@ -71,19 +73,34 @@ python -m pip install "git+https://github.com/charliechenye/SkillGate.git@FULL_C
 Resolve the exact commit SHA with:
 
 ```bash
-git ls-remote https://github.com/charliechenye/SkillGate.git refs/tags/v0.1.0
 git ls-remote https://github.com/charliechenye/SkillGate.git refs/tags/v0
 ```
 
-`v0.1.0` is the release tag. `v0` is the moving compatibility tag for compatible
-`0.x` Action releases. Teams that require maximum reproducibility should pin the
-full commit SHA in install commands and GitHub Action references.
+To inspect the latest release tag without installing:
+
+```bash
+git ls-remote --tags https://github.com/charliechenye/SkillGate.git "refs/tags/v*"
+```
+
+Teams that require maximum reproducibility should pin the full commit SHA in
+install commands and GitHub Action references.
 
 GitHub installs require Python 3.11 or newer and `git` on the customer machine. After a later PyPI publication, the short install path will be:
 
 ```bash
 python -m pip install openevalgate-skillgate
 ```
+
+Experimental Node wrapper, after standalone GitHub Release assets are published:
+
+```bash
+npx --yes github:charliechenye/SkillGate#v0 -- scan .
+```
+
+This GitHub-first `npx` path does not require PyPI or npm registry publication.
+Bare `npx skillgate scan .` remains future work because it requires an npm
+package name and an intentional npm publication strategy. The root npm package
+is marked private until then. Details: [GitHub-first Node wrapper](docs/node-wrapper.md).
 
 For contributor or source-checkout development:
 
@@ -246,9 +263,13 @@ steps:
     with:
       path: .
       sarif-output: skillgate.sarif
+      step-summary: "true"
+      json-output: skillgate-review.json
 ```
 
 Add `policy: skillgate.yaml` when the repository has a policy file and should block unapproved behavior. Without `policy`, the Action runs a nonblocking scan. When both `policy` and `sarif-output` are supplied, the Action uploads policy-aware SARIF with waiver suppressions.
+
+For pull-request review, add `step-summary: "true"` to publish a Markdown summary in the GitHub job page. Add `json-output: skillgate-review.json` when you also want a downloadable machine-readable review artifact with introduced capabilities, removed capabilities, changed trust boundaries, high-risk findings, policy violations, active waivers, and artifact locations.
 
 Copy-pasteable workflows: [Minimal GitHub Action examples](docs/examples/github-action-minimal.md).
 

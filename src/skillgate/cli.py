@@ -18,6 +18,7 @@ from skillgate.mcp_registry import (
     DEFAULT_REGISTRY_URL,
     RegistryMetadataError,
     compare_registry_metadata,
+    registry_compare_markdown,
     registry_scan_text,
     scan_registry_path,
 )
@@ -40,6 +41,7 @@ from skillgate.reporting import (
     render_scan,
     write_or_print,
 )
+from skillgate.review import render_review_markdown, review_summary_payload
 from skillgate.rule_docs import RULE_DOCS, get_rule_doc, rule_doc_to_data, rule_docs_to_data
 from skillgate.scan import filter_report_by_severity, scan_repository
 from skillgate.sources import RemoteScanLimits, SourceError, fetch_github_sparse
@@ -51,6 +53,7 @@ github_app = typer.Typer(help="Scan remote GitHub repositories before installing
 policy_app = typer.Typer(help="Inspect SkillGate policy helpers.")
 provenance_app = typer.Typer(help="Create and verify SkillGate provenance manifests.")
 rules_app = typer.Typer(help="Inspect SkillGate rule documentation.")
+review_app = typer.Typer(help="Create reviewer-friendly SkillGate summaries.")
 mcp_app = typer.Typer(help="Inspect MCP metadata without installing servers.")
 mcp_registry_app = typer.Typer(help="Scan and compare MCP registry metadata.")
 app.add_typer(baseline_app, name="baseline")
@@ -59,6 +62,7 @@ app.add_typer(github_app, name="github")
 app.add_typer(mcp_app, name="mcp")
 app.add_typer(policy_app, name="policy")
 app.add_typer(provenance_app, name="provenance")
+app.add_typer(review_app, name="review")
 app.add_typer(rules_app, name="rules")
 mcp_app.add_typer(mcp_registry_app, name="registry")
 console = Console()
@@ -153,7 +157,7 @@ def mcp_registry_compare(
     ] = None,
 ) -> None:
     """Compare local MCP metadata with remote registry metadata."""
-    output_format = validate_format(output_format, {"text", "json", "sarif"})
+    output_format = validate_format(output_format, {"text", "json", "sarif", "markdown"})
     if not server:
         console.file.write("Error: --server is required\n")
         raise typer.Exit(2)
@@ -170,6 +174,8 @@ def mcp_registry_compare(
             output_format,
             sarif_category="mcp_registry_compare",
         )
+    elif output_format == "markdown":
+        content = registry_compare_markdown(report)
     else:
         content = registry_scan_text(report)
     write_or_print(content, output, console)
@@ -520,6 +526,69 @@ def check(
             )
     write_or_print(content, output, console)
     raise typer.Exit(0 if dry_run else 1 if result.blocked else 0)
+
+
+@review_app.command("summary")
+def review_summary(
+    path: Annotated[Path, typer.Argument(help="Repository path to summarize.")] = Path("."),
+    baseline: Annotated[
+        Path | None, typer.Option("--baseline", help="Optional baseline lockfile path.")
+    ] = None,
+    policy: Annotated[
+        Path | None, typer.Option("--policy", help="Optional policy YAML file.")
+    ] = None,
+    output_format: Annotated[str, typer.Option("--format", help="Output format.")] = "markdown",
+    output: Annotated[
+        Path | None, typer.Option("--output", "-o", help="Write summary output to a file.")
+    ] = None,
+    json_output: Annotated[
+        Path | None,
+        typer.Option("--json-output", help="Also write machine-readable review JSON."),
+    ] = None,
+    sarif_artifact: Annotated[
+        str | None,
+        typer.Option("--sarif-artifact", help="SARIF artifact path or URL to include."),
+    ] = None,
+    json_artifact: Annotated[
+        str | None,
+        typer.Option("--json-artifact", help="Review JSON artifact path or URL to include."),
+    ] = None,
+) -> None:
+    """Create a reviewer-friendly summary for CI and pull requests."""
+    output_format = validate_format(output_format, {"markdown", "json"})
+    diff_report = None
+    if baseline:
+        try:
+            lock = load_baseline(baseline)
+        except ValueError as exc:
+            console.file.write(f"Error: {exc}\n")
+            raise typer.Exit(2) from exc
+        diff_report, report = diff_against_baseline(path, lock)
+    else:
+        report = scan_repository(path)
+    policy_result = None
+    if policy:
+        try:
+            policy_data = load_policy(policy)
+        except ValueError as exc:
+            console.file.write(f"Error: {exc}\n")
+            raise typer.Exit(2) from exc
+        policy_result = evaluate_policy(
+            report,
+            policy_data,
+            diff_findings=diff_report.findings if diff_report else None,
+        )
+    payload = review_summary_payload(
+        report,
+        diff_report=diff_report,
+        policy_result=policy_result,
+        sarif_artifact=sarif_artifact,
+        json_artifact=json_artifact or (str(json_output) if json_output else None),
+    )
+    if json_output:
+        json_output.write_text(stable_json(payload), encoding="utf-8")
+    content = stable_json(payload) if output_format == "json" else render_review_markdown(payload)
+    write_or_print(content, output, console)
 
 
 @baseline_app.command("create")
