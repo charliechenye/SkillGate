@@ -206,8 +206,9 @@ def test_release_notes_keep_current_changes_under_010() -> None:
     assert "README SEO" not in changelog
     assert "skillgate diff --fail-on-drift" in changelog
     assert "Publish the first tagged GitHub release as `v0.1.0`" not in future_steps
-    assert "Maintain `fail-on-drift`" in future_steps
-    assert "Stabilize GitHub-First Node Distribution" in future_steps
+    assert "supplied `baseline` plus `fail-on-drift`" in future_steps
+    assert "npx --yes github:charliechenye/SkillGate#v0 -- scan ." in future_steps
+    assert "docs/public-scan-reports/" in future_steps
     assert "For `v0.1.1`, both version commands should print `0.1.1`." in release_checklist
     assert 'git tag -a v0.1.1 -m "SkillGate v0.1.1"' in release_checklist
     assert "gh release create v0.1.1" in release_checklist

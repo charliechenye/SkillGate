@@ -22,6 +22,7 @@
 - Formatted the active changelog release entry without hard-wrapped mid-sentence lines so GitHub release notes preserve intended bullet readability.
 - Updated future planning state after publishing `v0.1.1` as the stable release.
 - Upgraded GitHub artifact workflows to `actions/upload-artifact@v7` and `actions/download-artifact@v8` while preserving archived uploads, merged extraction, and fail-closed digest verification.
+- Clarified the adoption and release-hardening roadmap after `v0.1.1` so ongoing Action behavior, release verification, GitHub-first Node distribution, and public example reports are easier to maintain.
 
 ## 0.1.0 - Initial public release
 

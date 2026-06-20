@@ -164,16 +164,17 @@ Acceptance criteria:
 
 This milestone keeps the published project reliable while new users try it.
 
-### Maintain GitHub Action Adoption
+### Keep GitHub Action Adoption Stable
 
-Keep the composite Action behavior explicit:
+Keep composite Action behavior explicit and covered by examples:
 
 * no `policy` means nonblocking static scan
 * supplied `policy` means blocking policy check
 * supplied `policy` plus `sarif-output` means policy-aware SARIF
 * supplied `baseline` plus `fail-on-drift` means baseline drift can block CI without a full policy file
 * supplied `step-summary` means a Markdown summary is appended to GitHub Step Summary
-* Maintain `fail-on-drift` examples for teams that want baseline drift to block without a policy file
+* supplied `summary-output` writes a Markdown review summary artifact
+* supplied `json-output` writes a machine-readable review summary artifact
 
 Maintain copy-paste examples for:
 
@@ -182,25 +183,25 @@ Maintain copy-paste examples for:
 * baseline drift blocking
 * review summary and JSON artifact upload
 
-Keep GitHub Actions dependencies current while preserving archived release
-artifacts, merged extraction, and fail-closed artifact digest verification.
+Keep GitHub Actions dependencies current while preserving archived release artifacts, merged extraction, and fail-closed artifact digest verification.
 
 ### Maintain Release Verification
 
-Document and keep testing:
+Keep post-release verification easy to repeat for the stable `v0` tag and the
+latest concrete release tag:
 
 ```bash
 git ls-remote https://github.com/charliechenye/SkillGate.git refs/tags/v0
 git ls-remote https://github.com/charliechenye/SkillGate.git refs/tags/v0.1.1
 ```
 
-High-trust users should be told to pin:
+Continue telling high-trust users to pin:
 
 * full Git commit SHA for GitHub Actions
 * full Git commit SHA for GitHub install
 * explicit `SKILLGATE_VERSION` for Node wrapper binary downloads
 
-### Stabilize GitHub-First Node Distribution
+### Maintain GitHub-First Node Distribution
 
 Keep the Python scanner as the canonical implementation.
 
@@ -247,25 +248,11 @@ python -m pip install openevalgate-skillgate
 
 the primary Python install path.
 
-### Add Dogfood Evidence
+### Build Dogfood Evidence
 
-Create a small `docs/public-scan-reports/` directory with neutral review artifacts for public skill or MCP repositories.
-
-Guidelines:
-
-* Do not shame maintainers.
-* Do not imply a finding is a vulnerability unless it clearly is.
-* Use language such as “example review artifact.”
-* Include command used, resolved commit SHA, findings, limitations, and suggested policy.
-* Prefer repositories that are already public examples or intentionally security-relevant fixtures.
-
-Suggested initial reports:
-
-* one Agent Skills repository
-* one Claude skills or command repository
-* one MCP server registry example
-* one repository with helper scripts
-* one repository with no high-risk findings, to show normal output
+Publish neutral example review artifacts under `docs/public-scan-reports/` as
+part of community adoption work. Keep the detailed report requirements in
+`Community And Adoption Work` so this milestone stays focused on maintenance.
 
 ---
 
@@ -759,7 +746,22 @@ Each report should include:
 * suggested policy
 * whether the result is a vulnerability, expected capability, or review item
 
-Avoid shaming maintainers. The goal is to show how SkillGate review works.
+Guidelines:
+
+* Do not shame maintainers.
+* Do not imply a finding is a vulnerability unless it clearly is.
+* Use language such as "example review artifact."
+* Prefer repositories that are already public examples or intentionally security-relevant fixtures.
+
+Suggested initial reports:
+
+* one Agent Skills repository
+* one Claude skills or command repository
+* one MCP server registry example
+* one repository with helper scripts
+* one repository with no high-risk findings, to show normal output
+
+The goal is to show how SkillGate review works.
 
 ### Write Technical Posts
 
