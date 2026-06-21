@@ -92,7 +92,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           ref: ${{ needs.resolve-tag.outputs.release_tag }}
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           path: release-assets
           merge-multiple: true
