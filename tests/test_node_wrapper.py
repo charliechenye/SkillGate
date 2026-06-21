@@ -362,6 +362,17 @@ def test_release_manifest_builder_and_workflow_use_stable_assets() -> None:
     assert workflow["jobs"]["publish"]["steps"][0]["with"]["ref"] == (
         "${{ needs.resolve-tag.outputs.release_tag }}"
     )
+    build_steps = {step.get("name"): step for step in workflow["jobs"]["build"]["steps"]}
+    upload_step = build_steps["Upload build artifact"]
+    assert upload_step["uses"] == "actions/upload-artifact@v7"
+    assert upload_step["with"]["archive"] is True
+    publish_steps = workflow["jobs"]["publish"]["steps"]
+    download_step = next(
+        step for step in publish_steps if step.get("uses") == "actions/download-artifact@v8"
+    )
+    assert download_step["with"]["merge-multiple"] is True
+    assert download_step["with"]["skip-decompress"] is False
+    assert download_step["with"]["digest-mismatch"] == "error"
     matrix = workflow["jobs"]["build"]["strategy"]["matrix"]["include"]
     assert {item["asset"] for item in matrix} == set(ASSET_NAMES.values())
     runners = {item["platform"]: item["runner"] for item in matrix}
@@ -374,10 +385,12 @@ def test_release_manifest_builder_and_workflow_use_stable_assets() -> None:
     assert "skillgate-release.json" in workflow_text
     assert '--version "${{ needs.resolve-tag.outputs.release_tag }}"' in workflow_text
     assert 'gh release upload "${{ needs.resolve-tag.outputs.release_tag }}"' in workflow_text
-    assert "actions/upload-artifact@v6" in workflow_text
-    assert "actions/download-artifact@v7" in workflow_text
+    assert "actions/upload-artifact@v7" in workflow_text
+    assert "actions/download-artifact@v8" in workflow_text
     assert "actions/upload-artifact@v4" not in workflow_text
+    assert "actions/upload-artifact@v6" not in workflow_text
     assert "actions/download-artifact@v4" not in workflow_text
+    assert "actions/download-artifact@v7" not in workflow_text
     assert "ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION" not in workflow_text
 
 

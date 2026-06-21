@@ -35,6 +35,7 @@
   publication until the package name and npm strategy are intentionally chosen.
 - Documented the Node wrapper's HTTPS default, test-only insecure HTTP escape
   hatch, and future npm and PyPI publication steps.
+- Upgraded GitHub artifact workflows to `actions/upload-artifact@v7` and `actions/download-artifact@v8` while preserving archived uploads, merged extraction, and fail-closed digest verification.
 
 ## 0.1.0 - Initial public release
 

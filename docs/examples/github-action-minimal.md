@@ -45,7 +45,7 @@ jobs:
         with:
           sarif_file: skillgate.sarif
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: skillgate-review
@@ -96,7 +96,7 @@ jobs:
         with:
           sarif_file: skillgate.sarif
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: skillgate-review
@@ -146,7 +146,7 @@ jobs:
         with:
           sarif_file: skillgate.sarif
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: skillgate-review

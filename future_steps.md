@@ -180,6 +180,9 @@ Maintain copy-paste examples for:
 * baseline drift blocking
 * review summary and JSON artifact upload
 
+Keep GitHub Actions dependencies current while preserving archived release
+artifacts, merged extraction, and fail-closed artifact digest verification.
+
 ### Maintain Release Verification
 
 Document and keep testing:

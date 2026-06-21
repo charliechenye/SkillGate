@@ -27,7 +27,7 @@ jobs:
         run: python tools/update_snapshots.py --check --artifacts test-outputs/snapshots
       - name: Upload snapshot review artifacts
         if: steps.snapshots.outcome == 'failure'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: snapshot-review
           path: test-outputs/snapshots
