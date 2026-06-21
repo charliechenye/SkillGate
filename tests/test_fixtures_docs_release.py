@@ -305,14 +305,16 @@ def test_docs_are_main_branch_and_discovery_friendly() -> None:
     assert action_examples.count('step-summary: "true"') == 3
     assert action_examples.count("json-output: skillgate-review.json") == 3
     assert action_examples.count("github/codeql-action/upload-sarif@v4") == 3
-    assert action_examples.count("actions/upload-artifact@v6") == 3
+    assert action_examples.count("actions/upload-artifact@v7") == 3
     assert "actions/upload-artifact@v4" not in action_examples
+    assert "actions/upload-artifact@v6" not in action_examples
     assert "actions/download-artifact@v4" not in action_examples
     assert action_examples.count("if: always()") == 6
     assert 'fail-on-drift: "true"' in action_examples
     assert workflow["jobs"]["skillgate"]["env"]["FORCE_JAVASCRIPT_ACTIONS_TO_NODE24"] is True
-    assert "actions/upload-artifact@v6" in workflow_text
+    assert "actions/upload-artifact@v7" in workflow_text
     assert "actions/upload-artifact@v4" not in workflow_text
+    assert "actions/upload-artifact@v6" not in workflow_text
     assert "ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION" not in workflow_text
     assert dependabot["version"] == 2
     assert {
