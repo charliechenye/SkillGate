@@ -61,7 +61,7 @@ jobs:
             asset: skillgate-win32-x64.exe
             executable: skillgate.exe
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.resolve-tag.outputs.release_tag }}
       - uses: actions/setup-python@v6
@@ -90,7 +90,7 @@ jobs:
     needs: [resolve-tag, build]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.resolve-tag.outputs.release_tag }}
       - uses: actions/download-artifact@v8
