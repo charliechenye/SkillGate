@@ -8,20 +8,24 @@ The project should answer one practical question better than anyone else:
 
 > Before I install, merge, or approve this agent skill or MCP server, what new capability surface does it introduce?
 
-SkillGate should stay focused on pre-install and pre-merge review. It should not become a hosted dashboard, generic agent framework, runtime gateway, or broad observability platform until the core trust-gate workflow is widely useful.
+SkillGate should stay focused on pre-install and pre-merge review. It should not become a hosted dashboard, generic agent framework, runtime gateway, malware scanner, or broad observability platform until the local trust-gate workflow is widely useful and clearly differentiated.
+
+The roadmap should prioritize complete user workflows, distribution, and public proof over adding large numbers of loosely connected rules.
+
+---
 
 ## Current Baseline
 
 The current stable release is `v0.1.1`.
 
-The shipped baseline already includes:
+The shipped baseline includes:
 
 - local static scans for agent-relevant files;
 - sparse GitHub pre-install scans;
 - deterministic rules for shell execution, destructive commands, network egress, remote download execution, secret access, filesystem writes, prompt override language, suspicious Unicode, and MCP-related risks;
 - policy-as-code checks;
 - expiring finding waivers;
-- baseline creation and drift detection;
+- baseline creation and capability-drift detection;
 - provenance verification for policy and baseline files;
 - SARIF output and GitHub code-scanning integration;
 - reviewer-friendly Markdown and JSON summaries;
@@ -30,257 +34,483 @@ The shipped baseline already includes:
 - a composite GitHub Action;
 - a GitHub-first Node wrapper backed by checksummed release binaries;
 - bounded release-manifest and binary downloads;
-- release-binary workflows and release verification guidance.
+- a reusable, fail-closed ZIP archive inspection foundation.
 
-These capabilities are release history, not future work. Keep their detailed record in `CHANGELOG.md`.
+These capabilities are release history, not future work. Keep detailed records in `CHANGELOG.md`.
 
 ---
 
-## Immediate Maintenance: `0.1.x`
+## Near-Term Priority
 
-The purpose of `0.1.x` releases is reliability, adoption, and correction. Do not add major new product surfaces in patch releases.
+The next phase should convert the archive foundation into one memorable public workflow, then remove the largest barriers to adoption.
 
-### Maintain GitHub Action Reliability
+The execution order is:
 
-Keep the documented Action behavior stable:
+1. Refactor archive internals without changing behavior.
+2. Ship the narrow MCPB pre-install scan MVP.
+3. Publish the Python package through a low-friction distribution path.
+4. Publish credible public scan reports.
+5. Simplify onboarding and demonstrate the workflow visually.
+6. Expand the MCPB workflow only where real usage justifies it.
+7. Add Agent Skills validation.
+8. Build the declared-intent-versus-observed-capability model.
 
-- no `policy` means a nonblocking static scan;
-- supplied `policy` means a blocking policy check;
-- supplied `policy` plus `sarif-output` means policy-aware SARIF;
-- supplied `baseline` plus `fail-on-drift` can block capability drift without a full policy file;
-- supplied `step-summary` appends a Markdown review summary to GitHub Step Summary;
-- supplied `summary-output` writes a Markdown review artifact;
-- supplied `json-output` writes a machine-readable review artifact.
+Do not add more generic rule families unless they are necessary to complete one of these workflows.
 
-Maintain copy-paste examples for:
+---
 
-- nonblocking scan with SARIF;
-- blocking policy check with policy-aware SARIF;
-- baseline drift blocking;
-- review-summary artifact upload.
+# Batch 2A.0: Archive Internal Refactor
 
-### Maintain Release Verification
+## Objective
 
-For every patch release:
+Prepare the archive layer for MCPB integration without changing its behavior, stable outputs, or safety guarantees.
 
-- verify the concrete release tag;
-- verify the stable `v0` tag;
-- verify GitHub Action usage from a clean external repository;
-- verify GitHub-tag Python installation;
-- verify the Node wrapper from a clean environment;
-- verify binary hashes and manifest sizes;
-- verify unsupported-platform failures;
-- verify offline cached-binary behavior.
+This is an internal maintainability batch, not a public product milestone.
 
-Continue recommending:
+## Why This Happens Now
 
-- full commit SHA pinning for high-trust GitHub Action users;
-- explicit release tags for Python installation;
-- explicit `SKILLGATE_VERSION` for Node wrapper downloads.
+`src/skillgate/archive.py` currently combines:
 
-### Maintain GitHub-First Distribution
+- limit models;
+- archive result models;
+- typed exceptions;
+- path normalization;
+- duplicate and collision checks;
+- ZIP metadata inspection;
+- bounded extraction;
+- cleanup behavior;
+- nested archive detection;
+- text and binary classification;
+- deterministic manifest serialization.
 
-Keep the Python implementation canonical.
+Adding MCPB manifest parsing and source-adapter logic directly to this module would blur responsibility boundaries and make the MCPB feature harder to review.
 
-Do not maintain a second scanner in TypeScript.
+The refactor should happen immediately before MCPB implementation so that:
 
-Current intended Node usage:
+- the existing behavior is protected by mature tests;
+- the next feature has clear extension points;
+- the refactor remains behavior-preserving;
+- MCPB-specific code does not leak into generic archive safety code.
 
-```bash
-npx --yes github:charliechenye/SkillGate#v0 -- scan .
-```
-
-Maintain:
-
-- platform-specific binary selection;
-- release-manifest checksum validation;
-- bounded downloads;
-- cache support;
-- offline cached-binary mode;
-- explicit version pinning;
-- clear unsupported-platform messages.
-
-Do not promote bare:
-
-```bash
-npx skillgate scan .
-```
-
-until an npm package is intentionally published.
-
-Do not publish the Python distribution to PyPI until the release checklist includes clean-environment installation, ownership verification, and post-publication smoke tests.
-
-### Build Adoption Evidence
-
-Publish neutral example reports under:
+## Proposed Package Structure
 
 ```text
-docs/public-scan-reports/
+src/skillgate/archive/
+├── __init__.py
+├── errors.py
+├── models.py
+├── paths.py
+├── classification.py
+├── zip_inspection.py
+└── manifest.py
 ```
 
-Initial examples should include:
+Suggested responsibilities:
 
-- one Agent Skills repository;
-- one Claude or Codex skill repository;
-- one MCP server or registry example;
-- one repository with helper scripts;
-- one repository with no high-risk findings.
+### `errors.py`
 
-Each report should include:
+- typed archive errors;
+- stable error creation;
+- safe display helpers;
+- cleanup-note behavior.
 
-- immutable source revision;
-- command used;
-- findings summary;
-- capability inventory;
-- limitations;
-- suggested policy;
-- whether each result is a vulnerability, expected capability, or review item.
+### `models.py`
 
-Do not shame maintainers or label a finding a vulnerability without evidence.
+- `ArchiveLimits`;
+- `DEFAULT_ARCHIVE_LIMITS`;
+- `ArchiveMember`;
+- `ArchiveInspectionResult`;
+- internal pending-member models.
+
+### `paths.py`
+
+- member-path normalization;
+- duplicate normalized-path detection;
+- file/directory collision detection;
+- containment checks.
+
+### `classification.py`
+
+- text and binary classification;
+- nested archive extension detection;
+- ZIP magic detection;
+- stable skip reasons.
+
+### `zip_inspection.py`
+
+- archive hashing;
+- ZIP metadata inspection;
+- compression and encryption checks;
+- symlink and special-entry detection;
+- bounded extraction;
+- streamed size enforcement;
+- cleanup helpers;
+- `inspect_archive()`.
+
+### `manifest.py`
+
+- `archive_manifest()`;
+- deterministic sorting;
+- stable ratio rounding;
+- archive schema version.
+
+### `__init__.py`
+
+Re-export only the currently supported internal interface:
+
+```python
+ArchiveError
+ArchiveFormatError
+ArchiveSafetyError
+ArchiveLimitError
+ArchiveInspectionResult
+ArchiveLimits
+ArchiveMember
+DEFAULT_ARCHIVE_LIMITS
+archive_manifest
+inspect_archive
+normalize_archive_member_path
+```
+
+## Constraints
+
+This batch must not:
+
+- change stable error codes;
+- change exception types;
+- change archive default limits;
+- change manifest schema or values;
+- change nested archive behavior;
+- change cleanup behavior;
+- change path normalization semantics;
+- add MCPB parsing;
+- add CLI commands;
+- add new findings;
+- add SARIF categories;
+- change release behavior.
+
+## Acceptance Criteria
+
+- all existing archive tests pass unchanged where practical;
+- any test edits are import-path adjustments only;
+- deterministic manifests remain byte-for-byte equivalent after JSON serialization;
+- stable exception codes and structured fields remain unchanged;
+- no temporary paths enter errors or manifests;
+- cleanup behavior remains strict and retryable;
+- failed-inspection cleanup continues preserving the original exception;
+- full repository tests, lint, and formatting pass.
+
+## Suggested Commit
+
+```text
+refactor: split archive inspection into focused modules
+```
 
 ---
 
-## Milestone `0.2.0`: Safe MCPB Pre-Install Scanner
+# Milestone 0.2.0: Safe MCPB Pre-Install Scanner
 
-This should be the next major product milestone.
+## Product Outcome
 
-MCP bundles are concrete installation artifacts. SkillGate should become useful before a user installs or runs one.
+A user can inspect an MCP bundle before installing or executing it and receive a deterministic answer about:
 
-### Add `mcpb scan`
+- what starts;
+- which file is the entry point;
+- which commands or runtimes are involved;
+- which environment variables and secrets are referenced;
+- which URLs and endpoints are declared;
+- which files are bundled;
+- whether binaries or nested archives require review;
+- which existing SkillGate findings apply.
 
-Add:
+The first public workflow should be:
 
 ```bash
 skillgate mcpb scan bundle.mcpb
 ```
 
-Inspect:
+## Batch 2A.1: MCPB Scan MVP
 
-- `manifest.json`;
-- declared server type;
-- entry point;
-- referenced files;
-- environment variables;
-- user-configurable parameters;
-- bundled MCP configuration;
-- bundled scripts;
-- bundled package metadata;
-- embedded binaries;
-- remote URLs;
-- localhost and private-network endpoints;
-- sensitive filesystem references;
-- secret references;
-- startup and post-install commands.
+### Required Commands
 
-Reuse the existing discovery and rule engine after safe extraction. MCPB should be a new source adapter, not a second scanner implementation.
-
-### Add Bundle-Specific Findings
-
-Only add new rule IDs where existing rules cannot express the review decision.
-
-Candidate rules:
-
-- malformed or unsafe MCP bundle structure;
-- manifest references missing or unexpected files;
-- embedded binary or nested archive requiring review.
-
-Avoid creating a separate rule for every manifest field.
-
-### Add Deterministic Outputs
-
-Support:
+Ship:
 
 ```bash
 skillgate mcpb scan bundle.mcpb
 skillgate mcpb scan bundle.mcpb --format json
-skillgate mcpb scan bundle.mcpb --format sarif --output skillgate.sarif
-skillgate mcpb scan bundle.mcpb --manifest-output bundle-manifest.json
 skillgate mcpb scan bundle.mcpb --fail-on high
+skillgate mcpb scan bundle.mcpb --manifest-output bundle-manifest.json
 ```
 
-The bundle manifest should record:
+Defer SARIF until the text and JSON output contracts stabilize.
+
+### MCPB Adapter
+
+Implement MCPB as a source adapter over the safe archive layer and existing scanner.
+
+The adapter should:
+
+1. inspect and safely extract the bundle;
+2. locate and parse `manifest.json`;
+3. validate the minimal required bundle structure;
+4. identify the declared server type and entry point;
+5. identify referenced files;
+6. identify environment-variable and user-configuration declarations;
+7. identify commands, scripts, URLs, endpoints, package metadata, and binaries;
+8. pass extracted static files into existing SkillGate discovery and rules;
+9. combine archive, manifest, and scan results into one deterministic report;
+10. clean up temporary files after the result has been rendered or persisted.
+
+Do not create a second scanning engine.
+
+### Narrow Manifest Scope
+
+Parse only the fields needed to answer:
+
+- What starts?
+- Where is the entry point?
+- Which files are required?
+- Which configuration values and environment variables are referenced?
+- Which URLs or endpoints are declared?
+- Are all referenced files present?
+- Does the declared startup behavior match bundled content?
+
+Do not attempt complete interpretation of every MCPB manifest field in the first release.
+
+### Bundle-Specific Findings
+
+Add no more than three bundle-specific findings unless implementation proves that another finding is essential:
+
+1. malformed or unsafe MCP bundle structure;
+2. manifest references missing, conflicting, or unexpected files;
+3. embedded binary or retained nested archive requiring explicit review.
+
+Reuse existing SG rules for shell execution, remote download execution, network egress, secret access, filesystem writes, suspicious package scripts, prompt override behavior, obfuscation, and MCP transport or metadata risks.
+
+### Deterministic Bundle Manifest
+
+The bundle manifest should include:
 
 - archive SHA-256;
 - scanner version;
-- file count;
-- total compressed and uncompressed bytes;
-- every member path;
-- member SHA-256;
+- member count;
+- total compressed bytes;
+- total uncompressed bytes;
+- normalized member paths;
+- member SHA-256 values;
 - compressed and uncompressed sizes;
-- compression ratio;
+- compression ratios;
 - file classification;
-- whether the member was scanned or skipped;
-- skip reason;
+- whether each member was scanned;
+- stable skip reasons;
+- manifest path;
 - detected entry point;
+- declared server type;
 - referenced environment variables;
-- embedded binaries;
-- nested archives.
+- detected URLs and endpoints;
+- embedded binary inventory;
+- retained nested archive inventory.
 
-Add a SARIF run category:
-
-```text
-skillgate/mcp-bundle
-```
+Do not include temporary extraction paths, local archive filesystem paths, timestamps, environment-specific values, or raw file contents.
 
 ### Required Fixtures
 
-Ship the feature with hostile and normal fixtures:
+Ship the MVP with:
 
 - safe MCPB;
 - shell startup command;
 - remote endpoint;
 - secret reference;
-- embedded binary;
-- ZIP-slip path;
-- absolute path;
-- unsafe symlink;
-- too many files;
-- oversized member;
-- high compression ratio;
-- nested archive;
 - malformed manifest;
 - missing entry point;
-- suspicious package scripts.
+- embedded binary;
+- nested archive.
 
-For each fixture, assert:
+Continue relying on archive-layer tests for low-level ZIP traversal, absolute paths, symlinks, compression bombs, and resource limits.
+
+### Tests
+
+For each fixture, assert as applicable:
 
 - exit code;
 - finding IDs;
+- detected entry point;
+- detected commands and endpoints;
+- referenced environment variables;
 - manifest state;
 - deterministic JSON;
-- cleanup of temporary files;
-- no archive content was executed.
+- member scan and skip state;
+- temporary-file cleanup;
+- no archive content execution.
 
-### Release Evidence
+### Explicitly Deferred From The MVP
 
-Before publishing `0.2.0`, add:
+Do not include:
 
-```text
-docs/public-scan-reports/mcpb-example.md
-```
-
-The report should show:
-
-- archive hash;
-- bundle structure;
-- entry point;
-- scripts;
-- endpoints;
-- secret references;
-- binary inventory;
-- findings;
-- limitations;
-- what SkillGate can and cannot conclude.
+- MCPB SARIF;
+- GitHub Action MCPB inputs;
+- MCPB-specific policy schema;
+- recursive nested archive inspection;
+- remote registry lookups;
+- package installation;
+- dependency resolution;
+- binary malware analysis;
+- YARA;
+- sandboxing;
+- automatic remediation;
+- complete MCPB specification modeling.
 
 ---
 
-## Milestone `0.3.0`: Agent Skills Standards Alignment
+# Batch 2B: Distribution And Adoption
 
-This milestone should make SkillGate useful for standards-aligned skill review.
+The scanner will not gain broad adoption through feature depth alone. After the MCPB MVP, reduce first-use friction and publish evidence.
 
-### Add Agent Skills Validation
+## Publish The Python Package
 
-Add:
+Target installation:
+
+```bash
+pipx install openevalgate-skillgate
+skillgate scan .
+```
+
+Also validate:
+
+```bash
+uvx openevalgate-skillgate scan .
+```
+
+Before publication:
+
+- verify package ownership and the final distribution name;
+- verify README metadata and project URLs;
+- build source and wheel distributions;
+- install from a clean environment;
+- test all CLI entry points and version output;
+- test upgrade behavior;
+- verify dependency bounds;
+- publish to a test index when appropriate;
+- perform post-publication smoke tests;
+- document rollback and yanking procedures.
+
+Keep GitHub tags and full commit SHA installation documented for high-trust users.
+
+## Publish Three Public Scan Reports
+
+Create:
+
+```text
+docs/public-scan-reports/
+```
+
+Publish:
+
+1. a clean agent skill repository;
+2. a repository with meaningful shell, network, secret, or helper-script review items;
+3. an MCPB bundle report.
+
+Each report should include:
+
+- immutable source revision or archive hash;
+- exact command used;
+- scanner version;
+- capability inventory;
+- findings summary;
+- classification of each finding as expected behavior, review item, or demonstrated vulnerability;
+- limitations;
+- suggested policy;
+- what SkillGate cannot conclude.
+
+Do not shame maintainers or label findings as vulnerabilities without evidence.
+
+## Simplify README Onboarding
+
+The top-level README should initially present three workflows:
+
+### Before installing
+
+```bash
+skillgate github scan URL
+skillgate mcpb scan bundle.mcpb
+```
+
+### Before merging
+
+```bash
+skillgate scan .
+```
+
+### When ready to enforce
+
+```bash
+skillgate check . --policy skillgate.yaml
+```
+
+Move baselines, provenance, inventory, MCP registry comparison, SARIF details, and advanced Action settings below the primary onboarding path.
+
+## Add A Visual Demo
+
+Publish a short terminal recording or animated demonstration that shows:
+
+```text
+bundle.mcpb
+→ archive inspected
+→ entry point detected
+→ startup command detected
+→ secret and endpoint references identified
+→ review result produced
+```
+
+The demo should use a committed deterministic fixture.
+
+## Adoption Signals
+
+Track:
+
+- repository stars;
+- unique cloners;
+- package downloads;
+- GitHub Action usage;
+- external issues and pull requests;
+- public references;
+- successful scans of third-party repositories;
+- number of public scan reports;
+- time from installation to first useful result.
+
+Do not add telemetry to the CLI without an explicit privacy design and opt-in decision.
+
+---
+
+# Batch 2C: MCPB Workflow Expansion
+
+Only begin this batch after the MCPB text and JSON output contracts have been exercised through fixtures and public reports.
+
+Potential additions:
+
+- SARIF output;
+- `skillgate/mcp-bundle` SARIF run category;
+- GitHub Action support for scanning committed MCPB artifacts;
+- policy controls for bundle-specific findings;
+- richer package metadata interpretation;
+- declared file inventory comparisons;
+- stronger unexpected-file detection;
+- example CI workflows;
+- additional public bundle reports.
+
+Do not add all of these automatically. Prioritize based on observed user requests.
+
+---
+
+# Milestone 0.3.0: Agent Skills Standards Alignment
+
+## Product Outcome
+
+A user can validate whether a skill is structurally complete and compare its declared intent with the capabilities detected in its files and scripts.
+
+## Add Skills Validation
+
+Ship:
 
 ```bash
 skillgate skills validate PATH
@@ -288,35 +518,38 @@ skillgate skills validate PATH
 
 Validate:
 
-- required `name`;
-- required `description`;
+- required `name` and `description`;
 - name format;
 - parent-directory naming consistency;
-- optional `license`;
-- optional `compatibility`;
-- optional `metadata`;
+- optional `license`, `compatibility`, and metadata;
 - experimental `allowed-tools`;
-- supported optional directories:
-  - `scripts/`;
-  - `references/`;
-  - `assets/`.
+- supported optional directories: `scripts/`, `references/`, and `assets/`.
 
-Add findings for:
+Report malformed frontmatter, missing required fields, invalid names, directory-name mismatches, missing referenced files, missing license metadata, ambiguous compatibility declarations, executables outside expected directories, missing referenced scripts or assets, and broad or ambiguous `allowed-tools`.
 
+Treat `allowed-tools` as declared metadata, not proof of runtime enforcement.
+
+## Required Evidence
+
+Ship with:
+
+- valid minimal skill;
+- valid complex skill;
 - malformed frontmatter;
-- missing required fields;
-- invalid skill names;
-- parent-directory mismatch;
-- missing referenced files;
-- missing license metadata;
-- ambiguous compatibility declarations;
-- executable files hidden outside expected directories;
-- scripts referenced but missing;
-- broad or ambiguous `allowed-tools`.
+- missing referenced script;
+- hidden executable;
+- broad `allowed-tools`;
+- one public standards-aligned scan report.
 
-Treat `allowed-tools` as experimental metadata. Do not assume every agent implementation enforces it.
+---
 
-### Compare Declared Intent With Observed Capability
+# Milestone 0.4.0: Declared Intent Versus Observed Capability
+
+This should become SkillGate’s strongest long-term differentiator.
+
+## Product Outcome
+
+SkillGate should explain where an agent artifact’s stated purpose or declared permissions do not match the capabilities observed in its implementation.
 
 Add:
 
@@ -324,16 +557,7 @@ Add:
 skillgate skills diff PATH
 ```
 
-Compare:
-
-- declared tools;
-- declared compatibility;
-- detected shell commands;
-- detected network hosts;
-- detected secret names;
-- detected filesystem write paths;
-- detected local executable references;
-- detected MCP server references.
+Compare declared tools, compatibility, environment variables, network access, and filesystem behavior with detected shell commands, network hosts, secret names, filesystem writes, executable references, MCP server references, and package scripts.
 
 Report:
 
@@ -342,15 +566,14 @@ Report:
 - newly introduced capabilities;
 - removed capabilities;
 - capability severity changes;
-- missing scripts, references, or assets.
+- missing scripts, references, or assets;
+- contradictions between description and observed behavior.
 
-This should become a core SkillGate concept:
+Core concept:
 
-> Declared intent versus observed behavior.
+> Declared intent versus observed capability.
 
-### Add Policy Hooks
-
-Allow policies to require declaration consistency:
+Policy hooks may later allow:
 
 ```yaml
 policy:
@@ -359,364 +582,91 @@ policy:
     block_undeclared_high_risk_capabilities: true
 ```
 
-Keep the first implementation conservative and explain unsupported declarations clearly.
+This milestone should focus on explainable mismatches, not speculative intent inference.
 
 ---
 
-## Milestone `0.4.0`: MCP Security Review Pack
+# Maintenance Requirements
 
-SkillGate already detects MCP metadata and transport risks. This milestone should make MCP security review more explicit for enterprise teams.
+## Maintain GitHub Action Reliability
 
-### Add Remote-Server Security Linting
+Keep the documented Action behavior stable for nonblocking scans, blocking policy checks, policy-aware SARIF, baseline drift blocking, GitHub Step Summary, Markdown summaries, and machine-readable review artifacts.
 
-Add best-effort static checks for:
+Maintain copy-paste examples for:
 
-- token-passthrough indicators;
-- static bearer tokens;
-- static client secrets;
-- long-lived client credentials;
-- unauthenticated remote endpoints;
-- plain HTTP where HTTPS is expected;
-- loopback bridges;
-- private-network endpoints;
-- link-local endpoints;
-- cloud metadata endpoints;
-- broad OAuth scopes;
-- wildcard scopes;
-- suspicious redirect URIs;
-- secret-bearing remote headers;
-- local servers exposed beyond loopback;
-- predictable session identifiers where statically visible;
-- startup commands mixing package installation, download, and execution.
+- nonblocking scan with SARIF;
+- blocking policy check with policy-aware SARIF;
+- baseline drift blocking;
+- review-summary artifact upload.
 
-Document the limit:
-
-> Static inspection can identify risky patterns and review requirements, but it cannot prove a remote authorization flow is secure.
-
-### Add MCP Risk Profiles
-
-Add:
-
-```bash
-skillgate policy init --profile mcp-local
-skillgate policy init --profile mcp-remote
-skillgate policy init --profile mcp-enterprise
-```
-
-Profiles should make different default choices for:
-
-- local stdio servers;
-- package-backed servers;
-- remote HTTP servers;
-- private-network endpoints;
-- secret-bearing headers;
-- registry drift;
-- OAuth metadata;
-- startup command risk.
-
-### Expand Registry Review
-
-Add:
-
-```bash
-skillgate mcp registry batch-scan FILE_OR_URL
-skillgate mcp registry version-diff BEFORE AFTER
-```
-
-Support:
-
-- immutable version comparison;
-- package and repository provenance;
-- semantic-version changes;
-- endpoint changes;
-- transport changes;
-- secret and header requirement changes;
-- artifact-friendly output.
-
-Keep registry comparison opt-in and deterministic.
-
----
-
-## Milestone `0.5.0`: Public Benchmark And Evidence Package
-
-This milestone should establish SkillGate as a credible community artifact, not just a CLI.
-
-### Add Fixture Verification
-
-Add:
-
-```bash
-skillgate fixtures verify fixtures/benchmark
-```
-
-Validate:
-
-- expected finding IDs;
-- expected capability types;
-- unexpected findings;
-- missing findings;
-- fixture metadata;
-- attribution metadata;
-- deterministic output.
-
-### Publish A Versioned Benchmark Manifest
-
-The manifest should include:
-
-- benchmark version;
-- fixture ID;
-- threat category;
-- supported surface;
-- expected findings;
-- expected capabilities;
-- source attribution;
-- detector limitations;
-- false-positive notes;
-- false-negative notes.
-
-### Generate A Public Benchmark Report
-
-Add:
-
-```bash
-skillgate benchmark report fixtures/benchmark --output benchmark-report.md
-```
-
-Report:
-
-- fixture coverage by rule;
-- fixture coverage by threat category;
-- surface coverage;
-- maintained-fixture recall;
-- known blind spots;
-- unsupported surfaces;
-- changes since the previous benchmark version.
-
-Do not claim broad real-world accuracy from curated fixtures.
-
-### Add A Fixture Contribution Guide
-
-Create:
-
-```text
-docs/contributing-fixtures.md
-```
-
-Explain:
-
-- how to reduce public examples into nonverbatim fixtures;
-- how to add attribution;
-- how to add expected findings;
-- how to update snapshots;
-- how to avoid secrets and exploit-ready payloads;
-- how benchmark fixtures differ from regression fixtures.
-
----
-
-## Milestone `0.6.0`: Provenance And Release Attestation
-
-SkillGate already publishes release binaries and checksum manifests. The next trust step is stronger provenance.
-
-### Strengthen Release Artifact Provenance
-
-Include:
-
-- source commit SHA;
-- build workflow reference;
-- build timestamp;
-- Python version;
-- platform;
-- wheel and source-distribution hashes;
-- binary hashes;
-- clean-environment installation verification.
-
-### Explore Standard Attestations
-
-Evaluate:
-
-- GitHub artifact attestations;
-- Sigstore;
-- in-toto attestations;
-- signed SkillGate scan-result manifests;
-- signed approved baselines;
-- signed maintainer capability declarations.
-
-Do not invent custom cryptography.
-
-Do not claim SLSA compliance unless the implementation and documentation satisfy the relevant requirements.
-
----
-
-## Milestone `0.7.0`: Static-To-Runtime Evidence Bridge
-
-This should remain a later milestone. Do not start it before MCPB scanning, Agent Skills validation, MCP security profiles, and benchmark credibility are in place.
-
-### Import Runtime Evidence
-
-Explore:
-
-```bash
-skillgate trace import FILE
-skillgate trace compare FILE --baseline skillgate.lock
-```
-
-Preserve, when available:
-
-- MCP method name;
-- protocol version;
-- session ID;
-- tool name;
-- prompt name;
-- resource URI;
-- transport;
-- network protocol;
-- request ID;
-- error type;
-- response status.
-
-Tool arguments and results must remain disabled by default and safely redacted when enabled.
-
-### Compare Static And Observed Capability
-
-Report:
-
-- runtime tools absent from the approved static baseline;
-- undeclared network destinations;
-- undeclared write paths;
-- newly observed secret references;
-- dynamic MCP tool-list changes;
-- unexpected transport changes;
-- session-level capability drift.
-
-Default to local processing and redaction.
-
-### Track Dynamic Tool Registration
-
-Support controlled, opt-in review of:
-
-- `notifications/tools/list_changed`;
-- newly registered tools;
-- removed tools;
-- schema changes;
-- description changes;
-- annotation changes;
-- tool-list changes during an active session.
-
-Do not build a runtime gateway or proxy as part of this milestone.
-
----
-
-## Community And Adoption Work
-
-Community work should run alongside product milestones without blocking core releases.
-
-### Open Focused Starter Issues
-
-Examples:
-
-- `good first issue`: add one MCPB fixture;
-- `good first issue`: add one Agent Skills validation fixture;
-- `good first issue`: improve one public scan report;
-- `help wanted`: test SkillGate on a public skill repository;
-- `help wanted`: test the composite Action externally;
-- `research`: map MCP security guidance to SkillGate rules;
-- `research`: compare declared tools with observed capabilities;
-- `docs`: improve interpretation guidance for MCP registry drift.
-
-### Publish Technical Evidence
-
-Potential posts:
-
-1. **Agent skills are executable dependencies**
-2. **Declared intent versus observed capability**
-3. **MCP bundles need pre-install security review**
-4. **What a useful agent capability review artifact should contain**
-
-Each post should include reproducible commands and concrete artifacts.
-
-### Contribute Upstream
-
-Participate in MCPB, Agent Skills, MCP security, and registry discussions with:
-
-- reduced fixtures;
-- scan reports;
-- detector examples;
-- capability-declaration feedback;
-- safe archive-scanning requirements;
-- checksum and provenance suggestions.
-
-Do not contribute only opinions. Contribute reproducible evidence.
-
----
-
-## Ecosystem Watch Items
-
-Track, but do not prioritize until formats stabilize or users request them:
-
-- MCP Skills-over-MCP distribution;
-- MCP Server Cards;
-- MCP Tasks retry and expiry semantics;
-- enterprise-managed MCP authorization extensions;
-- OAuth client-credentials extensions;
-- A2A and ACP configuration layouts;
-- Agent Bill of Materials proposals;
-- AI Bill of Materials proposals;
-- memory-poisoning defenses;
-- runtime sandbox interoperability;
-- signed skill catalogs;
-- MCP interceptors;
-- hosted MCP registries;
-- marketplace review workflows.
-
----
-
-## Deferred Non-Goals
-
-Do not build these until adoption clearly justifies them:
-
-- hosted service;
-- web dashboard;
-- user accounts;
-- database;
-- browser extension;
-- IDE extension;
-- runtime execution by default;
-- runtime gateway;
-- MCP proxy;
-- automatic remediation;
-- LLM-based scoring;
-- marketplace publishing;
-- public leaderboard before benchmark credibility;
-- second scanner implementation in TypeScript;
-- broad agent framework;
-- policy-management SaaS;
-- custom cryptography.
-
----
-
-## Release Discipline
+## Maintain Release Verification
 
 For every release:
 
-1. Add new work under `## Unreleased` in `CHANGELOG.md`.
-2. Move completed work from `Unreleased` into the concrete release entry.
-3. Remove completed items from `future_steps.md`.
-4. Keep only future or ongoing work in this file.
-5. Verify docs, examples, tags, binaries, manifests, and clean installs.
-6. Publish a concrete artifact or example that demonstrates the release value.
+- verify the concrete release tag and stable `v0` tag;
+- verify GitHub Action usage from a clean external repository;
+- verify GitHub-tag and package installation paths;
+- verify the Node wrapper from a clean environment;
+- verify binary hashes and manifest sizes;
+- verify unsupported-platform failures;
+- verify offline cached-binary behavior.
 
-Release notes should use one complete sentence per physical Markdown line so GitHub preserves readable bullets.
+Continue recommending full commit SHA pinning for high-trust GitHub Action users, explicit release tags for Python installation, and explicit `SKILLGATE_VERSION` for Node wrapper downloads.
 
-## Operating Principle
+## Maintain GitHub-First Node Distribution
 
-For every proposed feature, ask:
+Keep the Python implementation canonical. Do not maintain a second scanner in TypeScript.
 
-> Does this make SkillGate more useful for someone deciding whether to install, merge, or approve an agent skill, MCP config, or MCP bundle?
+Current intended Node usage:
 
-If yes, prioritize it.
+```bash
+npx --yes github:charliechenye/SkillGate#v0 -- scan .
+```
 
-If no, defer it.
+Maintain platform-specific binary selection, release-manifest checksum validation, bounded downloads, cache support, offline cached-binary mode, explicit version pinning, and clear unsupported-platform messages.
 
-For release notes, keep active `CHANGELOG.md` entries as one complete sentence
-per physical line. Avoid hard-wrapping bullets or paragraphs mid-sentence so
-GitHub release notes preserve the intended bullet readability.
+Do not promote bare `npx skillgate scan .` until an npm package is intentionally published.
+
+---
+
+# Prioritization Rules
+
+1. Prefer a complete user workflow over another isolated capability.
+2. Prefer deterministic evidence over heuristic breadth.
+3. Prefer reuse of the existing scanner over parallel implementations.
+4. Prefer adoption friction reduction over advanced configuration.
+5. Prefer public examples over unsupported security claims.
+6. Add new rule IDs only when existing rules cannot express the review decision.
+7. Keep stable output contracts small and versioned.
+8. Treat cleanup, bounded resource use, provenance, and no-execution guarantees as product requirements.
+9. Keep `future_steps.md` future-only.
+10. Record completed work under `CHANGELOG.md > Unreleased`.
+
+---
+
+# Immediate Execution Order
+
+## Next PR
+
+```text
+refactor: split archive inspection into focused modules
+```
+
+Behavior-preserving only.
+
+## Following PR
+
+```text
+feat: add MCPB scan MVP
+```
+
+Public text and JSON workflow, deterministic bundle manifest, existing scanner reuse, and focused fixtures.
+
+## Following Release Work
+
+```text
+release: prepare low-friction Python distribution
+docs: publish public scan evidence and simplify onboarding
+```
+
+This order protects implementation quality while keeping the project focused on user-visible adoption.
