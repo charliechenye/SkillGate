@@ -31,10 +31,10 @@ The shipped baseline includes:
 - reviewer-friendly Markdown and JSON summaries;
 - GitHub Step Summary support;
 - structured MCP registry drift output;
-- a composite GitHub Action;
+- a composite GitHub Action that can enforce a supplied `baseline` plus `fail-on-drift`;
 - a GitHub-first Node wrapper backed by checksummed release binaries;
 - bounded release-manifest and binary downloads;
-- a reusable, fail-closed ZIP archive inspection foundation.
+- a reusable, fail-closed ZIP archive inspection foundation organized into focused internal modules.
 
 These capabilities are release history, not future work. Keep detailed records in `CHANGELOG.md`.
 
@@ -46,165 +46,15 @@ The next phase should convert the archive foundation into one memorable public w
 
 The execution order is:
 
-1. Refactor archive internals without changing behavior.
-2. Ship the narrow MCPB pre-install scan MVP.
-3. Publish the Python package through a low-friction distribution path.
-4. Publish credible public scan reports.
-5. Simplify onboarding and demonstrate the workflow visually.
-6. Expand the MCPB workflow only where real usage justifies it.
-7. Add Agent Skills validation.
-8. Build the declared-intent-versus-observed-capability model.
+1. Ship the narrow MCPB pre-install scan MVP.
+2. Publish the Python package through a low-friction distribution path.
+3. Publish credible public scan reports.
+4. Simplify onboarding and demonstrate the workflow visually.
+5. Expand the MCPB workflow only where real usage justifies it.
+6. Add Agent Skills validation.
+7. Build the declared-intent-versus-observed-capability model.
 
 Do not add more generic rule families unless they are necessary to complete one of these workflows.
-
----
-
-# Batch 2A.0: Archive Internal Refactor
-
-## Objective
-
-Prepare the archive layer for MCPB integration without changing its behavior, stable outputs, or safety guarantees.
-
-This is an internal maintainability batch, not a public product milestone.
-
-## Why This Happens Now
-
-`src/skillgate/archive.py` currently combines:
-
-- limit models;
-- archive result models;
-- typed exceptions;
-- path normalization;
-- duplicate and collision checks;
-- ZIP metadata inspection;
-- bounded extraction;
-- cleanup behavior;
-- nested archive detection;
-- text and binary classification;
-- deterministic manifest serialization.
-
-Adding MCPB manifest parsing and source-adapter logic directly to this module would blur responsibility boundaries and make the MCPB feature harder to review.
-
-The refactor should happen immediately before MCPB implementation so that:
-
-- the existing behavior is protected by mature tests;
-- the next feature has clear extension points;
-- the refactor remains behavior-preserving;
-- MCPB-specific code does not leak into generic archive safety code.
-
-## Proposed Package Structure
-
-```text
-src/skillgate/archive/
-├── __init__.py
-├── errors.py
-├── models.py
-├── paths.py
-├── classification.py
-├── zip_inspection.py
-└── manifest.py
-```
-
-Suggested responsibilities:
-
-### `errors.py`
-
-- typed archive errors;
-- stable error creation;
-- safe display helpers;
-- cleanup-note behavior.
-
-### `models.py`
-
-- `ArchiveLimits`;
-- `DEFAULT_ARCHIVE_LIMITS`;
-- `ArchiveMember`;
-- `ArchiveInspectionResult`;
-- internal pending-member models.
-
-### `paths.py`
-
-- member-path normalization;
-- duplicate normalized-path detection;
-- file/directory collision detection;
-- containment checks.
-
-### `classification.py`
-
-- text and binary classification;
-- nested archive extension detection;
-- ZIP magic detection;
-- stable skip reasons.
-
-### `zip_inspection.py`
-
-- archive hashing;
-- ZIP metadata inspection;
-- compression and encryption checks;
-- symlink and special-entry detection;
-- bounded extraction;
-- streamed size enforcement;
-- cleanup helpers;
-- `inspect_archive()`.
-
-### `manifest.py`
-
-- `archive_manifest()`;
-- deterministic sorting;
-- stable ratio rounding;
-- archive schema version.
-
-### `__init__.py`
-
-Re-export only the currently supported internal interface:
-
-```python
-ArchiveError
-ArchiveFormatError
-ArchiveSafetyError
-ArchiveLimitError
-ArchiveInspectionResult
-ArchiveLimits
-ArchiveMember
-DEFAULT_ARCHIVE_LIMITS
-archive_manifest
-inspect_archive
-normalize_archive_member_path
-```
-
-## Constraints
-
-This batch must not:
-
-- change stable error codes;
-- change exception types;
-- change archive default limits;
-- change manifest schema or values;
-- change nested archive behavior;
-- change cleanup behavior;
-- change path normalization semantics;
-- add MCPB parsing;
-- add CLI commands;
-- add new findings;
-- add SARIF categories;
-- change release behavior.
-
-## Acceptance Criteria
-
-- all existing archive tests pass unchanged where practical;
-- any test edits are import-path adjustments only;
-- deterministic manifests remain byte-for-byte equivalent after JSON serialization;
-- stable exception codes and structured fields remain unchanged;
-- no temporary paths enter errors or manifests;
-- cleanup behavior remains strict and retryable;
-- failed-inspection cleanup continues preserving the original exception;
-- full repository tests, lint, and formatting pass.
-
-## Suggested Commit
-
-```text
-refactor: split archive inspection into focused modules
-```
 
 ---
 

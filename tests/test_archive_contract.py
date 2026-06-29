@@ -40,6 +40,10 @@ def test_archive_supported_symbols_are_available(name: str) -> None:
     assert hasattr(skillgate.archive, name)
 
 
+def test_archive_all_matches_supported_exports() -> None:
+    assert skillgate.archive.__all__ == EXPECTED_ARCHIVE_EXPORTS
+
+
 def test_default_archive_limits_contract() -> None:
     assert DEFAULT_ARCHIVE_LIMITS.to_data() == {
         "max_archive_bytes": 104857600,

@@ -470,7 +470,7 @@ def test_explicit_cleanup_failure_is_stable_and_retryable(
     def fail_rmtree(path: object) -> None:
         raise OSError("transient cleanup failure")
 
-    monkeypatch.setattr("skillgate.archive.shutil.rmtree", fail_rmtree)
+    monkeypatch.setattr("skillgate.archive.cleanup.shutil.rmtree", fail_rmtree)
 
     with pytest.raises(ArchiveFormatError) as excinfo:
         result.cleanup()
@@ -496,7 +496,7 @@ def test_cleanup_retry_after_transient_failure(
             raise OSError("transient cleanup failure")
         real_rmtree(path)
 
-    monkeypatch.setattr("skillgate.archive.shutil.rmtree", flaky_rmtree)
+    monkeypatch.setattr("skillgate.archive.cleanup.shutil.rmtree", flaky_rmtree)
 
     with pytest.raises(ArchiveFormatError):
         result.cleanup()
@@ -520,7 +520,7 @@ def test_cleanup_failure_on_normal_context_exit_propagates(
     def fail_rmtree(path: object) -> None:
         raise OSError("cleanup failed")
 
-    monkeypatch.setattr("skillgate.archive.shutil.rmtree", fail_rmtree)
+    monkeypatch.setattr("skillgate.archive.cleanup.shutil.rmtree", fail_rmtree)
 
     with pytest.raises(ArchiveFormatError) as excinfo:
         with result:
@@ -542,7 +542,7 @@ def test_cleanup_failure_preserves_context_body_exception(
     def fail_rmtree(path: object) -> None:
         raise OSError("cleanup failed")
 
-    monkeypatch.setattr("skillgate.archive.shutil.rmtree", fail_rmtree)
+    monkeypatch.setattr("skillgate.archive.cleanup.shutil.rmtree", fail_rmtree)
 
     with pytest.raises(RuntimeError, match="caller failed") as excinfo:
         with result:
@@ -569,8 +569,10 @@ def test_failed_inspection_cleanup_failure_preserves_original_error(
             raise OSError("cleanup failed")
         real_rmtree(path)
 
-    monkeypatch.setattr("skillgate.archive.tempfile.mkdtemp", lambda prefix: str(temp_root))
-    monkeypatch.setattr("skillgate.archive.shutil.rmtree", fail_temp_rmtree)
+    monkeypatch.setattr(
+        "skillgate.archive.zip_inspection.tempfile.mkdtemp", lambda prefix: str(temp_root)
+    )
+    monkeypatch.setattr("skillgate.archive.cleanup.shutil.rmtree", fail_temp_rmtree)
 
     with pytest.raises(ArchiveSafetyError) as excinfo:
         inspect_archive(archive_path)
@@ -593,7 +595,7 @@ def test_metadata_failure_happens_before_temp_creation(
         called = True
         raise AssertionError("temp directory should not be created")
 
-    monkeypatch.setattr("skillgate.archive.tempfile.mkdtemp", fail_mkdtemp)
+    monkeypatch.setattr("skillgate.archive.zip_inspection.tempfile.mkdtemp", fail_mkdtemp)
 
     with pytest.raises(ArchiveSafetyError):
         inspect_archive(archive_path)
@@ -609,7 +611,7 @@ def test_temporary_directory_creation_failure_is_wrapped(
     def fail_mkdtemp(*args: object, **kwargs: object) -> str:
         raise OSError("no temp")
 
-    monkeypatch.setattr("skillgate.archive.tempfile.mkdtemp", fail_mkdtemp)
+    monkeypatch.setattr("skillgate.archive.zip_inspection.tempfile.mkdtemp", fail_mkdtemp)
 
     with pytest.raises(ArchiveFormatError) as excinfo:
         inspect_archive(archive_path)
@@ -623,7 +625,9 @@ def test_magic_nested_archive_rejection_cleans_temporary_root(
     archive_path = write_zip(tmp_path / "magic.zip", [("payload.bin", b"PK\x03\x04nested")])
     temp_root = tmp_path / "skillgate-temp"
 
-    monkeypatch.setattr("skillgate.archive.tempfile.mkdtemp", lambda prefix: str(temp_root))
+    monkeypatch.setattr(
+        "skillgate.archive.zip_inspection.tempfile.mkdtemp", lambda prefix: str(temp_root)
+    )
 
     with pytest.raises(ArchiveSafetyError) as excinfo:
         inspect_archive(archive_path)
@@ -669,7 +673,9 @@ def test_crc_failure_is_wrapped_and_cleaned_up(
     data[offset : offset + 4] = b"DATA"
     archive_path.write_bytes(data)
     temp_root = tmp_path / "crc-temp"
-    monkeypatch.setattr("skillgate.archive.tempfile.mkdtemp", lambda prefix: str(temp_root))
+    monkeypatch.setattr(
+        "skillgate.archive.zip_inspection.tempfile.mkdtemp", lambda prefix: str(temp_root)
+    )
 
     with pytest.raises(ArchiveFormatError) as excinfo:
         inspect_archive(archive_path)
