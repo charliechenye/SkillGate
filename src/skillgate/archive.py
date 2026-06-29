@@ -8,6 +8,7 @@ import tempfile
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import TracebackType
 from typing import Any
 
 ARCHIVE_SCHEMA_VERSION = "1"
@@ -136,14 +137,24 @@ class ArchiveInspectionResult:
     def cleanup(self) -> None:
         if self._cleaned_up:
             return
-        shutil.rmtree(self.extraction_root, ignore_errors=True)
+        _remove_extraction_root_strict(self.extraction_root, archive_path=self.archive_path)
         self._cleaned_up = True
 
     def __enter__(self) -> ArchiveInspectionResult:
         return self
 
-    def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
-        self.cleanup()
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        try:
+            self.cleanup()
+        except ArchiveError:
+            if exc is None:
+                raise
+            _add_cleanup_note(exc)
 
 
 class ArchiveError(RuntimeError):
@@ -239,6 +250,40 @@ def archive_error(
         observed=observed,
         allowed=allowed,
     )
+
+
+def _add_cleanup_note(error: BaseException) -> None:
+    error.add_note("Archive temporary cleanup was incomplete.")
+
+
+def _remove_extraction_root_strict(
+    extraction_root: Path,
+    *,
+    archive_path: str | Path,
+) -> None:
+    try:
+        shutil.rmtree(extraction_root)
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        raise archive_error(
+            ArchiveFormatError,
+            "Archive temporary extraction directory could not be removed",
+            archive_path=archive_path,
+            code="cleanup_failure",
+        ) from exc
+
+
+def _remove_extraction_root_preserving_error(
+    extraction_root: Path,
+    original_error: BaseException,
+) -> None:
+    try:
+        shutil.rmtree(extraction_root)
+    except FileNotFoundError:
+        return
+    except OSError:
+        _add_cleanup_note(original_error)
 
 
 def normalize_archive_member_path(
@@ -880,8 +925,8 @@ def inspect_archive(
             limits,
             extraction_root,
         )
-    except Exception:
-        shutil.rmtree(extraction_root, ignore_errors=True)
+    except Exception as exc:
+        _remove_extraction_root_preserving_error(extraction_root, exc)
         raise
     return ArchiveInspectionResult(
         archive_path=archive_path,

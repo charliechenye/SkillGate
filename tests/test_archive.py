@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import shutil
 import stat
 import zipfile
 from pathlib import Path
@@ -442,6 +443,143 @@ def test_explicit_cleanup_removes_only_result_root(tmp_path: Path) -> None:
     assert not root.exists()
     assert unrelated.exists()
     assert result.member_count == 1
+
+
+def test_cleanup_treats_missing_extraction_root_as_success(tmp_path: Path) -> None:
+    archive_path = write_zip(tmp_path / "missing-root.zip", [("a.txt", b"hello")])
+    result = inspect_archive(archive_path)
+    root = result.extraction_root
+
+    shutil.rmtree(root)
+    result.cleanup()
+    result.cleanup()
+
+    assert result._cleaned_up is True
+    assert result.extraction_root == root
+    assert not root.exists()
+    assert result.member_count == 1
+
+
+def test_explicit_cleanup_failure_is_stable_and_retryable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    archive_path = write_zip(tmp_path / "cleanup-failure.zip", [("a.txt", b"hello")])
+    result = inspect_archive(archive_path)
+    root = result.extraction_root
+
+    def fail_rmtree(path: object) -> None:
+        raise OSError("transient cleanup failure")
+
+    monkeypatch.setattr("skillgate.archive.shutil.rmtree", fail_rmtree)
+
+    with pytest.raises(ArchiveFormatError) as excinfo:
+        result.cleanup()
+
+    assert excinfo.value.code == "cleanup_failure"
+    assert result._cleaned_up is False
+    assert str(root) not in str(excinfo.value)
+    assert str(root) not in repr(excinfo.value.to_data())
+
+
+def test_cleanup_retry_after_transient_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    archive_path = write_zip(tmp_path / "cleanup-retry.zip", [("a.txt", b"hello")])
+    result = inspect_archive(archive_path)
+    real_rmtree = shutil.rmtree
+    calls = 0
+
+    def flaky_rmtree(path: object) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise OSError("transient cleanup failure")
+        real_rmtree(path)
+
+    monkeypatch.setattr("skillgate.archive.shutil.rmtree", flaky_rmtree)
+
+    with pytest.raises(ArchiveFormatError):
+        result.cleanup()
+
+    assert result._cleaned_up is False
+
+    result.cleanup()
+
+    assert result._cleaned_up is True
+    assert not result.extraction_root.exists()
+    assert calls == 2
+
+
+def test_cleanup_failure_on_normal_context_exit_propagates(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    archive_path = write_zip(tmp_path / "context-cleanup-failure.zip", [("a.txt", b"hello")])
+    result = inspect_archive(archive_path)
+    root = result.extraction_root
+
+    def fail_rmtree(path: object) -> None:
+        raise OSError("cleanup failed")
+
+    monkeypatch.setattr("skillgate.archive.shutil.rmtree", fail_rmtree)
+
+    with pytest.raises(ArchiveFormatError) as excinfo:
+        with result:
+            pass
+
+    assert excinfo.value.code == "cleanup_failure"
+    assert result._cleaned_up is False
+    assert str(root) not in str(excinfo.value)
+    assert str(root) not in repr(excinfo.value.to_data())
+
+
+def test_cleanup_failure_preserves_context_body_exception(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    archive_path = write_zip(tmp_path / "context-body-cleanup-failure.zip", [("a.txt", b"hello")])
+    result = inspect_archive(archive_path)
+    root = result.extraction_root
+
+    def fail_rmtree(path: object) -> None:
+        raise OSError("cleanup failed")
+
+    monkeypatch.setattr("skillgate.archive.shutil.rmtree", fail_rmtree)
+
+    with pytest.raises(RuntimeError, match="caller failed") as excinfo:
+        with result:
+            raise RuntimeError("caller failed")
+
+    notes = getattr(excinfo.value, "__notes__", [])
+    assert any("temporary cleanup was incomplete" in note.lower() for note in notes)
+    assert str(root) not in " ".join(notes)
+    assert result._cleaned_up is False
+
+
+def test_failed_inspection_cleanup_failure_preserves_original_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    archive_path = write_zip(
+        tmp_path / "nested-cleanup-failure.zip",
+        [("payload.bin", b"PK\x03\x04nested")],
+    )
+    temp_root = tmp_path / "nested-cleanup-temp"
+    real_rmtree = shutil.rmtree
+
+    def fail_temp_rmtree(path: object) -> None:
+        if Path(path) == temp_root:
+            raise OSError("cleanup failed")
+        real_rmtree(path)
+
+    monkeypatch.setattr("skillgate.archive.tempfile.mkdtemp", lambda prefix: str(temp_root))
+    monkeypatch.setattr("skillgate.archive.shutil.rmtree", fail_temp_rmtree)
+
+    with pytest.raises(ArchiveSafetyError) as excinfo:
+        inspect_archive(archive_path)
+
+    assert excinfo.value.code == "nested_archive"
+    notes = getattr(excinfo.value, "__notes__", [])
+    assert any("temporary cleanup was incomplete" in note.lower() for note in notes)
+    assert str(temp_root) not in " ".join(notes)
+    assert "cleanup_failure" not in repr(excinfo.value.to_data())
 
 
 def test_metadata_failure_happens_before_temp_creation(

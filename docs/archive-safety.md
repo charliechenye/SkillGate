@@ -81,7 +81,11 @@ The inspection lifecycle is:
 
 SkillGate never uses `ZipFile.extract()` or `extractall()`.
 
-If inspection fails after temporary storage is created, the temporary directory is removed before the typed error is returned to the caller. Cleanup is idempotent for successful results and removes only the temporary directory created by SkillGate.
+## Cleanup Semantics
+
+A successfully returned `ArchiveInspectionResult` owns its SkillGate-created temporary extraction directory. Calling `cleanup()` is strict and idempotent. A missing directory is treated as already cleaned. If the directory exists but cannot be removed, cleanup raises a stable `cleanup_failure` error, leaves the result marked as not cleaned, and permits a later retry.
+
+When archive inspection has already failed, SkillGate still attempts to remove any temporary extraction directory it created. If that cleanup attempt also fails, SkillGate preserves the original inspection exception rather than replacing it with a cleanup error. Sanitized cleanup context may be attached to the original exception, but temporary extraction paths are not included in stable diagnostics or notes.
 
 ## Permissions
 

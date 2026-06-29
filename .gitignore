@@ -13,4 +13,3 @@ venv/
 .venv/
 skillgate.lock
 skillgate.sarif
-.editorconfig
