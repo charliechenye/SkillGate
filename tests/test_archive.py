@@ -14,6 +14,7 @@ from skillgate.archive import (
     ArchiveLimitError,
     ArchiveLimits,
     ArchiveSafetyError,
+    archive_manifest,
     inspect_archive,
     normalize_archive_member_path,
     validate_archive_member_paths,
@@ -551,3 +552,86 @@ def test_executable_zip_mode_bits_are_not_restored_on_posix(tmp_path: Path) -> N
     mode = (result.extraction_root / "run.sh").stat().st_mode
     assert mode & stat.S_IXUSR == 0
     result.cleanup()
+
+
+def test_manifest_excludes_archive_original_and_temp_paths(tmp_path: Path) -> None:
+    archive_path = write_zip(tmp_path / "manifest.zip", [("dir/file.txt", b"hello")])
+    result = inspect_archive(archive_path)
+    root = result.extraction_root
+
+    manifest = archive_manifest(result)
+    rendered = repr(manifest)
+
+    assert "original_path" not in rendered
+    assert str(root) not in rendered
+    assert str(archive_path) not in rendered
+    assert manifest["members"][0]["path"] == "dir/file.txt"
+    result.cleanup()
+    assert archive_manifest(result) == manifest
+
+
+def test_repeated_inspections_produce_identical_manifests(tmp_path: Path) -> None:
+    archive_path = write_zip(
+        tmp_path / "repeat.zip",
+        [("b.txt", b"second"), ("a.txt", b"first")],
+    )
+
+    first = inspect_archive(archive_path)
+    second = inspect_archive(archive_path)
+    try:
+        assert archive_manifest(first) == archive_manifest(second)
+    finally:
+        first.cleanup()
+        second.cleanup()
+
+
+def test_manifest_members_are_sorted_deterministically(tmp_path: Path) -> None:
+    archive_path = write_zip(
+        tmp_path / "sorted.zip",
+        [("z.txt", b"last"), ("a.txt", b"first"), ("m.txt", b"middle")],
+    )
+
+    result = inspect_archive(archive_path)
+
+    assert [member["path"] for member in archive_manifest(result)["members"]] == [
+        "a.txt",
+        "m.txt",
+        "z.txt",
+    ]
+    result.cleanup()
+
+
+def test_manifest_uses_stable_ratio_rounding(tmp_path: Path) -> None:
+    archive_path = tmp_path / "ratio-manifest.zip"
+    with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("a.txt", b"a" * 257)
+
+    result = inspect_archive(archive_path)
+    member = result.members[0]
+    manifest_member = archive_manifest(result)["members"][0]
+
+    assert manifest_member["compression_ratio"] == round(member.compression_ratio or 0.0, 4)
+    result.cleanup()
+
+
+def test_manifest_represents_binary_and_nested_members_deterministically(tmp_path: Path) -> None:
+    archive_path = write_zip(
+        tmp_path / "mixed.zip",
+        [("payload.bin", b"\x00binary"), ("nested.bin", b"PK\x03\x04nested")],
+    )
+
+    first = inspect_archive(archive_path, limits=tiny_limits(allow_nested_archives=True))
+    second = inspect_archive(archive_path, limits=tiny_limits(allow_nested_archives=True))
+    try:
+        manifest = archive_manifest(first)
+        by_path = {member["path"]: member for member in manifest["members"]}
+        assert by_path["payload.bin"]["scannable_text"] is False
+        assert by_path["payload.bin"]["skip_reason"] == "binary content"
+        assert by_path["nested.bin"]["nested_archive"] is True
+        assert by_path["nested.bin"]["skip_reason"] == (
+            "nested archive retained but not recursively inspected"
+        )
+        assert manifest == archive_manifest(second)
+    finally:
+        first.cleanup()
+        second.cleanup()
