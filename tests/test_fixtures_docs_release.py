@@ -186,7 +186,7 @@ def test_cli_provenance_verify_missing_and_malformed_exit_2() -> None:
     assert "Missing policy file" in missing_file.output
 
 
-def test_release_notes_keep_current_changes_under_010() -> None:
+def test_release_metadata_and_roadmap_are_consistent() -> None:
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
     future_steps = (ROOT / "future_steps.md").read_text(encoding="utf-8")
@@ -198,7 +198,10 @@ def test_release_notes_keep_current_changes_under_010() -> None:
     assert pyproject["project"]["license-files"] == ["LICENSE"]
     assert "License :: OSI Approved :: MIT License" not in pyproject["project"]["classifiers"]
     assert __version__ == "0.1.1"
-    assert "## Unreleased" not in changelog
+    assert "## Unreleased" in changelog
+    assert "reusable, bounded ZIP inspection foundation" in changelog
+    assert "### Build A Reusable Safe-Archive Layer" not in future_steps
+    assert (ROOT / "docs" / "archive-safety.md").exists()
     assert "## 0.4.0" not in changelog
     assert "## 0.1.1 - Release consistency and review ergonomics" in changelog
     assert "`0.1.1` is planned and not yet published" not in changelog
@@ -206,8 +209,9 @@ def test_release_notes_keep_current_changes_under_010() -> None:
     assert "README SEO" not in changelog
     assert "skillgate diff --fail-on-drift" in changelog
     assert "Publish the first tagged GitHub release as `v0.1.0`" not in future_steps
-    assert "Maintain `fail-on-drift`" in future_steps
-    assert "Stabilize GitHub-First Node Distribution" in future_steps
+    assert "supplied `baseline` plus `fail-on-drift`" in future_steps
+    assert "npx --yes github:charliechenye/SkillGate#v0 -- scan ." in future_steps
+    assert "docs/public-scan-reports/" in future_steps
     assert "For `v0.1.1`, both version commands should print `0.1.1`." in release_checklist
     assert 'git tag -a v0.1.1 -m "SkillGate v0.1.1"' in release_checklist
     assert "gh release create v0.1.1" in release_checklist
@@ -215,6 +219,11 @@ def test_release_notes_keep_current_changes_under_010() -> None:
     assert "git tag -f v0 v0.1.1" in release_checklist
     assert "Do not publish the root npm package" in release_checklist
     assert "Do not upload to PyPI for this GitHub-first release" in release_checklist
+
+    unreleased, released = changelog.split("## 0.1.1", maxsplit=1)
+
+    assert "reusable, bounded ZIP inspection foundation" in unreleased
+    assert "reusable, bounded ZIP inspection foundation" not in released
 
 
 def test_action_uses_action_path_and_explicit_policy_behavior() -> None:

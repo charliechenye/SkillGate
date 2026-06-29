@@ -1,41 +1,40 @@
 # Change Log
 
+## Unreleased
+
+### Added
+
+- Added a reusable, bounded ZIP inspection foundation with deterministic archive and member manifests for future MCPB pre-install scanning.
+- Added fail-closed protections for unsafe paths, duplicate normalized entries, path-type collisions, symlinks, special files, nested archives, unsupported compression, encryption, and resource-limit violations.
+- Added streaming archive and member hashing with automatic temporary-file cleanup and no execution of extracted content.
+
+### Changed
+
+### Fixed
+
 ## 0.1.1 - Release consistency and review ergonomics
 
 ### Added
 
-- Added `skillgate review summary` for reviewer-friendly Markdown and JSON
-  summaries of introduced capabilities, removed capabilities, changed trust
-  boundaries, high-risk findings, policy violations, active waivers, and
-  artifact locations.
-- Added optional composite Action inputs for Markdown review summaries,
-  machine-readable review JSON artifacts, and GitHub Step Summary output.
-- Added Markdown output for `skillgate mcp registry compare` so `SG013`
-  registry drift is easier to review through before-and-after tables.
-- Added a GitHub-first Node wrapper for `npx --yes github:charliechenye/SkillGate#v0 -- ...`
-  usage, backed by checksummed GitHub Release binaries instead of PyPI or npm
-  registry publication.
-- Added bounded Node wrapper downloads so release manifests are limited to 1 MB
-  and binary downloads are capped by `asset.size_bytes` before buffering.
+- Added `skillgate review summary` for reviewer-friendly Markdown and JSON summaries of introduced capabilities, removed capabilities, changed trust boundaries, high-risk findings, policy violations, active waivers, and artifact locations.
+- Added optional composite Action inputs for Markdown review summaries, machine-readable review JSON artifacts, and GitHub Step Summary output.
+- Added Markdown output for `skillgate mcp registry compare` so `SG013` registry drift is easier to review through before-and-after tables.
+- Added a GitHub-first Node wrapper for `npx --yes github:charliechenye/SkillGate#v0 -- ...` usage, backed by checksummed GitHub Release binaries instead of PyPI or npm registry publication.
+- Added bounded Node wrapper downloads so release manifests are limited to 1 MB and binary downloads are capped by `asset.size_bytes` before buffering.
 
 ### Changed
 
-- Extended MCP registry comparison JSON summaries with structured
-  `registry_drift` rows for artifact-friendly review.
-- Updated GitHub Action examples to include review summaries, downloadable
-  review JSON artifacts, and standard artifact upload steps.
-- Added README release and product-attribute badges that showcase the latest
-  release, static analysis, no runtime execution, and policy-as-code without
-  surfacing early social-traction counters.
-- Added a release-binary workflow and manifest builder so future stable GitHub
-  Releases can publish verified platform binaries for the Node wrapper.
-- Hardened the release-binary workflow so manual dispatch and release-published
-  runs check out the exact tag that receives the uploaded assets.
-- Marked the root npm package private to prevent accidental registry
-  publication until the package name and npm strategy are intentionally chosen.
-- Documented the Node wrapper's HTTPS default, test-only insecure HTTP escape
-  hatch, and future npm and PyPI publication steps.
+- Extended MCP registry comparison JSON summaries with structured `registry_drift` rows for artifact-friendly review.
+- Updated GitHub Action examples to include review summaries, downloadable review JSON artifacts, and standard artifact upload steps.
+- Added README release and product-attribute badges that showcase the latest release, static analysis, no runtime execution, and policy-as-code without surfacing early social-traction counters.
+- Added a release-binary workflow and manifest builder so future stable GitHub Releases can publish verified platform binaries for the Node wrapper.
+- Hardened the release-binary workflow so manual dispatch and release-published runs check out the exact tag that receives the uploaded assets.
+- Marked the root npm package private to prevent accidental registry publication until the package name and npm strategy are intentionally chosen.
+- Documented the Node wrapper's HTTPS default, test-only insecure HTTP escape hatch, and future npm and PyPI publication steps.
+- Formatted the active changelog release entry without hard-wrapped mid-sentence lines so GitHub release notes preserve intended bullet readability.
+- Updated future planning state after publishing `v0.1.1` as the stable release.
 - Upgraded GitHub artifact workflows to `actions/upload-artifact@v7` and `actions/download-artifact@v8` while preserving archived uploads, merged extraction, and fail-closed digest verification.
+- Clarified the adoption and release-hardening roadmap after `v0.1.1` so ongoing Action behavior, release verification, GitHub-first Node distribution, and public example reports are easier to maintain.
 
 ## 0.1.0 - Initial public release
 
