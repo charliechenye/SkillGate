@@ -496,16 +496,6 @@ Do not promote bare `npx skillgate scan .` until an npm package is intentionally
 
 # Immediate Execution Order
 
-## Next PR
-
-```text
-refactor: split archive inspection into focused modules
-```
-
-Behavior-preserving only.
-
-## Following PR
-
 ```text
 feat: add MCPB scan MVP
 ```
