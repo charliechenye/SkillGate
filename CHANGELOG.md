@@ -4,6 +4,10 @@
 
 ### Added
 
+- Added a reusable, bounded ZIP inspection foundation with deterministic archive and member manifests for future MCPB pre-install scanning.
+- Added fail-closed protections for unsafe paths, duplicate normalized entries, path-type collisions, symlinks, special files, nested archives, unsupported compression, encryption, and resource-limit violations.
+- Added streaming archive and member hashing with automatic temporary-file cleanup and no execution of extracted content.
+
 ### Changed
 
 ### Fixed
@@ -11,6 +15,10 @@
 ## 0.1.1 - Release consistency and review ergonomics
 
 ### Added
+
+- Added a reusable, bounded ZIP inspection foundation with deterministic archive and member manifests for future MCPB pre-install scanning.
+- Added fail-closed protections for unsafe paths, duplicate normalized entries, path-type collisions, symlinks, special files, nested archives, unsupported compression, encryption, and resource-limit violations.
+- Added streaming archive and member hashing with automatic temporary-file cleanup and no execution of extracted content.
 
 - Added `skillgate review summary` for reviewer-friendly Markdown and JSON summaries of introduced capabilities, removed capabilities, changed trust boundaries, high-risk findings, policy violations, active waivers, and artifact locations.
 - Added optional composite Action inputs for Markdown review summaries, machine-readable review JSON artifacts, and GitHub Step Summary output.
@@ -38,6 +46,10 @@ Initial public release of SkillGate, a deterministic static-analysis tool for
 AI-agent skills, instruction files, helper scripts, and MCP configurations.
 
 ### Added
+
+- Added a reusable, bounded ZIP inspection foundation with deterministic archive and member manifests for future MCPB pre-install scanning.
+- Added fail-closed protections for unsafe paths, duplicate normalized entries, path-type collisions, symlinks, special files, nested archives, unsupported compression, encryption, and resource-limit violations.
+- Added streaming archive and member hashing with automatic temporary-file cleanup and no execution of extracted content.
 
 **Core CLI and data model**
 

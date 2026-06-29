@@ -146,31 +146,6 @@ This should be the next major product milestone.
 
 MCP bundles are concrete installation artifacts. SkillGate should become useful before a user installs or runs one.
 
-### Build A Reusable Safe-Archive Layer
-
-Create a reusable archive-inspection foundation before adding MCPB-specific validation.
-
-Required controls:
-
-- reject path traversal;
-- reject ZIP-slip paths;
-- reject absolute paths;
-- reject unsafe symlinks;
-- enforce maximum file count;
-- enforce maximum total uncompressed bytes;
-- enforce maximum individual file size;
-- enforce maximum compression ratio;
-- detect nested archives;
-- hash every archive member;
-- delete temporary extraction directories after success or failure;
-- never execute archive contents.
-
-Use fail-closed semantics:
-
-- exit `0`: scan completed and no blocking threshold was reached;
-- exit `1`: scan completed and blocking findings were detected;
-- exit `2`: bundle could not be safely or completely inspected.
-
 ### Add `mcpb scan`
 
 Add:

@@ -198,7 +198,10 @@ def test_release_notes_keep_current_changes_under_010() -> None:
     assert pyproject["project"]["license-files"] == ["LICENSE"]
     assert "License :: OSI Approved :: MIT License" not in pyproject["project"]["classifiers"]
     assert __version__ == "0.1.1"
-    assert "## Unreleased" not in changelog
+    assert "## Unreleased" in changelog
+    assert "reusable, bounded ZIP inspection foundation" in changelog
+    assert "### Build A Reusable Safe-Archive Layer" not in future_steps
+    assert (ROOT / "docs" / "archive-safety.md").exists()
     assert "## 0.4.0" not in changelog
     assert "## 0.1.1 - Release consistency and review ergonomics" in changelog
     assert "`0.1.1` is planned and not yet published" not in changelog
