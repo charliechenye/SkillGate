@@ -10,6 +10,8 @@
 
 ### Changed
 
+- Reorganized the archive inspection foundation into focused internal modules without changing its safety behavior, stable errors, or manifest contract.
+
 ### Fixed
 
 ## 0.1.1 - Release consistency and review ergonomics
