@@ -186,7 +186,7 @@ def test_cli_provenance_verify_missing_and_malformed_exit_2() -> None:
     assert "Missing policy file" in missing_file.output
 
 
-def test_release_notes_keep_current_changes_under_010() -> None:
+def test_release_metadata_and_roadmap_are_consistent() -> None:
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
     future_steps = (ROOT / "future_steps.md").read_text(encoding="utf-8")
@@ -219,6 +219,11 @@ def test_release_notes_keep_current_changes_under_010() -> None:
     assert "git tag -f v0 v0.1.1" in release_checklist
     assert "Do not publish the root npm package" in release_checklist
     assert "Do not upload to PyPI for this GitHub-first release" in release_checklist
+
+    unreleased, released = changelog.split("## 0.1.1", maxsplit=1)
+
+    assert "reusable, bounded ZIP inspection foundation" in unreleased
+    assert "reusable, bounded ZIP inspection foundation" not in released
 
 
 def test_action_uses_action_path_and_explicit_policy_behavior() -> None:
