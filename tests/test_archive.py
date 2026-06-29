@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import stat
 import zipfile
 from pathlib import Path
@@ -218,7 +219,11 @@ def test_metadata_members_are_sorted_and_directories_allowed(tmp_path: Path) -> 
 
     assert [member.normalized_path for member in result.members] == ["a", "a/b.txt", "z.txt"]
     assert [member.member_type for member in result.members] == ["directory", "file", "file"]
-    assert all(member.sha256 is None for member in result.members)
+    assert result.members[0].sha256 is None
+    assert result.members[1].sha256 == hashlib.sha256(b"first").hexdigest()
+    assert result.members[2].sha256 == hashlib.sha256(b"last").hexdigest()
+    assert (result.extraction_root / "a" / "b.txt").read_bytes() == b"first"
+    result.cleanup()
 
 
 def test_archive_size_limit_is_enforced(tmp_path: Path) -> None:
@@ -353,6 +358,7 @@ def test_nested_archive_extension_can_be_allowed(tmp_path: Path) -> None:
 
     assert result.members[0].is_nested_archive is True
     assert result.members[0].skip_reason == "nested archive retained but not recursively inspected"
+    result.cleanup()
 
 
 def test_duplicate_normalized_paths_are_rejected_from_zip(tmp_path: Path) -> None:
@@ -385,3 +391,163 @@ def test_zip_comments_and_benign_extra_fields_are_ignored(tmp_path: Path) -> Non
     result = inspect_archive(archive_path)
 
     assert [member.normalized_path for member in result.members] == ["a.txt"]
+    result.cleanup()
+
+
+def test_omitted_directory_entries_are_materialized(tmp_path: Path) -> None:
+    archive_path = write_zip(tmp_path / "omitted-dir.zip", [("nested/path/file.txt", b"hello")])
+
+    result = inspect_archive(archive_path)
+
+    assert (result.extraction_root / "nested" / "path" / "file.txt").read_bytes() == b"hello"
+    assert result.members[0].sha256 == hashlib.sha256(b"hello").hexdigest()
+    result.cleanup()
+
+
+def test_successful_context_manager_removes_temporary_directory(tmp_path: Path) -> None:
+    archive_path = write_zip(tmp_path / "context.zip", [("a.txt", b"hello")])
+
+    with inspect_archive(archive_path) as result:
+        root = result.extraction_root
+        assert root.exists()
+        assert (root / "a.txt").exists()
+
+    assert not root.exists()
+    assert result.member_count == 1
+    result.cleanup()
+
+
+def test_exception_inside_context_manager_removes_temporary_directory(tmp_path: Path) -> None:
+    archive_path = write_zip(tmp_path / "context-error.zip", [("a.txt", b"hello")])
+
+    with pytest.raises(RuntimeError):
+        with inspect_archive(archive_path) as result:
+            root = result.extraction_root
+            raise RuntimeError("caller failed")
+
+    assert not root.exists()
+
+
+def test_explicit_cleanup_removes_only_result_root(tmp_path: Path) -> None:
+    archive_path = write_zip(tmp_path / "cleanup.zip", [("a.txt", b"hello")])
+    unrelated = tmp_path / "unrelated"
+    unrelated.mkdir()
+
+    result = inspect_archive(archive_path)
+    root = result.extraction_root
+    result.cleanup()
+    result.cleanup()
+
+    assert not root.exists()
+    assert unrelated.exists()
+    assert result.member_count == 1
+
+
+def test_metadata_failure_happens_before_temp_creation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    archive_path = write_zip(tmp_path / "unsafe.zip", [("../escape.txt", b"no")])
+    called = False
+
+    def fail_mkdtemp(*args: object, **kwargs: object) -> str:
+        nonlocal called
+        called = True
+        raise AssertionError("temp directory should not be created")
+
+    monkeypatch.setattr("skillgate.archive.tempfile.mkdtemp", fail_mkdtemp)
+
+    with pytest.raises(ArchiveSafetyError):
+        inspect_archive(archive_path)
+
+    assert called is False
+
+
+def test_temporary_directory_creation_failure_is_wrapped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    archive_path = write_zip(tmp_path / "temp-failure.zip", [("a.txt", b"hello")])
+
+    def fail_mkdtemp(*args: object, **kwargs: object) -> str:
+        raise OSError("no temp")
+
+    monkeypatch.setattr("skillgate.archive.tempfile.mkdtemp", fail_mkdtemp)
+
+    with pytest.raises(ArchiveFormatError) as excinfo:
+        inspect_archive(archive_path)
+
+    assert excinfo.value.code == "extraction_failure"
+
+
+def test_magic_nested_archive_rejection_cleans_temporary_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    archive_path = write_zip(tmp_path / "magic.zip", [("payload.bin", b"PK\x03\x04nested")])
+    temp_root = tmp_path / "skillgate-temp"
+
+    monkeypatch.setattr("skillgate.archive.tempfile.mkdtemp", lambda prefix: str(temp_root))
+
+    with pytest.raises(ArchiveSafetyError) as excinfo:
+        inspect_archive(archive_path)
+
+    assert excinfo.value.code == "nested_archive"
+    assert not temp_root.exists()
+
+
+def test_magic_nested_archive_can_be_allowed(tmp_path: Path) -> None:
+    archive_path = write_zip(tmp_path / "magic-allowed.zip", [("payload.bin", b"PK\x03\x04nested")])
+
+    result = inspect_archive(archive_path, limits=tiny_limits(allow_nested_archives=True))
+
+    assert result.members[0].is_nested_archive is True
+    assert result.members[0].is_scannable_text is False
+    assert result.members[0].skip_reason == "nested archive retained but not recursively inspected"
+    result.cleanup()
+
+
+def test_text_and_binary_classification(tmp_path: Path) -> None:
+    archive_path = write_zip(
+        tmp_path / "classification.zip",
+        [("notes.txt", b"hello"), ("image.bin", b"\x00\x01binary")],
+    )
+
+    result = inspect_archive(archive_path)
+    by_path = {member.normalized_path: member for member in result.members}
+
+    assert by_path["notes.txt"].is_scannable_text is True
+    assert by_path["notes.txt"].skip_reason is None
+    assert by_path["image.bin"].is_scannable_text is False
+    assert by_path["image.bin"].skip_reason == "binary content"
+    assert by_path["image.bin"].sha256 == hashlib.sha256(b"\x00\x01binary").hexdigest()
+    result.cleanup()
+
+
+def test_crc_failure_is_wrapped_and_cleaned_up(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    archive_path = write_zip(tmp_path / "crc.zip", [("a.txt", b"data")])
+    data = bytearray(archive_path.read_bytes())
+    offset = data.index(b"data")
+    data[offset : offset + 4] = b"DATA"
+    archive_path.write_bytes(data)
+    temp_root = tmp_path / "crc-temp"
+    monkeypatch.setattr("skillgate.archive.tempfile.mkdtemp", lambda prefix: str(temp_root))
+
+    with pytest.raises(ArchiveFormatError) as excinfo:
+        inspect_archive(archive_path)
+
+    assert excinfo.value.code == "crc_failure"
+    assert not temp_root.exists()
+
+
+def test_executable_zip_mode_bits_are_not_restored_on_posix(tmp_path: Path) -> None:
+    if os.name != "posix":
+        pytest.skip("POSIX executable-bit check is not meaningful on this platform")
+    info = zipfile.ZipInfo("run.sh")
+    info.external_attr = (stat.S_IFREG | 0o755) << 16
+    archive_path = write_zipinfo(tmp_path / "mode.zip", info, b"echo hello")
+
+    result = inspect_archive(archive_path)
+
+    mode = (result.extraction_root / "run.sh").stat().st_mode
+    assert mode & stat.S_IXUSR == 0
+    result.cleanup()
