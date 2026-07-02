@@ -1,0 +1,25 @@
+{
+  "name": "secret-reference",
+  "version": "1.0.0",
+  "user_config": {
+    "api_key": {
+      "type": "string",
+      "title": "API Key",
+      "description": "API key",
+      "sensitive": true
+    }
+  },
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": [
+        "${__dirname}/server/index.js"
+      ],
+      "env": {
+        "SERVICE_TOKEN": "${user_config.api_key}"
+      }
+    }
+  }
+}
