@@ -257,7 +257,7 @@ def test_cli_rules_list_json() -> None:
     assert result.exit_code == 0
     data = json.loads(result.output)
     assert [rule["rule_id"] for rule in data["rules"]] == [
-        f"SG{index:03d}" for index in range(1, 14)
+        f"SG{index:03d}" for index in range(1, 16)
     ]
     assert data["rules"][3]["capability"] == "remote_download_execution"
 

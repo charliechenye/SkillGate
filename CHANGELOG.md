@@ -4,6 +4,9 @@
 
 ### Added
 
+- Added `skillgate mcpb scan` for deterministic pre-install inspection of MCP bundles without executing server content.
+- Added text and JSON MCPB reports with startup metadata, member scan state, embedded-artifact inventory, and optional bundle-manifest output.
+- Added `SG014` for MCPB startup and reference mismatches and `SG015` for embedded executables and retained nested archives requiring review.
 - Added a reusable, bounded ZIP inspection foundation with deterministic archive and member manifests for future MCPB pre-install scanning.
 - Added fail-closed protections for unsafe paths, duplicate normalized entries, path-type collisions, symlinks, special files, nested archives, unsupported compression, encryption, and resource-limit violations.
 - Added streaming archive and member hashing with automatic temporary-file cleanup and no execution of extracted content.

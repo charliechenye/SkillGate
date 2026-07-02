@@ -142,6 +142,40 @@ RULE_DOCS: tuple[RuleDoc, ...] = (
         examples=("repository mismatch", "package identifier mismatch", "remote URL mismatch"),
         remediation="Review and align declared MCP registry metadata before release.",
     ),
+    RuleDoc(
+        rule_id="SG014",
+        title="MCPB startup or bundle reference mismatch",
+        severity="high",
+        capability="mcpb_startup",
+        description=(
+            "Detects missing or conflicting MCPB startup files, local references, "
+            "manifest versions, and server declarations."
+        ),
+        examples=(
+            "server.entry_point is missing from the bundle",
+            "a referenced local script is absent",
+            "server type conflicts with the entry-point shape",
+        ),
+        remediation=(
+            "Correct the manifest or bundle contents so declared startup behavior "
+            "matches the packaged files."
+        ),
+    ),
+    RuleDoc(
+        rule_id="SG015",
+        title="MCPB embedded executable or nested archive requires review",
+        severity="high",
+        capability="mcpb_embedded_artifact",
+        description=(
+            "Detects bundled executable artifacts and retained nested archives that "
+            "SkillGate does not execute or recursively inspect."
+        ),
+        examples=("server.exe", "libnative.so", "dependency.whl", "nested.mcpb"),
+        remediation=(
+            "Review the artifact provenance and contents before installing or "
+            "approving the MCP bundle."
+        ),
+    ),
 )
 
 RULE_DOCS_BY_ID = {rule.rule_id: rule for rule in RULE_DOCS}

@@ -32,6 +32,12 @@ Scan the current repository locally:
 skillgate scan .
 ```
 
+Inspect an MCP bundle before installing it:
+
+```bash
+skillgate mcpb scan bundle.mcpb --fail-on high
+```
+
 Generate a starter policy when you are ready to block unapproved behavior:
 
 ```bash
@@ -47,9 +53,10 @@ skillgate check . --policy skillgate.yaml
 | Check a public GitHub skill repo before installing | [`skillgate github scan URL`](#2-scan-a-github-repository-before-installing) | Sparse remote scan with immutable ref manifest |
 | Block unapproved behavior in CI | [`skillgate check . --policy skillgate.yaml`](#3-enforce-policy-in-ci) | Policy violations, explanations, approvals, waivers |
 | Detect capability drift after review | [`skillgate baseline create`](#4-track-approved-baselines-and-drift) | Stable lockfile and `SG010` drift findings |
-| Inspect MCP registry metadata without installing | [`skillgate mcp registry scan`](#5-review-mcp-registry-metadata) | MCP tool, transport, package, and registry drift checks |
-| Build a review inventory | [`skillgate inventory .`](#6-build-a-capability-inventory) | Trust-boundary summary and filterable JSON |
-| Upload findings to GitHub code scanning | [`--format sarif`](#7-export-sarif-for-github-code-scanning) | Stable SARIF alerts with capability tags |
+| Inspect an MCP bundle before installing | [`skillgate mcpb scan bundle.mcpb`](#5-scan-an-mcp-bundle-before-installing) | Static startup, file, endpoint, secret-reference, binary, and nested-archive review |
+| Inspect MCP registry metadata without installing | [`skillgate mcp registry scan`](#6-review-mcp-registry-metadata) | MCP tool, transport, package, and registry drift checks |
+| Build a review inventory | [`skillgate inventory .`](#7-build-a-capability-inventory) | Trust-boundary summary and filterable JSON |
+| Upload findings to GitHub code scanning | [`--format sarif`](#8-export-sarif-for-github-code-scanning) | Stable SARIF alerts with capability tags |
 
 ## Install
 
@@ -123,7 +130,7 @@ skillgate scan . --fail-on high
 
 `skillgate scan` exits `0` even when findings exist unless you pass `--fail-on medium|high|critical`. It is a good first command for adoption, audits, and local review.
 
-SkillGate scans agent instructions, skill files, scripts, package configs, MCP configs, and MCP registry metadata. It reports rules `SG001` through `SG013`, covering shell execution, destructive actions, network egress, remote download execution, secret access, filesystem writes, prompt override language, obfuscation, MCP config discovery, MCP drift, MCP tool metadata risks, MCP transport risks, and MCP registry drift.
+SkillGate scans agent instructions, skill files, scripts, package configs, MCP configs, MCP bundles, and MCP registry metadata. It reports rules `SG001` through `SG015`, covering shell execution, destructive actions, network egress, remote download execution, secret access, filesystem writes, prompt override language, obfuscation, MCP config discovery, MCP drift, MCP tool metadata risks, MCP transport risks, MCP registry drift, MCPB startup/reference mismatches, and MCPB embedded artifacts that require review.
 
 Useful follow-ups:
 
@@ -203,7 +210,24 @@ skillgate provenance create --policy skillgate.yaml --baseline skillgate.lock --
 skillgate provenance verify --manifest skillgate.provenance.json
 ```
 
-## 5. Review MCP Registry Metadata
+## 5. Scan An MCP Bundle Before Installing
+
+Use `mcpb scan` to inspect a local MCP bundle before installing or executing its server:
+
+```bash
+skillgate mcpb scan bundle.mcpb
+skillgate mcpb scan bundle.mcpb --format json
+skillgate mcpb scan bundle.mcpb --fail-on high
+skillgate mcpb scan bundle.mcpb --manifest-output bundle-manifest.json
+```
+
+SkillGate does not execute bundle content, start MCP servers, install packages, or resolve dependencies. It safely inspects the ZIP-based bundle, parses the root `manifest.json` narrowly for startup-relevant fields, inventories members, selects first-party source for the existing rule engine, and reports deterministic text or JSON output.
+
+Nested archives are retained and inventoried but are not recursively inspected. Embedded executables and shared libraries are identified for review; SkillGate does not declare them malicious. Manifest interpretation is intentionally narrow rather than complete MCPB schema validation. MCPB SARIF and policy support are deferred until the text and JSON contracts stabilize.
+
+See [MCPB pre-install scanning](docs/mcpb-preinstall-scan.md) for the threat model, output fields, exit codes, limits, and examples.
+
+## 6. Review MCP Registry Metadata
 
 Use MCP registry commands when you want static review without installing or starting an MCP server:
 
@@ -224,7 +248,7 @@ Registry scanning reads declared MCP registry metadata, publisher-provided tool 
 
 Example fixture: [`fixtures/registry-compare-drift`](fixtures/registry-compare-drift).
 
-## 6. Build A Capability Inventory
+## 7. Build A Capability Inventory
 
 Use inventory output when you want a review artifact rather than a pass/fail gate:
 
@@ -238,7 +262,7 @@ skillgate inventory . --source-file "scripts/*"
 
 Inventory output groups detected capabilities and findings by source file and summarizes trust boundaries for local execution, remote endpoints, secrets, generated files, MCP servers, prompt controls, and obfuscation.
 
-## 7. Export SARIF For GitHub Code Scanning
+## 8. Export SARIF For GitHub Code Scanning
 
 Any scan that supports SARIF can be uploaded to GitHub code scanning:
 

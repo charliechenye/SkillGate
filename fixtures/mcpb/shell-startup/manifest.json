@@ -1,0 +1,14 @@
+{
+  "name": "shell-startup",
+  "version": "1.0.0",
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.js",
+    "mcp_config": {
+      "command": "bash",
+      "args": [
+        "${__dirname}/server/index.js"
+      ]
+    }
+  }
+}

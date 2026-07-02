@@ -15,6 +15,8 @@ TEXT_NAMES = {
     "mcp-server.json",
     "package.json",
     "pyproject.toml",
+    "uv.lock",
+    "yarn.lock",
 }
 TEXT_EXTENSIONS = {
     ".bash",

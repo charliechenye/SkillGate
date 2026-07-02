@@ -13,3 +13,5 @@ SG010   high           mcp_server                    MCP capability changed from
 SG011   high           mcp_tool_metadata             MCP tool metadata risk detected                             Review declared MCP tools before enabling or publishing the server.
 SG012   high           mcp_transport_risk            MCP transport risk detected                                 Prefer authenticated remote transports or reviewed pinned commands.
 SG013   high           mcp_registry_drift            MCP registry metadata drift detected                        Review and align declared MCP registry metadata before release.
+SG014   high           mcpb_startup                  MCPB startup or bundle reference mismatch                   Correct the manifest or bundle contents so declared startup behavior matches the packaged files.
+SG015   high           mcpb_embedded_artifact        MCPB embedded executable or nested archive requires review  Review the artifact provenance and contents before installing or approving the MCP bundle.

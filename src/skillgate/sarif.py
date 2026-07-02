@@ -55,7 +55,9 @@ def rule_tags(rule_id: str) -> list[str]:
 
 
 def capability_taxa() -> list[dict[str, object]]:
-    capabilities = sorted({rule.capability for rule in RULE_DOCS})
+    capabilities = sorted(
+        {RULE_DOC_BY_ID[rule_id].capability for rule_id in RULES if rule_id in RULE_DOC_BY_ID}
+    )
     return [
         {
             "id": capability,
