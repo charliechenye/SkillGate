@@ -4,16 +4,28 @@ Thanks for helping improve SkillGate. The project is a deterministic static scan
 
 ## Development Setup
 
-The repository is pinned to Python 3.12 for local development through `.python-version`. On macOS with Homebrew:
+The repository is pinned to Python 3.12 for local development through `.python-version`. The full test suite also requires Node.js because it validates the experimental Node wrapper.
+
+On an Apple Silicon Mac with Homebrew:
 
 ```bash
-brew install uv python@3.12
+brew install uv python@3.12 node@24
+echo 'export PATH="/opt/homebrew/opt/node@24/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+
+python3.12 --version
+uv --version
+node --version
+npm --version
+
 uv sync --locked
 uv run python -m pytest
 uv run python tools/update_snapshots.py --check
 uv run ruff check .
 uv run ruff format --check .
 ```
+
+Node.js is a system-level development prerequisite and is not managed by `uv`. The root `package.json` requires Node 18 or newer; local development uses Node 24 LTS.
 
 `uv sync` creates and manages `.venv`, installs the package in editable mode, and installs the default `dev` dependency group. Run project commands through `uv run`; manual virtual-environment activation is optional.
 
@@ -58,7 +70,7 @@ Each fixture should include:
 
 - A short `README.md`.
 - One or more supported agent files or referenced scripts.
-- `expected-findings.yaml` with the expected rule IDs.
+- `expected-findings.yaml` with the exact expected rule IDs.
 
 Verify fixtures with:
 
