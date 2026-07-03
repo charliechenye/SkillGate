@@ -34,7 +34,8 @@ The shipped baseline includes:
 - a composite GitHub Action that can enforce a supplied `baseline` plus `fail-on-drift`;
 - a GitHub-first Node wrapper backed by checksummed release binaries;
 - bounded release-manifest and binary downloads;
-- a reusable, fail-closed ZIP archive inspection foundation organized into focused internal modules.
+- a reusable, fail-closed ZIP archive inspection foundation organized into focused internal modules;
+- the MCPB pre-install scan MVP with text and JSON output, manifest output, retained nested-archive inventory, embedded-artifact review findings, and no bundle execution.
 
 These capabilities are release history, not future work. Keep detailed records in `CHANGELOG.md`.
 
@@ -42,17 +43,16 @@ These capabilities are release history, not future work. Keep detailed records i
 
 ## Near-Term Priority
 
-The next phase should convert the archive foundation into one memorable public workflow, then remove the largest barriers to adoption.
+The next phase should reduce first-use friction, publish evidence, and expand MCPB only where real usage justifies it.
 
 The execution order is:
 
-1. Ship the narrow MCPB pre-install scan MVP.
-2. Publish the Python package through a low-friction distribution path.
-3. Publish credible public scan reports.
-4. Simplify onboarding and demonstrate the workflow visually.
-5. Expand the MCPB workflow only where real usage justifies it.
-6. Add Agent Skills validation.
-7. Build the declared-intent-versus-observed-capability model.
+1. Publish the Python package through a low-friction distribution path.
+2. Publish credible public scan reports.
+3. Simplify onboarding and demonstrate the workflow visually.
+4. Expand the MCPB workflow only where real usage justifies it.
+5. Add Agent Skills validation.
+6. Build the declared-intent-versus-observed-capability model.
 
 Do not add more generic rule families unless they are necessary to complete one of these workflows.
 
@@ -79,142 +79,9 @@ The first public workflow should be:
 skillgate mcpb scan bundle.mcpb
 ```
 
-## Batch 2A.1: MCPB Scan MVP
-
-### Required Commands
-
-Ship:
-
-```bash
-skillgate mcpb scan bundle.mcpb
-skillgate mcpb scan bundle.mcpb --format json
-skillgate mcpb scan bundle.mcpb --fail-on high
-skillgate mcpb scan bundle.mcpb --manifest-output bundle-manifest.json
-```
-
-Defer SARIF until the text and JSON output contracts stabilize.
-
-### MCPB Adapter
-
-Implement MCPB as a source adapter over the safe archive layer and existing scanner.
-
-The adapter should:
-
-1. inspect and safely extract the bundle;
-2. locate and parse `manifest.json`;
-3. validate the minimal required bundle structure;
-4. identify the declared server type and entry point;
-5. identify referenced files;
-6. identify environment-variable and user-configuration declarations;
-7. identify commands, scripts, URLs, endpoints, package metadata, and binaries;
-8. pass extracted static files into existing SkillGate discovery and rules;
-9. combine archive, manifest, and scan results into one deterministic report;
-10. clean up temporary files after the result has been rendered or persisted.
-
-Do not create a second scanning engine.
-
-### Narrow Manifest Scope
-
-Parse only the fields needed to answer:
-
-- What starts?
-- Where is the entry point?
-- Which files are required?
-- Which configuration values and environment variables are referenced?
-- Which URLs or endpoints are declared?
-- Are all referenced files present?
-- Does the declared startup behavior match bundled content?
-
-Do not attempt complete interpretation of every MCPB manifest field in the first release.
-
-### Bundle-Specific Findings
-
-Add no more than three bundle-specific findings unless implementation proves that another finding is essential:
-
-1. malformed or unsafe MCP bundle structure;
-2. manifest references missing, conflicting, or unexpected files;
-3. embedded binary or retained nested archive requiring explicit review.
-
-Reuse existing SG rules for shell execution, remote download execution, network egress, secret access, filesystem writes, suspicious package scripts, prompt override behavior, obfuscation, and MCP transport or metadata risks.
-
-### Deterministic Bundle Manifest
-
-The bundle manifest should include:
-
-- archive SHA-256;
-- scanner version;
-- member count;
-- total compressed bytes;
-- total uncompressed bytes;
-- normalized member paths;
-- member SHA-256 values;
-- compressed and uncompressed sizes;
-- compression ratios;
-- file classification;
-- whether each member was scanned;
-- stable skip reasons;
-- manifest path;
-- detected entry point;
-- declared server type;
-- referenced environment variables;
-- detected URLs and endpoints;
-- embedded binary inventory;
-- retained nested archive inventory.
-
-Do not include temporary extraction paths, local archive filesystem paths, timestamps, environment-specific values, or raw file contents.
-
-### Required Fixtures
-
-Ship the MVP with:
-
-- safe MCPB;
-- shell startup command;
-- remote endpoint;
-- secret reference;
-- malformed manifest;
-- missing entry point;
-- embedded binary;
-- nested archive.
-
-Continue relying on archive-layer tests for low-level ZIP traversal, absolute paths, symlinks, compression bombs, and resource limits.
-
-### Tests
-
-For each fixture, assert as applicable:
-
-- exit code;
-- finding IDs;
-- detected entry point;
-- detected commands and endpoints;
-- referenced environment variables;
-- manifest state;
-- deterministic JSON;
-- member scan and skip state;
-- temporary-file cleanup;
-- no archive content execution.
-
-### Explicitly Deferred From The MVP
-
-Do not include:
-
-- MCPB SARIF;
-- GitHub Action MCPB inputs;
-- MCPB-specific policy schema;
-- recursive nested archive inspection;
-- remote registry lookups;
-- package installation;
-- dependency resolution;
-- binary malware analysis;
-- YARA;
-- sandboxing;
-- automatic remediation;
-- complete MCPB specification modeling.
-
----
-
 # Batch 2B: Distribution And Adoption
 
-The scanner will not gain broad adoption through feature depth alone. After the MCPB MVP, reduce first-use friction and publish evidence.
+The scanner will not gain broad adoption through feature depth alone. Reduce first-use friction and publish evidence.
 
 ## Publish The Python Package
 
@@ -497,16 +364,8 @@ Do not promote bare `npx skillgate scan .` until an npm package is intentionally
 # Immediate Execution Order
 
 ```text
-feat: add MCPB scan MVP
-```
-
-Public text and JSON workflow, deterministic bundle manifest, existing scanner reuse, and focused fixtures.
-
-## Following Release Work
-
-```text
 release: prepare low-friction Python distribution
 docs: publish public scan evidence and simplify onboarding
 ```
 
-This order protects implementation quality while keeping the project focused on user-visible adoption.
+This order keeps the project focused on user-visible adoption now that the MCPB pre-install scan MVP is part of the baseline.

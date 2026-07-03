@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from pathlib import Path
 
 from skillgate import __version__
@@ -68,9 +69,25 @@ def findings_summary(
     }
 
 
-def scan_repository(root: Path) -> ScanReport:
+def scan_paths(root: Path, paths: Iterable[Path]) -> ScanReport:
     root = root.resolve()
-    paths = discover_paths(root)
+    if not root.exists() or not root.is_dir():
+        raise ValueError("scan root must be an existing directory")
+    resolved_paths = []
+    for path in paths:
+        candidate = path if path.is_absolute() else root / path
+        resolved = candidate.resolve()
+        if not resolved.exists() or not resolved.is_file():
+            raise ValueError("scan path must be an existing file")
+        try:
+            resolved.relative_to(root)
+        except ValueError as exc:
+            raise ValueError("scan path resolves outside the scan root") from exc
+        resolved_paths.append(resolved)
+    paths = sorted(
+        set(resolved_paths),
+        key=lambda item: item.relative_to(root).as_posix(),
+    )
     scanned_files = [scan_file_metadata(root, path) for path in paths]
     findings: list[Finding] = []
     capabilities: list[Capability] = []
@@ -94,6 +111,10 @@ def scan_repository(root: Path) -> ScanReport:
         findings=findings,
         summary=summary,
     )
+
+
+def scan_repository(root: Path) -> ScanReport:
+    return scan_paths(root, discover_paths(root))
 
 
 def filter_report_by_severity(report: ScanReport, threshold: str | None) -> ScanReport:

@@ -1,0 +1,14 @@
+{
+  "name": "missing-entry-point",
+  "version": "1.0.0",
+  "server": {
+    "type": "node",
+    "entry_point": "server/missing.js",
+    "mcp_config": {
+      "command": "node",
+      "args": [
+        "${__dirname}/server/missing.js"
+      ]
+    }
+  }
+}

@@ -167,6 +167,33 @@
       "rule_id": "SG013",
       "severity": "high",
       "title": "MCP registry metadata drift detected"
+    },
+    {
+      "capability": "mcpb_startup",
+      "description": "Detects missing or conflicting MCPB startup files, local references, manifest versions, and server declarations.",
+      "examples": [
+        "server.entry_point is missing from the bundle",
+        "a referenced local script is absent",
+        "server type conflicts with the entry-point shape"
+      ],
+      "remediation": "Correct the manifest or bundle contents so declared startup behavior matches the packaged files.",
+      "rule_id": "SG014",
+      "severity": "high",
+      "title": "MCPB startup or bundle reference mismatch"
+    },
+    {
+      "capability": "mcpb_embedded_artifact",
+      "description": "Detects bundled executable artifacts and retained nested archives that SkillGate does not execute or recursively inspect.",
+      "examples": [
+        "server.exe",
+        "libnative.so",
+        "dependency.whl",
+        "nested.mcpb"
+      ],
+      "remediation": "Review the artifact provenance and contents before installing or approving the MCP bundle.",
+      "rule_id": "SG015",
+      "severity": "high",
+      "title": "MCPB embedded executable or nested archive requires review"
     }
   ]
 }

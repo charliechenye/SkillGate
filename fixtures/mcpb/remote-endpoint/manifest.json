@@ -1,0 +1,16 @@
+{
+  "name": "remote-endpoint",
+  "version": "1.0.0",
+  "homepage": "https://metadata.example.com/?ignored=true",
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": [
+        "${__dirname}/server/index.js",
+        "https://user:pass@runtime.example.com/api?token=secret#frag"
+      ]
+    }
+  }
+}

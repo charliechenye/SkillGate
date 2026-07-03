@@ -6,6 +6,7 @@ from typing import Annotated
 import typer
 from rich.console import Console
 
+from skillgate.archive import ArchiveError
 from skillgate.baseline import create_baseline, diff_against_baseline, load_baseline, save_baseline
 from skillgate.fixtures import (
     FixtureSummaryError,
@@ -22,6 +23,9 @@ from skillgate.mcp_registry import (
     registry_scan_text,
     scan_registry_path,
 )
+from skillgate.mcpb.errors import McpbError, mcpb_archive_error_data
+from skillgate.mcpb.reporting import mcpb_manifest_json, mcpb_scan_json, mcpb_scan_text
+from skillgate.mcpb.scan import scan_mcpb
 from skillgate.models import SEVERITY_ORDER, DiffReport, severity_at_or_above, stable_json
 from skillgate.policy import evaluate_policy, load_policy
 from skillgate.policy_schema import POLICY_JSON_SCHEMA
@@ -55,11 +59,13 @@ provenance_app = typer.Typer(help="Create and verify SkillGate provenance manife
 rules_app = typer.Typer(help="Inspect SkillGate rule documentation.")
 review_app = typer.Typer(help="Create reviewer-friendly SkillGate summaries.")
 mcp_app = typer.Typer(help="Inspect MCP metadata without installing servers.")
+mcpb_app = typer.Typer(help="Inspect MCP bundles before installing or executing their servers.")
 mcp_registry_app = typer.Typer(help="Scan and compare MCP registry metadata.")
 app.add_typer(baseline_app, name="baseline")
 app.add_typer(fixtures_app, name="fixtures")
 app.add_typer(github_app, name="github")
 app.add_typer(mcp_app, name="mcp")
+app.add_typer(mcpb_app, name="mcpb")
 app.add_typer(policy_app, name="policy")
 app.add_typer(provenance_app, name="provenance")
 app.add_typer(review_app, name="review")
@@ -116,6 +122,65 @@ def render_scan_command_output(
     if failed and output_format == "text":
         content = append_scan_failure_text(content, fail_on or "")
     return content, failed
+
+
+@mcpb_app.command("scan")
+def mcpb_scan(
+    path: Annotated[
+        Path,
+        typer.Argument(help="MCPB bundle to inspect before installation."),
+    ],
+    output_format: Annotated[str, typer.Option("--format", help="Output format.")] = "text",
+    output: Annotated[
+        Path | None, typer.Option("--output", "-o", help="Write output to a file.")
+    ] = None,
+    fail_on: Annotated[
+        str | None,
+        typer.Option("--fail-on", help="Exit 1 when findings are at or above this severity."),
+    ] = None,
+    manifest_output: Annotated[
+        Path | None,
+        typer.Option("--manifest-output", help="Write the deterministic bundle manifest."),
+    ] = None,
+) -> None:
+    """Inspect an MCP bundle before installing or executing its server."""
+    output_format = validate_format(output_format, {"text", "json"})
+    fail_on = validate_fail_on(fail_on)
+    if output and manifest_output and output.resolve() == manifest_output.resolve():
+        data = {
+            "code": "mcpb_output_path_conflict",
+            "message": "--output and --manifest-output must be different paths",
+        }
+        if output_format == "json":
+            console.file.write(stable_json({"error": data}))
+        else:
+            console.file.write(f"Error: {data['message']}\n")
+        raise typer.Exit(2)
+    try:
+        result = scan_mcpb(path)
+    except McpbError as exc:
+        data = exc.to_data()
+        if output_format == "json":
+            console.file.write(stable_json({"error": data}))
+        else:
+            console.file.write(f"Error: {data['message']}\n")
+        raise typer.Exit(2) from exc
+    except ArchiveError as exc:
+        data = mcpb_archive_error_data(exc)
+        if output_format == "json":
+            console.file.write(stable_json({"error": data}))
+        else:
+            console.file.write(f"Error: {data['message']}\n")
+        raise typer.Exit(2) from exc
+
+    if manifest_output:
+        write_or_print(mcpb_manifest_json(result), manifest_output, console)
+    failed = scan_failed(result.scan_report, fail_on)
+    content = mcpb_scan_json(result) if output_format == "json" else mcpb_scan_text(result)
+    if failed and output_format == "text":
+        content = append_scan_failure_text(content, fail_on or "")
+    write_or_print(content, output, console)
+    raise typer.Exit(1 if failed else 0)
 
 
 @mcp_registry_app.command("scan")
