@@ -4,15 +4,20 @@ Thanks for helping improve SkillGate. The project is a deterministic static scan
 
 ## Development Setup
 
+The repository is pinned to Python 3.12 for local development through `.python-version`. On macOS with Homebrew:
+
 ```bash
-python -m pip install -e ".[dev]"
-python -m pytest
-python tools/update_snapshots.py --check
-python -m ruff check .
-python -m ruff format --check .
+brew install uv python@3.12
+uv sync --locked
+uv run python -m pytest
+uv run python tools/update_snapshots.py --check
+uv run ruff check .
+uv run ruff format --check .
 ```
 
-Use Python 3.11 or newer. The repository uses LF line endings through `.gitattributes`.
+`uv sync` creates and manages `.venv`, installs the package in editable mode, and installs the default `dev` dependency group. Run project commands through `uv run`; manual virtual-environment activation is optional.
+
+The published package supports Python 3.11 through 3.13. The repository's contributor environment uses Python 3.12 so local development and CI resolve the same interpreter and dependency set. The repository uses LF line endings through `.gitattributes`.
 
 ## Contribution Workflow
 
@@ -33,7 +38,7 @@ Use this workflow when adding detection behavior:
 3. Add a reduced benchmark fixture under `fixtures/benchmark/`.
 4. Add `expected-findings.yaml` with the exact expected rule IDs.
 5. Add a focused regression test in `tests/test_skillgate.py`.
-6. Run `python -m skillgate fixtures summary fixtures/benchmark --format json`.
+6. Run `uv run python -m skillgate fixtures summary fixtures/benchmark --format json`.
 7. Update golden snapshots only when public CLI output intentionally changes.
 8. Update `CHANGELOG.md` and `future_steps.md` for user-facing or roadmap changes.
 
@@ -58,7 +63,7 @@ Each fixture should include:
 Verify fixtures with:
 
 ```bash
-python -m skillgate fixtures summary fixtures/benchmark --format json
+uv run python -m skillgate fixtures summary fixtures/benchmark --format json
 ```
 
 ## Adding Non-Benchmark Comparison Fixtures
@@ -89,13 +94,13 @@ Snapshot outputs are maintained by a repo-local helper rather than the public
 files, run:
 
 ```bash
-python tools/update_snapshots.py --check --artifacts test-outputs/snapshots
+uv run python tools/update_snapshots.py --check --artifacts test-outputs/snapshots
 ```
 
 If the output change is intentional, update the tracked snapshots with:
 
 ```bash
-python tools/update_snapshots.py --accept
+uv run python tools/update_snapshots.py --accept
 ```
 
 ## Documentation
