@@ -9,7 +9,12 @@ import pytest
 
 from skillgate.mcpb.errors import McpbError, mcpb_archive_error_data, sanitized_archive_message
 from skillgate.mcpb.reporting import mcpb_scan_json
-from skillgate.mcpb.scan import scan_mcpb
+from skillgate.mcpb.scan import (
+    PREFIX_BYTES,
+    _executable_kind,
+    _looks_like_secret_env_name,
+    scan_mcpb,
+)
 
 FIXED_TIME = (2020, 1, 1, 0, 0, 0)
 
@@ -57,6 +62,115 @@ def bundle(
 
 def rule_ids(result) -> list[str]:
     return [finding.rule_id for finding in result.scan_report.findings]
+
+
+def test_executable_kind_uses_bounded_prefix_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sizes: list[int] = []
+    original_open = Path.open
+
+    def fail_read_bytes(self: Path) -> bytes:
+        raise AssertionError("Path.read_bytes must not be used for executable detection")
+
+    class RecordingStream:
+        def __init__(self, stream) -> None:
+            self._stream = stream
+
+        def __enter__(self):
+            self._stream.__enter__()
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return self._stream.__exit__(exc_type, exc, tb)
+
+        def read(self, size: int = -1) -> bytes:
+            sizes.append(size)
+            return self._stream.read(size)
+
+    def recording_open(self: Path, *args: object, **kwargs: object):
+        return RecordingStream(original_open(self, *args, **kwargs))
+
+    cases = [
+        ("server/tool.exe", b"MZ" + b"x" * (PREFIX_BYTES * 4), "pe"),
+        ("server/tool", b"\x7fELF" + b"x" * (PREFIX_BYTES * 4), "elf"),
+        ("server/tool", b"\xfe\xed\xfa\xcf" + b"x" * (PREFIX_BYTES * 4), "mach_o"),
+        ("server/tool.exe", b"plain" + b"x" * (PREFIX_BYTES * 4), "executable_extension"),
+        ("server/lib.dll", b"plain" + b"x" * (PREFIX_BYTES * 4), "shared_library"),
+        ("server/lib.so", b"plain" + b"x" * (PREFIX_BYTES * 4), "shared_library"),
+        ("server/lib.dylib", b"plain" + b"x" * (PREFIX_BYTES * 4), "shared_library"),
+    ]
+    files = []
+    for index, (_name, content, _expected) in enumerate(cases):
+        file_path = tmp_path / f"artifact-{index}"
+        file_path.write_bytes(content)
+        files.append(file_path)
+
+    monkeypatch.setattr(Path, "read_bytes", fail_read_bytes)
+    monkeypatch.setattr(Path, "open", recording_open)
+
+    for file_path, (name, _content, expected) in zip(files, cases, strict=True):
+        assert _executable_kind(file_path, name) == expected
+
+    assert sizes == [PREFIX_BYTES] * len(cases)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "API_KEY",
+        "SERVICE_TOKEN",
+        "CLIENT_SECRET",
+        "DB_PASSWORD",
+        "AWS_CREDENTIALS",
+        "ACCESS_KEY_ID",
+        "PRIVATE_KEY_PATH",
+    ],
+)
+def test_secret_env_name_positive_cases_create_sg005(tmp_path: Path, name: str) -> None:
+    assert _looks_like_secret_env_name(name)
+    data = manifest(
+        server={
+            "type": "node",
+            "entry_point": "server/index.js",
+            "mcp_config": {"command": "node", "env": {name: "raw-secret-value"}},
+        }
+    )
+    result = scan_mcpb(bundle(tmp_path / f"{name}.mcpb", data))
+    rendered = mcpb_scan_json(result)
+    assert "SG005" in rule_ids(result)
+    assert name in rendered
+    assert "raw-secret-value" not in rendered
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "MONKEY_MODE",
+        "HOCKEY_SCORE",
+        "KEYSTONE_REGION",
+        "SECRETARY_EMAIL",
+        "TOKENIZER_MODEL",
+        "PASSWORDLESS_MODE",
+        "PUBLIC_KEY",
+        "CACHE_KEY",
+        "SORT_KEY",
+        "PRIMARY_KEY",
+        "KEYBOARD_LAYOUT",
+    ],
+)
+def test_secret_env_name_negative_cases_do_not_create_sg005(tmp_path: Path, name: str) -> None:
+    assert not _looks_like_secret_env_name(name)
+    data = manifest(
+        server={
+            "type": "node",
+            "entry_point": "server/index.js",
+            "mcp_config": {"command": "node", "env": {name: "not-public"}},
+        }
+    )
+    result = scan_mcpb(bundle(tmp_path / f"{name}.mcpb", data))
+    assert "SG005" not in rule_ids(result)
+    assert "not-public" not in mcpb_scan_json(result)
 
 
 def test_safe_bundle_scans_and_preserves_fingerprints(tmp_path: Path) -> None:

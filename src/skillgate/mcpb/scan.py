@@ -43,7 +43,12 @@ TOP_LEVEL_RUNTIME_FILES = {
     "pnpm-lock.yaml",
 }
 SHELL_BASENAMES = {"bash", "sh", "zsh", "powershell", "pwsh", "cmd", "cmd.exe"}
-SECRET_NAME_RE = re.compile(r"(?i)(TOKEN|SECRET|KEY|PASSWORD|CREDENTIALS|CREDENTIAL)")
+SECRET_NAME_RE = re.compile(
+    r"(?i)(?:^|[_-])"
+    r"(?:TOKEN|SECRET|PASSWORD|CREDENTIALS?|API[_-]?KEY|ACCESS[_-]?KEY|"
+    r"PRIVATE[_-]?KEY|SECRET[_-]?KEY)"
+    r"(?:$|[_-])"
+)
 SHARED_LIBRARY_EXTENSIONS = {".dll", ".so", ".dylib"}
 EXECUTABLE_EXTENSIONS = {".exe"}
 MACHO_MAGIC = {b"\xfe\xed\xfa\xce", b"\xce\xfa\xed\xfe", b"\xfe\xed\xfa\xcf", b"\xcf\xfa\xed\xfe"}
@@ -184,7 +189,8 @@ def _embedded_binaries(
 
 def _executable_kind(path: Path, normalized_path: str) -> str | None:
     try:
-        prefix = path.read_bytes()[:PREFIX_BYTES]
+        with path.open("rb") as stream:
+            prefix = stream.read(PREFIX_BYTES)
     except OSError:
         prefix = b""
     suffix = PurePosixPath(normalized_path).suffix.lower()
@@ -199,6 +205,10 @@ def _executable_kind(path: Path, normalized_path: str) -> str | None:
     if suffix in EXECUTABLE_EXTENSIONS:
         return "executable_extension"
     return None
+
+
+def _looks_like_secret_env_name(name: str) -> bool:
+    return SECRET_NAME_RE.search(name) is not None
 
 
 def _mcpb_findings(
@@ -283,7 +293,7 @@ def _mcpb_findings(
         for secret in sorted(
             {
                 *variant.sensitive_user_config_refs,
-                *[name for name in variant.env_names if SECRET_NAME_RE.search(name)],
+                *[name for name in variant.env_names if _looks_like_secret_env_name(name)],
             }
         ):
             findings.append(
@@ -399,7 +409,7 @@ def _mcpb_capabilities(
         for secret in sorted(
             {
                 *variant.sensitive_user_config_refs,
-                *[name for name in variant.env_names if SECRET_NAME_RE.search(name)],
+                *[name for name in variant.env_names if _looks_like_secret_env_name(name)],
             }
         ):
             capabilities.append(

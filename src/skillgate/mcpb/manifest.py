@@ -17,7 +17,7 @@ from skillgate.archive import (
 from .errors import MAX_MCPB_MANIFEST_BYTES, McpbError
 from .models import McpbManifestSummary, McpbStartupVariant
 
-URL_RE = re.compile(r"https?://[^\s'\"<>]+", re.IGNORECASE)
+URL_RE = re.compile(r"https?://[^\s'\"<>]*", re.IGNORECASE)
 USER_CONFIG_RE = re.compile(r"\$\{user_config\.([A-Za-z0-9_.-]+)\}")
 SENSITIVE_ARG_NAMES = {
     "token",
@@ -52,6 +52,7 @@ METADATA_URL_FIELDS = (
     ("author", "url"),
     ("repository", "url"),
 )
+_MISSING = object()
 
 
 @dataclass(frozen=True)
@@ -156,35 +157,50 @@ def parse_manifest(
         and isinstance(data.get("dxt_version"), str)
         and data["manifest_version"] != data["dxt_version"]
     )
-    user_config = _optional_user_config(data.get("user_config"))
+    user_config = _optional_user_config(data.get("user_config", _MISSING))
     user_config_names = sorted(user_config)
     sensitive_user_config_names = sorted(
         name for name, item in user_config.items() if item.get("sensitive") is True
     )
     sensitive_set = set(sensitive_user_config_names)
 
-    raw_variants: list[tuple[str, str, list[str], dict[str, str]]] = [
-        ("default", base_command, base_args, base_env)
+    raw_variants: list[tuple[str, str, list[str], dict[str, str], str]] = [
+        ("default", base_command, base_args, base_env, "server.mcp_config")
     ]
     for platform in sorted(overrides):
         override = overrides[platform]
         command = override.get("command", base_command)
         args = override.get("args", base_args)
         env = {**base_env, **override.get("env", {})}
-        raw_variants.append((platform, command, args, env))
+        field_base = f"server.mcp_config.platform_overrides.{platform}"
+        raw_variants.append((platform, command, args, env, field_base))
 
     startup_variants: list[StartupVariantAnalysis] = []
-    for platform, command, args, env in raw_variants:
-        sanitized_args = sanitize_args(args)
-        runtime_values = [command, *args, *env.values()]
+    for platform, command, args, env, field_base in raw_variants:
+        sanitized_args = sanitize_args(args, field_path_base=f"{field_base}.args")
         runtime_endpoints = sorted(
-            {url for value in runtime_values for url in extract_sanitized_urls(value)}
+            {
+                *extract_sanitized_runtime_urls(command, f"{field_base}.command"),
+                *(
+                    url
+                    for index, arg in enumerate(args)
+                    for url in extract_sanitized_runtime_urls(arg, f"{field_base}.args[{index}]")
+                ),
+                *(
+                    url
+                    for name, value in env.items()
+                    for url in extract_sanitized_runtime_urls(value, f"{field_base}.env.{name}")
+                ),
+            }
         )
         startup_refs = sorted(
             {
                 ref
-                for field, value in [("command", command), *[("args", arg) for arg in args]]
-                for ref in _extract_local_refs(value, f"server.mcp_config.{field}", limits)
+                for field_path, value in [
+                    (f"{field_base}.command", command),
+                    *[(f"{field_base}.args[{index}]", arg) for index, arg in enumerate(args)],
+                ]
+                for ref in _extract_local_refs(value, field_path, limits)
             }
         )
         sensitive_refs = sorted(
@@ -198,7 +214,7 @@ def parse_manifest(
         startup_variants.append(
             StartupVariantAnalysis(
                 platform=platform,
-                command=sanitize_command(command),
+                command=sanitize_command(command, field_path=f"{field_base}.command"),
                 raw_args=args,
                 sanitized_args=sanitized_args,
                 env=env,
@@ -289,8 +305,8 @@ def _required_object(data: dict[str, Any], field_path: str) -> dict[str, Any]:
 
 
 def _optional_args(data: dict[str, Any], field_path: str) -> list[str]:
-    value = data.get(field_path.rsplit(".", 1)[-1], [])
-    if value is None:
+    value = data.get(field_path.rsplit(".", 1)[-1], _MISSING)
+    if value is _MISSING:
         return []
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
         _shape(field_path)
@@ -298,8 +314,8 @@ def _optional_args(data: dict[str, Any], field_path: str) -> list[str]:
 
 
 def _optional_env(data: dict[str, Any], field_path: str) -> dict[str, str]:
-    value = data.get(field_path.rsplit(".", 1)[-1], {})
-    if value is None:
+    value = data.get(field_path.rsplit(".", 1)[-1], _MISSING)
+    if value is _MISSING:
         return {}
     if not isinstance(value, dict) or not all(
         isinstance(k, str) and isinstance(v, str) for k, v in value.items()
@@ -309,8 +325,8 @@ def _optional_env(data: dict[str, Any], field_path: str) -> dict[str, str]:
 
 
 def _optional_overrides(mcp_config: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    value = mcp_config.get("platform_overrides", {})
-    if value is None:
+    value = mcp_config.get("platform_overrides", _MISSING)
+    if value is _MISSING:
         return {}
     if not isinstance(value, dict):
         _shape("server.mcp_config.platform_overrides")
@@ -333,21 +349,35 @@ def _optional_overrides(mcp_config: dict[str, Any]) -> dict[str, dict[str, Any]]
 
 
 def _optional_user_config(value: object) -> dict[str, dict[str, Any]]:
-    if value is None:
+    if value is _MISSING:
         return {}
     if not isinstance(value, dict):
         _shape("user_config")
     result: dict[str, dict[str, Any]] = {}
     for name, item in value.items():
+        field = f"user_config.{name}"
         if not isinstance(item, dict):
-            _shape(f"user_config.{name}")
-        result[str(name)] = {key: item.get(key) for key in ["type", "sensitive", "required"]}
+            _shape(field)
+        parsed: dict[str, Any] = {}
+        if "type" in item:
+            if not isinstance(item["type"], str):
+                _shape(f"{field}.type")
+            parsed["type"] = item["type"]
+        if "sensitive" in item:
+            if not isinstance(item["sensitive"], bool):
+                _shape(f"{field}.sensitive")
+            parsed["sensitive"] = item["sensitive"]
+        if "required" in item:
+            if not isinstance(item["required"], bool):
+                _shape(f"{field}.required")
+            parsed["required"] = item["required"]
+        result[str(name)] = parsed
     return result
 
 
 def _manifest_version(data: dict[str, Any]) -> str | None:
     for key in ["manifest_version", "dxt_version"]:
-        if key in data and data[key] is not None and not isinstance(data[key], str):
+        if key in data and not isinstance(data[key], str):
             _shape(key)
     if isinstance(data.get("manifest_version"), str):
         return data["manifest_version"]
@@ -375,26 +405,53 @@ def _normalize_reference(
     return normalized
 
 
-def extract_sanitized_urls(value: str) -> list[str]:
-    return [sanitize_url(match.group(0)) for match in URL_RE.finditer(value)]
+def extract_sanitized_runtime_urls(value: str, field_path: str) -> list[str]:
+    return [sanitize_runtime_url(match.group(0), field_path) for match in URL_RE.finditer(value)]
 
 
-def sanitize_url(value: str) -> str:
-    parsed = urlsplit(value)
-    host = (parsed.hostname or "").lower()
-    netloc = host
-    if parsed.port is not None:
-        netloc = f"{netloc}:{parsed.port}"
-    return urlunsplit((parsed.scheme.lower(), netloc, parsed.path or "", "", ""))
+def extract_sanitized_metadata_urls(value: str) -> list[str]:
+    urls: list[str] = []
+    for match in URL_RE.finditer(value):
+        sanitized = sanitize_metadata_url(match.group(0))
+        if sanitized is not None:
+            urls.append(sanitized)
+    return urls
 
 
-def sanitize_command(command: str) -> str:
-    urls = extract_sanitized_urls(command)
-    if not urls:
-        return command
+def sanitize_runtime_url(value: str, field_path: str) -> str:
+    sanitized = _sanitize_url(value)
+    if sanitized is None:
+        _shape(field_path)
+    return sanitized
+
+
+def sanitize_metadata_url(value: str) -> str | None:
+    return _sanitize_url(value)
+
+
+def _sanitize_url(value: str) -> str | None:
+    try:
+        parsed = urlsplit(value)
+        scheme = parsed.scheme.lower()
+        if scheme not in {"http", "https"}:
+            return None
+        host = parsed.hostname
+        port = parsed.port
+    except ValueError:
+        return None
+    if not host:
+        return None
+    host = host.lower()
+    netloc = f"[{host}]" if ":" in host else host
+    if port is not None:
+        netloc = f"{netloc}:{port}"
+    return urlunsplit((scheme, netloc, parsed.path or "", "", ""))
+
+
+def sanitize_command(command: str, *, field_path: str) -> str:
     sanitized = command
     for raw in URL_RE.finditer(command):
-        sanitized = sanitized.replace(raw.group(0), sanitize_url(raw.group(0)))
+        sanitized = sanitized.replace(raw.group(0), sanitize_runtime_url(raw.group(0), field_path))
     return sanitized
 
 
@@ -413,18 +470,21 @@ def _is_sensitive_arg_name(name: str | None) -> bool:
     return name in SENSITIVE_ARG_NAMES
 
 
-def sanitize_args(args: list[str]) -> list[str]:
+def sanitize_args(args: list[str], *, field_path_base: str = "server.mcp_config.args") -> list[str]:
     sanitized: list[str] = []
     redact_next = False
-    for arg in args:
+    for index, arg in enumerate(args):
         if redact_next:
             sanitized.append("<redacted>")
             redact_next = False
             continue
         if URL_RE.search(arg):
             clean = arg
+            field_path = f"{field_path_base}[{index}]"
             for match in URL_RE.finditer(arg):
-                clean = clean.replace(match.group(0), sanitize_url(match.group(0)))
+                clean = clean.replace(
+                    match.group(0), sanitize_runtime_url(match.group(0), field_path)
+                )
             arg = clean
         if "=" in arg:
             key, value = arg.split("=", 1)
@@ -491,16 +551,16 @@ def _metadata_urls(data: dict[str, Any]) -> set[str]:
         for key in path:
             value = value.get(key) if isinstance(value, dict) else None
         if isinstance(value, str):
-            urls.update(extract_sanitized_urls(value))
+            urls.update(extract_sanitized_metadata_urls(value))
     privacy = data.get("privacy_policies")
     if isinstance(privacy, list):
         for value in privacy:
             if isinstance(value, str):
-                urls.update(extract_sanitized_urls(value))
+                urls.update(extract_sanitized_metadata_urls(value))
     for value in _metadata_file_values(data).values():
         for item in value:
             if isinstance(item, str):
-                urls.update(extract_sanitized_urls(item))
+                urls.update(extract_sanitized_metadata_urls(item))
     return urls
 
 

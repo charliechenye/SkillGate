@@ -141,3 +141,27 @@ def test_invalid_format_and_missing_path_are_typer_errors(tmp_path: Path) -> Non
     assert result.exit_code == 2
     missing = runner.invoke(app, ["mcpb", "scan"])
     assert missing.exit_code == 2
+
+
+def test_malformed_runtime_url_json_error_envelope(tmp_path: Path) -> None:
+    data = manifest(
+        server={
+            "type": "node",
+            "entry_point": "server/index.js",
+            "mcp_config": {"command": "node", "args": ["https://example.com:not-a-port/api"]},
+        }
+    )
+    path = bundle(tmp_path / "bad-url.mcpb", data)
+    result = runner.invoke(app, ["mcpb", "scan", str(path), "--format", "json"])
+    assert result.exit_code == 2
+    payload = json.loads(result.output)
+    assert payload == {
+        "error": {
+            "code": "mcpb_manifest_invalid_shape",
+            "field_path": "server.mcp_config.args[0]",
+            "manifest_path": "manifest.json",
+            "message": "MCPB manifest has an invalid shape",
+        }
+    }
+    assert "not-a-port" not in result.output
+    assert str(path) not in result.output
