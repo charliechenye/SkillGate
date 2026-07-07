@@ -9,6 +9,17 @@ skillgate mcpb scan bundle.mcpb --fail-on high
 skillgate mcpb scan bundle.mcpb --manifest-output bundle-manifest.json
 ```
 
+For a deterministic demo from a source checkout:
+
+```bash
+python tools/build_demo_mcpb.py --output test-outputs/reviewable-node.mcpb
+skillgate mcpb scan test-outputs/reviewable-node.mcpb
+```
+
+The demo source lives in `fixtures/mcpb-demo/reviewable-node`. It intentionally
+declares a runtime endpoint and secret-like configuration reference so reviewers
+can see a useful pre-install result without using a real third-party bundle.
+
 ## Threat Model
 
 The scan is a local, deterministic pre-install review. It answers what the bundle declares it will start, which files and endpoints are referenced, which secrets are named, and whether bundled executables or nested archives require review. It does not execute code, start MCP servers, install packages, resolve dependencies, fetch schemas, call registries, or perform malware analysis.

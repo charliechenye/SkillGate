@@ -17,33 +17,35 @@ SkillGate is a local-first static trust gate for AI-agent skills, instruction fi
 
 SkillGate does not execute repository code, start MCP servers, call LLMs, or install remote packages. It scans files, reports capabilities and findings, and lets teams block unapproved behavior with policy-as-code.
 
-## 30-Second Demo
+## Start With Three Workflows
 
-Scan a public agent-skill repository before installing it:
+Before installing a public skill, MCP server, or MCP bundle:
 
 ```bash
 python -m pip install "git+https://github.com/charliechenye/SkillGate.git@v0"
 skillgate github scan https://github.com/addyosmani/agent-skills/tree/main/skills --fail-on high
+skillgate mcpb scan bundle.mcpb --fail-on high
 ```
 
-Scan the current repository locally:
+Before merging an agent-tooling change:
 
 ```bash
 skillgate scan .
 ```
 
-Inspect an MCP bundle before installing it:
-
-```bash
-skillgate mcpb scan bundle.mcpb --fail-on high
-```
-
-Generate a starter policy when you are ready to block unapproved behavior:
+When you are ready to enforce approved behavior:
 
 ```bash
 skillgate policy init --profile strict --output skillgate.yaml
 skillgate check . --policy skillgate.yaml
 ```
+
+That is the primary workflow. Baselines, provenance, inventory reports, registry
+comparison, SARIF upload, and advanced GitHub Action settings are available
+after the first useful scan.
+
+For concrete examples of how to interpret output, see the
+[public scan reports](docs/public-scan-reports/README.md).
 
 ## Choose Your Use Case
 
@@ -60,7 +62,7 @@ skillgate check . --policy skillgate.yaml
 
 ## Install
 
-Install the latest compatible GitHub release tag:
+Install the latest compatible GitHub release tag today:
 
 ```bash
 python -m pip install "git+https://github.com/charliechenye/SkillGate.git@v0"
@@ -92,10 +94,18 @@ git ls-remote --tags https://github.com/charliechenye/SkillGate.git "refs/tags/v
 Teams that require maximum reproducibility should pin the full commit SHA in
 install commands and GitHub Action references.
 
-GitHub installs require Python 3.11 or newer and `git` on the customer machine. After a later PyPI publication, the short install path will be:
+GitHub installs require Python 3.11 or newer and `git` on the customer machine.
+After PyPI publication, the preferred low-friction install path will be:
 
 ```bash
-python -m pip install openevalgate-skillgate
+pipx install openevalgate-skillgate
+skillgate scan .
+```
+
+Also validate one-shot usage with:
+
+```bash
+uvx openevalgate-skillgate scan .
 ```
 
 Experimental Node wrapper, after standalone GitHub Release assets are published:
@@ -247,6 +257,19 @@ Registry scanning reads declared MCP registry metadata, publisher-provided tool 
 `SG013` can be expected during a planned release, registry migration, package rename, endpoint cutover, or before local metadata has been published. Treat unexpected repository, package, remote endpoint, or secret-header drift as a review blocker until the intended source of truth is clear.
 
 Example fixture: [`fixtures/registry-compare-drift`](fixtures/registry-compare-drift).
+
+### How SkillGate Fits The MCP Ecosystem
+
+The official MCP Registry is a metadata and discovery service. It records where
+servers live, how they are installed, and how publishers prove namespace or
+package ownership. SkillGate complements that flow by statically reviewing the
+repository, package metadata, MCP bundle, or local registry metadata before a
+reviewer installs or approves it.
+
+SkillGate is not an MCP Registry server and does not publish packages. Use it as
+a local pre-install, pre-merge, or downstream-aggregator security check alongside
+the registry, package-manager security scanning, sandboxing, least-privilege
+credentials, and human review.
 
 ## 7. Build A Capability Inventory
 
