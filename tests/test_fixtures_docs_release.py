@@ -192,15 +192,17 @@ def test_release_metadata_and_roadmap_are_consistent() -> None:
     future_steps = (ROOT / "future_steps.md").read_text(encoding="utf-8")
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     skills_docs = ROOT / "docs" / "skills-validation.md"
+    sessions_docs = ROOT / "docs" / "sessions" / "README.md"
     release_checklist = (ROOT / "docs" / "release-checklist.md").read_text(encoding="utf-8")
     assert pyproject["project"]["name"] == "openevalgate-skillgate"
     assert pyproject["project"]["authors"] == [{"name": "Chenye Zhu"}]
-    assert pyproject["project"]["version"] == "0.1.1"
+    assert pyproject["project"]["version"] == "0.1.2"
     assert pyproject["project"]["license"] == "MIT"
     assert pyproject["project"]["license-files"] == ["LICENSE"]
     assert "License :: OSI Approved :: MIT License" not in pyproject["project"]["classifiers"]
-    assert __version__ == "0.1.1"
-    assert "## Unreleased" in changelog
+    assert __version__ == "0.1.2"
+    assert "## 0.1.2 - Guided review workflows" in changelog
+    assert "Released 2026-07-09." in changelog
     assert "reusable, bounded ZIP inspection foundation" in changelog
     assert "### Build A Reusable Safe-Archive Layer" not in future_steps
     assert (ROOT / "docs" / "archive-safety.md").exists()
@@ -216,22 +218,25 @@ def test_release_metadata_and_roadmap_are_consistent() -> None:
     assert skills_docs.exists()
     assert "skillgate skills validate" in skills_docs.read_text(encoding="utf-8")
     assert "declared-vs-observed" in skills_docs.read_text(encoding="utf-8")
+    assert sessions_docs.exists()
+    assert "Pre-install review" in sessions_docs.read_text(encoding="utf-8")
     assert "npx --yes github:charliechenye/SkillGate#v0 -- scan ." in future_steps
     assert "docs/public-scan-reports/" in future_steps
-    assert "For `v0.1.1`, both version commands should print `0.1.1`." in release_checklist
-    assert 'git tag -a v0.1.1 -m "SkillGate v0.1.1"' in release_checklist
-    assert "gh release create v0.1.1" in release_checklist
-    assert 'SKILLGATE_VERSION="v0.1.1"' in release_checklist
-    assert "git tag -f v0 v0.1.1" in release_checklist
+    assert "For `v0.1.2`, both version commands should print `0.1.2`." in release_checklist
+    assert 'git tag -a v0.1.2 -m "SkillGate v0.1.2"' in release_checklist
+    assert "gh release create v0.1.2" in release_checklist
+    assert 'SKILLGATE_VERSION="v0.1.2"' in release_checklist
+    assert "git tag -f v0 v0.1.2" in release_checklist
     assert "Do not publish the root npm package" in release_checklist
     assert "PyPI publication is an\nexplicit maintainer step" in release_checklist
     assert "pipx install --force openevalgate-skillgate" in release_checklist
     assert "uvx openevalgate-skillgate scan" in release_checklist
     assert "prefer yanking the affected file or version" in release_checklist
 
-    unreleased, released = changelog.split("## 0.1.1", maxsplit=1)
+    current_release, released = changelog.split("## 0.1.1", maxsplit=1)
 
-    assert "reusable, bounded ZIP inspection foundation" in unreleased
+    assert "## 0.1.2 - Guided review workflows" in current_release
+    assert "skillgate demo skill" in current_release
     assert "reusable, bounded ZIP inspection foundation" not in released
 
 
@@ -313,8 +318,10 @@ def test_docs_are_main_branch_and_discovery_friendly() -> None:
     assert "branch=main" in readme
     assert "## Start With Three Workflows" in readme
     assert "docs/public-scan-reports/README.md" in readme
+    assert "Current release: `v0.1.2`" in readme
     assert "docs/examples/github-action-minimal.md" in readme
-    assert "## Try The Local Demo" in readme
+    assert "## Try The Local Demos" in readme
+    assert "skillgate demo skill --output test-outputs/reviewable-demo --validate --scan" in readme
     assert "skillgate demo mcpb --output test-outputs/reviewable-node.mcpb --scan" in readme
     assert "skillgate --version" in readme
     assert "SHA-256: 6948b641f88671717de7142ce075f21f9710621392b115a311eee05831fe5a1c" in readme
@@ -338,7 +345,15 @@ def test_docs_are_main_branch_and_discovery_friendly() -> None:
     assert "GitHub's upload action" in action_examples
     assert "uploads that SARIF file" in action_examples
     assert "mcpb-path: dist/server.mcpb" in action_examples
+    assert "docs/sessions/README.md" in readme
     assert "mcpb-sarif-output: skillgate-mcpb.sarif" in action_examples
+    workflow_steps = {
+        step["name"]: step for step in workflow["jobs"]["skillgate"]["steps"] if "name" in step
+    }
+    assert workflow_steps["Upload SARIF review artifact"]["uses"] == ("actions/upload-artifact@v7")
+    assert workflow_steps["Upload SARIF to GitHub Code Scanning"]["if"] == (
+        "github.event_name != 'pull_request' && always()"
+    )
     assert action_examples.count("name: SkillGate") == 4
     assert action_examples.count("security-events: write") == 4
     assert action_examples.count("sarif-output: skillgate.sarif") == 4

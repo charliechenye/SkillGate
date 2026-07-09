@@ -14,6 +14,10 @@ Reports:
 - [Remote download review item](remote-download-review-item.md)
 - [Reviewable MCPB demo bundle](mcpb-reviewable-node.md)
 
+The reports marked with scanner version `0.1.1` are intentionally preserved as
+historical release evidence. New release documentation and packaged demos use
+`0.1.2`.
+
 Each report records the exact command, scanner version, source identity,
 capability inventory, findings summary, interpretation, limitations, suggested
 policy direction, and what SkillGate cannot conclude.

@@ -1,9 +1,15 @@
 # Change Log
 
-## Unreleased
+## 0.1.2 - Guided review workflows
+
+Released 2026-07-09.
 
 ### Added
 
+- Added `skillgate demo skill` for a packaged deterministic Agent Skill review
+  input that can be validated and scanned without executing helper files.
+- Added guided review sessions for first local review, pre-install review, and
+  policy/baseline approval workflows.
 - Added `skillgate mcpb scan` for deterministic pre-install inspection of MCP bundles without executing server content.
 - Added text, JSON, and SARIF MCPB reports with startup metadata, member scan state, embedded-artifact inventory, and optional bundle-manifest output.
 - Added composite Action inputs for scanning committed MCPB artifacts and emitting separate MCPB SARIF for GitHub code scanning.
@@ -20,11 +26,18 @@
 
 ### Changed
 
+- Bumped the Python and Node wrapper metadata to `0.1.2` for this release.
+- Expanded first-run README onboarding from one MCPB demo to paired Agent Skill
+  and MCPB demos, with explicit reviewer decision checkpoints.
 - Simplified README onboarding around pre-install scans, pre-merge scans, and policy enforcement before advanced workflows.
 - Updated the release checklist with explicit PyPI, `pipx`, `uvx`, and yanking/rollback validation steps.
 - Reorganized the archive inspection foundation into focused internal modules without changing its safety behavior, stable errors, or manifest contract.
 
 ### Fixed
+
+- Kept intentional demo and test findings visible in local and pull-request
+  scans while making SARIF Code Scanning publication non-blocking for pull
+  request CI.
 
 ## 0.1.1 - Release consistency and review ergonomics
 

@@ -9,7 +9,11 @@ from rich.console import Console
 from skillgate import __version__
 from skillgate.archive import ArchiveError
 from skillgate.baseline import create_baseline, diff_against_baseline, load_baseline, save_baseline
-from skillgate.demo import DEMO_MCPB_SHA256, build_demo_mcpb
+from skillgate.demo import (
+    DEMO_MCPB_SHA256,
+    build_demo_mcpb,
+    build_demo_skill,
+)
 from skillgate.fixtures import (
     FixtureSummaryError,
     fixture_summary_payload,
@@ -45,6 +49,7 @@ from skillgate.reporting import (
     policy_suggestions,
     render_diff,
     render_scan,
+    scan_text,
     write_or_print,
 )
 from skillgate.review import render_review_markdown, review_summary_payload
@@ -203,6 +208,51 @@ def demo_mcpb(
         console.file.write(mcpb_scan_text(result))
     else:
         console.file.write(f"Next: skillgate mcpb scan {output}\n")
+
+
+@demo_app.command("skill")
+def demo_skill(
+    output: Annotated[
+        Path,
+        typer.Option("--output", "-o", help="Write the deterministic demo Agent Skill directory."),
+    ] = Path("reviewable-demo"),
+    scan: Annotated[
+        bool,
+        typer.Option("--scan", help="Scan the demo skill after creating it."),
+    ] = False,
+    validate: Annotated[
+        bool,
+        typer.Option("--validate", help="Validate the demo skill after creating it."),
+    ] = False,
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="Overwrite generated files in an existing output directory."),
+    ] = False,
+) -> None:
+    """Build the deterministic reviewable Agent Skill demo."""
+    if output.exists():
+        if not force:
+            console.file.write(f"Error: output directory already exists: {output}\n")
+            raise typer.Exit(2)
+        if output.is_file():
+            console.file.write(f"Error: output path is a file: {output}\n")
+            raise typer.Exit(2)
+    build_demo_skill(output)
+    console.file.write(f"Built deterministic demo Agent Skill: {output}\n")
+    if validate:
+        console.file.write("\n")
+        try:
+            payload = validate_skills(output)
+        except SkillsValidationError as exc:
+            console.file.write(f"Error: {exc}\n")
+            raise typer.Exit(2) from exc
+        console.file.write(skills_text(payload))
+    if scan:
+        console.file.write("\n")
+        console.file.write(scan_text(scan_repository(output)))
+    if not validate and not scan:
+        console.file.write(f"Next: skillgate skills validate {output}\n")
+        console.file.write(f"Then: skillgate scan {output}\n")
 
 
 @skills_app.command("validate")

@@ -16,7 +16,7 @@ The roadmap should prioritize complete user workflows, distribution, and public 
 
 ## Current Baseline
 
-The current stable release is `v0.1.1`.
+The current stable release is `v0.1.2`.
 
 The shipped baseline includes:
 
@@ -39,6 +39,8 @@ The shipped baseline includes:
 - the MCPB pre-install scan MVP with text and JSON output, manifest output, retained nested-archive inventory, embedded-artifact review findings, and no bundle execution;
 - a packaged `skillgate demo mcpb` first-run demo that builds a deterministic synthetic bundle and can scan it immediately.
 - the first `skillgate skills validate` workflow for deterministic Agent Skills structure and metadata checks.
+- a packaged `skillgate demo skill` first-run demo that connects declared skill metadata to observed static capabilities.
+- guided review sessions for first local review, pre-install review, and policy/baseline approval.
 
 These capabilities are release history, not future work. Keep detailed records in `CHANGELOG.md`.
 
@@ -357,7 +359,7 @@ Do not promote bare `npx skillgate scan .` until an npm package is intentionally
 7. Keep stable output contracts small and versioned.
 8. Treat cleanup, bounded resource use, provenance, and no-execution guarantees as product requirements.
 9. Keep `future_steps.md` future-only.
-10. Record completed work under `CHANGELOG.md > Unreleased`.
+10. Record completed work under the next release section in `CHANGELOG.md`.
 
 ---
 

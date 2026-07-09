@@ -1,6 +1,6 @@
 {
   "name": "skillgate",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "Thin GitHub-release launcher for the SkillGate Python scanner.",
   "license": "MIT",
@@ -20,6 +20,7 @@
     "node": ">=18"
   },
   "scripts": {
+    "test": "npm run test:wrapper",
     "test:wrapper": "node --test tests/node/skillgate-wrapper.test.js"
   }
 }

@@ -10,6 +10,7 @@ from pathlib import Path
 
 DEMO_MCPB_SHA256 = "6948b641f88671717de7142ce075f21f9710621392b115a311eee05831fe5a1c"
 DEMO_MCPB_SOURCE = "demo_assets/mcpb-reviewable-node"
+DEMO_SKILL_SOURCE = "demo_assets/skill-reviewable"
 FIXED_TIME = (2020, 1, 1, 0, 0, 0)
 
 
@@ -36,6 +37,22 @@ def build_demo_mcpb(output: Path) -> str:
     if digest != DEMO_MCPB_SHA256:
         raise RuntimeError("deterministic demo MCPB hash changed unexpectedly")
     return digest
+
+
+def demo_skill_files() -> dict[str, bytes]:
+    root = resources.files("skillgate").joinpath(DEMO_SKILL_SOURCE)
+    return {
+        path: resource.read_bytes()
+        for path, resource in sorted(_resource_files(root), key=lambda item: item[0])
+    }
+
+
+def build_demo_skill(output: Path) -> None:
+    output.mkdir(parents=True, exist_ok=True)
+    for relative, content in demo_skill_files().items():
+        destination = output / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(content)
 
 
 def _resource_files(root: Traversable, prefix: str = "") -> Iterable[tuple[str, Traversable]]:

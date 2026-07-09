@@ -42,6 +42,10 @@ jobs:
         run: python -m ruff format --check .
       - name: Scan repository
         run: skillgate scan . --format text
+      - name: Run deterministic demo sessions
+        run: |
+          skillgate demo skill --output test-outputs/reviewable-demo --validate --scan
+          skillgate demo mcpb --output test-outputs/reviewable-node.mcpb --scan
       - name: Run policy smoke check
         run: skillgate check fixtures/benchmark/01-safe-documentation-skill --policy skillgate.example.yaml
       - name: Verify benchmark fixtures
@@ -49,8 +53,17 @@ jobs:
       - name: Generate SARIF
         if: always()
         run: skillgate scan . --format sarif --output skillgate.sarif
-      - name: Upload SARIF
+      - name: Upload SARIF review artifact
         if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: skillgate-sarif
+          path: skillgate.sarif
+          if-no-files-found: error
+      - name: Upload SARIF to GitHub Code Scanning
+        # Pull requests keep the full SARIF as an artifact so findings remain
+        # reviewable without creating a blocking Code Scanning status check.
+        if: github.event_name != 'pull_request' && always()
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: skillgate.sarif

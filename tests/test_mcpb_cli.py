@@ -55,6 +55,7 @@ def test_help_commands() -> None:
     assert runner.invoke(app, ["mcpb", "--help"]).exit_code == 0
     assert runner.invoke(app, ["demo", "--help"]).exit_code == 0
     assert runner.invoke(app, ["demo", "mcpb", "--help"]).exit_code == 0
+    assert runner.invoke(app, ["demo", "skill", "--help"]).exit_code == 0
     result = runner.invoke(app, ["mcpb", "scan", "--help"])
     assert result.exit_code == 0
     assert "MCPB bundle to inspect" in result.output
@@ -93,6 +94,44 @@ def test_demo_mcpb_scan_prints_normal_scan_output(tmp_path: Path) -> None:
     assert "Entry point: server/index.js" in result.output
     assert "Endpoint: https://api.example.invalid/v1" in result.output
     assert "Secret reference: SERVICE_TOKEN" in result.output
+
+
+def test_demo_skill_builds_and_runs_both_review_views(tmp_path: Path) -> None:
+    output = tmp_path / "reviewable-demo"
+    result = runner.invoke(
+        app,
+        [
+            "demo",
+            "skill",
+            "--output",
+            str(output),
+            "--validate",
+            "--scan",
+        ],
+    )
+    assert result.exit_code == 0
+    assert (output / "SKILL.md").exists()
+    assert (output / "scripts" / "bootstrap.sh").exists()
+    assert "SkillGate skills validation completed" in result.output
+    assert "SKILL007" in result.output
+    assert "SG004" in result.output
+
+
+def test_demo_skill_protects_existing_directory_unless_forced(tmp_path: Path) -> None:
+    output = tmp_path / "reviewable-demo"
+    output.mkdir()
+    marker = output / "keep.txt"
+    marker.write_text("keep me", encoding="utf-8")
+
+    blocked = runner.invoke(app, ["demo", "skill", "--output", str(output)])
+    assert blocked.exit_code == 2
+    assert "output directory already exists" in blocked.output
+    assert marker.read_text(encoding="utf-8") == "keep me"
+
+    forced = runner.invoke(app, ["demo", "skill", "--output", str(output), "--force"])
+    assert forced.exit_code == 0
+    assert marker.read_text(encoding="utf-8") == "keep me"
+    assert (output / "SKILL.md").exists()
 
 
 def test_text_and_json_scan(tmp_path: Path) -> None:
