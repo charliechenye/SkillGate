@@ -9,6 +9,8 @@
 ![No runtime execution](https://img.shields.io/badge/runtime-no%20execution-green)
 ![Policy as code](https://img.shields.io/badge/policy-as%20code-purple)
 
+Current release: `v0.1.2`
+
 ![SkillGate social preview: static trust checks for AI-agent skills and MCP configurations](docs/assets/repo_image.png)
 
 SkillGate is a local-first static trust gate for AI-agent skills, instruction files, helper scripts, and Model Context Protocol (MCP) metadata. It helps reviewers answer one practical question before install or merge:

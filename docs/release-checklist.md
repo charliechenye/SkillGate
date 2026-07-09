@@ -26,12 +26,12 @@ For `v0.1.2`, both version commands should print `0.1.2`.
 Confirm release notes and release-prep state:
 
 ```powershell
-Select-String -Path CHANGELOG.md -Pattern "## Unreleased"
+Select-String -Path CHANGELOG.md -Pattern "## 0.1.2 - Guided review workflows"
 Select-String -Path docs\sessions\README.md -Pattern "SkillGate Review Sessions"
 Select-String -Path .github\workflows\release-binaries.yml -Pattern "needs.resolve-tag.outputs.release_tag"
 ```
 
-The `Unreleased` entry should describe the final 0.1.2 scope before tagging.
+The `0.1.2` entry should contain the final launch notes before tagging.
 
 ## 2. Tests And Static Checks
 

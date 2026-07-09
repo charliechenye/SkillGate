@@ -201,7 +201,8 @@ def test_release_metadata_and_roadmap_are_consistent() -> None:
     assert pyproject["project"]["license-files"] == ["LICENSE"]
     assert "License :: OSI Approved :: MIT License" not in pyproject["project"]["classifiers"]
     assert __version__ == "0.1.2"
-    assert "## Unreleased" in changelog
+    assert "## 0.1.2 - Guided review workflows" in changelog
+    assert "Released 2026-07-09." in changelog
     assert "reusable, bounded ZIP inspection foundation" in changelog
     assert "### Build A Reusable Safe-Archive Layer" not in future_steps
     assert (ROOT / "docs" / "archive-safety.md").exists()
@@ -232,9 +233,10 @@ def test_release_metadata_and_roadmap_are_consistent() -> None:
     assert "uvx openevalgate-skillgate scan" in release_checklist
     assert "prefer yanking the affected file or version" in release_checklist
 
-    unreleased, released = changelog.split("## 0.1.1", maxsplit=1)
+    current_release, released = changelog.split("## 0.1.1", maxsplit=1)
 
-    assert "reusable, bounded ZIP inspection foundation" in unreleased
+    assert "## 0.1.2 - Guided review workflows" in current_release
+    assert "skillgate demo skill" in current_release
     assert "reusable, bounded ZIP inspection foundation" not in released
 
 
@@ -316,6 +318,7 @@ def test_docs_are_main_branch_and_discovery_friendly() -> None:
     assert "branch=main" in readme
     assert "## Start With Three Workflows" in readme
     assert "docs/public-scan-reports/README.md" in readme
+    assert "Current release: `v0.1.2`" in readme
     assert "docs/examples/github-action-minimal.md" in readme
     assert "## Try The Local Demos" in readme
     assert "skillgate demo skill --output test-outputs/reviewable-demo --validate --scan" in readme

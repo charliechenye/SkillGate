@@ -1,6 +1,8 @@
 # Change Log
 
-## Unreleased
+## 0.1.2 - Guided review workflows
+
+Released 2026-07-09.
 
 ### Added
 
@@ -24,8 +26,7 @@
 
 ### Changed
 
-- Bumped the Python and Node wrapper metadata to `0.1.2` for the next minor
-  release candidate.
+- Bumped the Python and Node wrapper metadata to `0.1.2` for this release.
 - Expanded first-run README onboarding from one MCPB demo to paired Agent Skill
   and MCPB demos, with explicit reviewer decision checkpoints.
 - Simplified README onboarding around pre-install scans, pre-merge scans, and policy enforcement before advanced workflows.
