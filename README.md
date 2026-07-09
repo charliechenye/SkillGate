@@ -17,10 +17,20 @@ SkillGate is a local-first static trust gate for AI-agent skills, instruction fi
 
 SkillGate does not execute repository code, start MCP servers, call LLMs, or install remote packages. It scans files, reports capabilities and findings, and lets teams block unapproved behavior with policy-as-code.
 
-## Try The Local Demo
+## Try The Local Demos
 
-After installation, build and scan a deterministic MCPB demo without downloading
-or running any third-party code:
+After installation, build and scan a deterministic Agent Skill demo without
+downloading or running any third-party code:
+
+```bash
+skillgate demo skill --output test-outputs/reviewable-demo --validate --scan
+```
+
+The demo intentionally contains a reviewable helper script, so you can see the
+connection between skill metadata, declared tools, and observed capabilities.
+
+To inspect the bundle workflow as well, build and scan a deterministic MCPB
+demo:
 
 ```bash
 skillgate demo mcpb --output test-outputs/reviewable-node.mcpb --scan
@@ -69,6 +79,9 @@ after the first useful scan.
 For concrete examples of how to interpret output, see the
 [public scan reports](docs/public-scan-reports/README.md).
 
+For a guided walkthrough with a deterministic local input, see the
+[review sessions](docs/sessions/README.md).
+
 ## Choose Your Use Case
 
 | Use case | Start here | What you get |
@@ -82,6 +95,7 @@ For concrete examples of how to interpret output, see the
 | Inspect MCP registry metadata without installing | [`skillgate mcp registry scan`](#6-review-mcp-registry-metadata) | MCP tool, transport, package, and registry drift checks |
 | Build a review inventory | [`skillgate inventory .`](#7-build-a-capability-inventory) | Trust-boundary summary and filterable JSON |
 | Upload findings to GitHub code scanning | [`--format sarif`](#8-export-sarif-for-github-code-scanning) | Stable SARIF alerts with capability tags |
+| Follow a guided review session | [Review sessions](docs/sessions/README.md) | Copy-pasteable pre-install, pre-merge, and approval workflows |
 
 ## Install
 

@@ -21,6 +21,13 @@ skillgate skills validate . --format json --output skillgate-skills.json
 skillgate skills validate skills/ --fail-on medium
 ```
 
+For a packaged first-run example that can be validated and scanned without
+executing helper files:
+
+```bash
+skillgate demo skill --output test-outputs/reviewable-demo --validate --scan
+```
+
 Exit codes are `0` for a completed validation that does not meet the selected
 threshold, `1` when `--fail-on` is met, and `2` for an invalid or unreadable
 input path.

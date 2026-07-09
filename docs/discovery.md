@@ -33,3 +33,4 @@ Canonical docs for agents and answer engines:
 - Contributor and fixture workflow: [CONTRIBUTING.md](../CONTRIBUTING.md)
 - Release checklist: [docs/release-checklist.md](release-checklist.md)
 - Roadmap: [future_steps.md](../future_steps.md)
+- Guided review sessions: [docs/sessions/README.md](sessions/README.md)

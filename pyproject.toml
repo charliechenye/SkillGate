@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "openevalgate-skillgate"
-version = "0.1.1"
+version = "0.1.2"
 description = "Pre-merge and pre-install trust checks for AI-agent skills and MCP configurations. Scan capabilities, detect risky changes, and block unapproved agent behavior in CI."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -79,6 +79,9 @@ skillgate = [
   "demo_assets/mcpb-reviewable-node/manifest.json",
   "demo_assets/mcpb-reviewable-node/package.json",
   "demo_assets/mcpb-reviewable-node/server/index.js",
+  "demo_assets/skill-reviewable/README.md",
+  "demo_assets/skill-reviewable/SKILL.md",
+  "demo_assets/skill-reviewable/scripts/bootstrap.sh",
 ]
 
 [tool.pytest.ini_options]
