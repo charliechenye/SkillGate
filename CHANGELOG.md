@@ -35,6 +35,10 @@ Released 2026-07-09.
 
 ### Fixed
 
+- Kept intentional demo and test findings visible in local and pull-request
+  scans while making SARIF Code Scanning publication non-blocking for pull
+  request CI.
+
 ## 0.1.1 - Release consistency and review ergonomics
 
 ### Added

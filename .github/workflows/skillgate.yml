@@ -53,8 +53,17 @@ jobs:
       - name: Generate SARIF
         if: always()
         run: skillgate scan . --format sarif --output skillgate.sarif
-      - name: Upload SARIF
+      - name: Upload SARIF review artifact
         if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: skillgate-sarif
+          path: skillgate.sarif
+          if-no-files-found: error
+      - name: Upload SARIF to GitHub Code Scanning
+        # Pull requests keep the full SARIF as an artifact so findings remain
+        # reviewable without creating a blocking Code Scanning status check.
+        if: github.event_name != 'pull_request' && always()
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: skillgate.sarif

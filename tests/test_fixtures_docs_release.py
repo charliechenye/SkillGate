@@ -347,6 +347,13 @@ def test_docs_are_main_branch_and_discovery_friendly() -> None:
     assert "mcpb-path: dist/server.mcpb" in action_examples
     assert "docs/sessions/README.md" in readme
     assert "mcpb-sarif-output: skillgate-mcpb.sarif" in action_examples
+    workflow_steps = {
+        step["name"]: step for step in workflow["jobs"]["skillgate"]["steps"] if "name" in step
+    }
+    assert workflow_steps["Upload SARIF review artifact"]["uses"] == ("actions/upload-artifact@v7")
+    assert workflow_steps["Upload SARIF to GitHub Code Scanning"]["if"] == (
+        "github.event_name != 'pull_request' && always()"
+    )
     assert action_examples.count("name: SkillGate") == 4
     assert action_examples.count("security-events: write") == 4
     assert action_examples.count("sarif-output: skillgate.sarif") == 4
