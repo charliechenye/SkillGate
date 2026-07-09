@@ -50,6 +50,13 @@ from skillgate.reporting import (
 from skillgate.review import render_review_markdown, review_summary_payload
 from skillgate.rule_docs import RULE_DOCS, get_rule_doc, rule_doc_to_data, rule_docs_to_data
 from skillgate.scan import filter_report_by_severity, scan_repository
+from skillgate.skills import (
+    SkillsValidationError,
+    skills_failed,
+    skills_json,
+    skills_text,
+    validate_skills,
+)
 from skillgate.sources import RemoteScanLimits, SourceError, fetch_github_sparse
 
 app = typer.Typer(
@@ -68,6 +75,7 @@ review_app = typer.Typer(help="Create reviewer-friendly SkillGate summaries.")
 mcp_app = typer.Typer(help="Inspect MCP metadata without installing servers.")
 mcpb_app = typer.Typer(help="Inspect MCP bundles before installing or executing their servers.")
 mcp_registry_app = typer.Typer(help="Scan and compare MCP registry metadata.")
+skills_app = typer.Typer(help="Validate Agent Skills structure and metadata.")
 app.add_typer(baseline_app, name="baseline")
 app.add_typer(demo_app, name="demo")
 app.add_typer(fixtures_app, name="fixtures")
@@ -78,6 +86,7 @@ app.add_typer(policy_app, name="policy")
 app.add_typer(provenance_app, name="provenance")
 app.add_typer(review_app, name="review")
 app.add_typer(rules_app, name="rules")
+app.add_typer(skills_app, name="skills")
 mcp_app.add_typer(mcp_registry_app, name="registry")
 console = Console()
 
@@ -122,6 +131,19 @@ def validate_fail_on(value: str | None) -> str | None:
         return None
     normalized = value.lower()
     allowed = {"medium", "high", "critical"}
+    if normalized not in allowed:
+        raise typer.BadParameter(
+            f"expected one of: {', '.join(sorted(allowed))}",
+            param_hint="--fail-on",
+        )
+    return normalized
+
+
+def validate_skills_fail_on(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.lower()
+    allowed = {"low", "medium", "high", "critical"}
     if normalized not in allowed:
         raise typer.BadParameter(
             f"expected one of: {', '.join(sorted(allowed))}",
@@ -181,6 +203,39 @@ def demo_mcpb(
         console.file.write(mcpb_scan_text(result))
     else:
         console.file.write(f"Next: skillgate mcpb scan {output}\n")
+
+
+@skills_app.command("validate")
+def skills_validate(
+    path: Annotated[
+        Path,
+        typer.Argument(help="SKILL.md file or directory containing Agent Skills."),
+    ],
+    output_format: Annotated[str, typer.Option("--format", help="Output format.")] = "text",
+    output: Annotated[
+        Path | None, typer.Option("--output", "-o", help="Write validation output to a file.")
+    ] = None,
+    fail_on: Annotated[
+        str | None,
+        typer.Option("--fail-on", help="Exit 1 when findings reach this severity."),
+    ] = None,
+) -> None:
+    """Validate Agent Skills structure and metadata without executing code."""
+    output_format = validate_format(output_format, {"text", "json"})
+    fail_on = validate_skills_fail_on(fail_on)
+    try:
+        payload = validate_skills(path)
+    except SkillsValidationError as exc:
+        if output_format == "json":
+            console.file.write(
+                stable_json({"error": {"code": "skills_validation_error", "message": str(exc)}})
+            )
+        else:
+            console.file.write(f"Error: {exc}\n")
+        raise typer.Exit(2) from exc
+    content = skills_json(payload) if output_format == "json" else skills_text(payload)
+    write_or_print(content, output, console)
+    raise typer.Exit(1 if skills_failed(payload, fail_on) else 0)
 
 
 @mcpb_app.command("scan")

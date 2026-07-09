@@ -190,6 +190,8 @@ def test_release_metadata_and_roadmap_are_consistent() -> None:
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
     future_steps = (ROOT / "future_steps.md").read_text(encoding="utf-8")
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    skills_docs = ROOT / "docs" / "skills-validation.md"
     release_checklist = (ROOT / "docs" / "release-checklist.md").read_text(encoding="utf-8")
     assert pyproject["project"]["name"] == "openevalgate-skillgate"
     assert pyproject["project"]["authors"] == [{"name": "Chenye Zhu"}]
@@ -210,6 +212,10 @@ def test_release_metadata_and_roadmap_are_consistent() -> None:
     assert "skillgate diff --fail-on-drift" in changelog
     assert "Publish the first tagged GitHub release as `v0.1.0`" not in future_steps
     assert "supplied `baseline` plus `fail-on-drift`" in future_steps
+    assert "skillgate skills validate" in readme
+    assert skills_docs.exists()
+    assert "skillgate skills validate" in skills_docs.read_text(encoding="utf-8")
+    assert "declared-vs-observed" in skills_docs.read_text(encoding="utf-8")
     assert "npx --yes github:charliechenye/SkillGate#v0 -- scan ." in future_steps
     assert "docs/public-scan-reports/" in future_steps
     assert "For `v0.1.1`, both version commands should print `0.1.1`." in release_checklist

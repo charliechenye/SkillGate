@@ -11,6 +11,8 @@
 - Added `skillgate --version` for quick CLI identity checks.
 - Added `skillgate demo mcpb` for a packaged deterministic first-run MCPB demo with optional immediate scan output.
 - Added a deterministic MCPB demo source fixture and builder for public scan reports and release smoke tests.
+- Added `skillgate skills validate` for deterministic Agent Skills structure and metadata validation without code execution.
+- Added Agent Skills validation fixtures and documentation covering frontmatter, tool declarations, local references, and misplaced executables.
 - Added public scan report examples for a clean documentation skill, a remote-download review item, and a reviewable MCPB bundle.
 - Added a reusable, bounded ZIP inspection foundation with deterministic archive and member manifests for future MCPB pre-install scanning.
 - Added fail-closed protections for unsafe paths, duplicate normalized entries, path-type collisions, symlinks, special files, nested archives, unsupported compression, encryption, and resource-limit violations.
