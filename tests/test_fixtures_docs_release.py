@@ -293,6 +293,10 @@ def test_docs_are_main_branch_and_discovery_friendly() -> None:
     assert "## Start With Three Workflows" in readme
     assert "docs/public-scan-reports/README.md" in readme
     assert "docs/examples/github-action-minimal.md" in readme
+    assert "## Try The Local Demo" in readme
+    assert "skillgate demo mcpb --output test-outputs/reviewable-node.mcpb --scan" in readme
+    assert "skillgate --version" in readme
+    assert "SHA-256: 6948b641f88671717de7142ce075f21f9710621392b115a311eee05831fe5a1c" in readme
     assert "refs/tags/v0" in readme
     assert 'SkillGate.git@v0"' in readme
     assert "SkillGate.git@v0.1.1" not in readme

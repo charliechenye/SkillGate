@@ -8,6 +8,7 @@ from pathlib import Path
 from conftest import runner
 
 from skillgate.cli import app
+from skillgate.demo import DEMO_MCPB_SHA256
 
 FIXED_TIME = (2020, 1, 1, 0, 0, 0)
 
@@ -52,9 +53,46 @@ def bundle(
 
 def test_help_commands() -> None:
     assert runner.invoke(app, ["mcpb", "--help"]).exit_code == 0
+    assert runner.invoke(app, ["demo", "--help"]).exit_code == 0
+    assert runner.invoke(app, ["demo", "mcpb", "--help"]).exit_code == 0
     result = runner.invoke(app, ["mcpb", "scan", "--help"])
     assert result.exit_code == 0
     assert "MCPB bundle to inspect" in result.output
+
+
+def test_demo_mcpb_builds_deterministic_bundle(tmp_path: Path) -> None:
+    output = tmp_path / "reviewable-node.mcpb"
+    result = runner.invoke(app, ["demo", "mcpb", "--output", str(output)])
+    assert result.exit_code == 0
+    assert output.exists()
+    assert f"SHA-256: {DEMO_MCPB_SHA256}" in result.output
+    assert f"Next: skillgate mcpb scan {output}" in result.output
+    assert result.output.startswith("Built deterministic demo MCPB:")
+
+
+def test_demo_mcpb_protects_existing_output_unless_forced(tmp_path: Path) -> None:
+    output = tmp_path / "reviewable-node.mcpb"
+    output.write_bytes(b"keep me")
+
+    blocked = runner.invoke(app, ["demo", "mcpb", "--output", str(output)])
+    assert blocked.exit_code == 2
+    assert "output file already exists" in blocked.output
+    assert output.read_bytes() == b"keep me"
+
+    forced = runner.invoke(app, ["demo", "mcpb", "--output", str(output), "--force"])
+    assert forced.exit_code == 0
+    assert f"SHA-256: {DEMO_MCPB_SHA256}" in forced.output
+
+
+def test_demo_mcpb_scan_prints_normal_scan_output(tmp_path: Path) -> None:
+    output = tmp_path / "reviewable-node.mcpb"
+    result = runner.invoke(app, ["demo", "mcpb", "--output", str(output), "--scan"])
+    assert result.exit_code == 0
+    assert f"SHA-256: {DEMO_MCPB_SHA256}" in result.output
+    assert "SkillGate MCPB scan completed" in result.output
+    assert "Entry point: server/index.js" in result.output
+    assert "Endpoint: https://api.example.invalid/v1" in result.output
+    assert "Secret reference: SERVICE_TOKEN" in result.output
 
 
 def test_text_and_json_scan(tmp_path: Path) -> None:
