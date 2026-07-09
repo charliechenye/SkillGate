@@ -82,6 +82,35 @@ def test_sarif_includes_mcp_capability_tags_and_taxa() -> None:
     assert "mcp_tool_metadata" in taxa
 
 
+def test_sarif_includes_mcpb_capability_tags_and_taxa() -> None:
+    report = scan_repository(FIXTURES / "05-remote-download-execute")
+    findings = [
+        report.findings[0].model_copy(
+            update={
+                "rule_id": "SG014",
+                "title": "MCPB startup or bundle reference mismatch",
+                "capability": "mcpb_startup",
+                "severity": "high",
+            }
+        ),
+        report.findings[1].model_copy(
+            update={
+                "rule_id": "SG015",
+                "title": "MCPB embedded executable or nested archive requires review",
+                "capability": "mcpb_embedded_artifact",
+                "severity": "high",
+            }
+        ),
+    ]
+    sarif = sarif_report(report.model_copy(update={"findings": findings}), category="mcp_bundle")
+    rules = {rule["id"]: rule for rule in sarif["runs"][0]["tool"]["driver"]["rules"]}
+    assert "capability:mcpb_startup" in rules["SG014"]["properties"]["tags"]
+    assert "capability:mcpb_embedded_artifact" in rules["SG015"]["properties"]["tags"]
+    taxa = {item["id"] for item in sarif["runs"][0]["taxonomies"][0]["taxa"]}
+    assert "mcpb_startup" in taxa
+    assert "mcpb_embedded_artifact" in taxa
+
+
 def assert_snapshot(name: str, content: str) -> None:
     snapshot = ROOT / "tests" / "snapshots" / name
     expected = snapshot.read_text(encoding="utf-8")

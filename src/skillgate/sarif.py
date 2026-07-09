@@ -6,24 +6,7 @@ from skillgate.identity import finding_fingerprint, normalized_path
 from skillgate.models import Finding, PolicyResult, ScanReport
 from skillgate.rule_docs import RULE_DOCS
 
-RULES = {
-    "SG001": ("Shell execution detected", "The file appears to invoke shell execution."),
-    "SG002": ("Destructive command detected", "The file contains a destructive command pattern."),
-    "SG003": ("Network egress detected", "The file appears to access a network resource."),
-    "SG004": ("Remote download followed by execution", "Remote content is executed."),
-    "SG005": ("Secret or credential access detected", "A likely secret is referenced."),
-    "SG006": ("Filesystem write capability detected", "The file may write to the filesystem."),
-    "SG007": ("Prompt override language detected", "Instruction-conflict language is present."),
-    "SG008": (
-        "Suspicious Unicode or obfuscation detected",
-        "Hidden or encoded content is present.",
-    ),
-    "SG009": ("MCP server configuration discovered", "An MCP server configuration is present."),
-    "SG010": ("MCP capability changed from baseline", "An MCP capability changed."),
-    "SG011": ("MCP tool metadata risk detected", "Declared MCP tool metadata is risky."),
-    "SG012": ("MCP transport risk detected", "Declared MCP transport metadata is risky."),
-    "SG013": ("MCP registry metadata drift detected", "Local MCP registry metadata drifted."),
-}
+RULES = {rule.rule_id: (rule.title, rule.description) for rule in RULE_DOCS}
 LEVELS = {
     "informational": "note",
     "low": "note",

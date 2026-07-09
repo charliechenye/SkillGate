@@ -5,6 +5,7 @@ SkillGate can inspect a local MCP bundle before installation:
 ```bash
 skillgate mcpb scan bundle.mcpb
 skillgate mcpb scan bundle.mcpb --format json
+skillgate mcpb scan bundle.mcpb --format sarif --output skillgate-mcpb.sarif
 skillgate mcpb scan bundle.mcpb --fail-on high
 skillgate mcpb scan bundle.mcpb --manifest-output bundle-manifest.json
 ```
@@ -28,7 +29,7 @@ The scan is a local, deterministic pre-install review. It answers what the bundl
 
 ## Output Fields
 
-Text output summarizes bundle identity, manifest version, server type, entry point, startup variants, archive members, scanned and skipped members, embedded executables, nested archives, capabilities, and findings. JSON output contains `schema_version`, `tool_version`, `bundle_manifest`, and `scan_report`; nested findings preserve normal SkillGate fingerprints.
+Text output summarizes bundle identity, manifest version, server type, entry point, startup variants, archive members, scanned and skipped members, embedded executables, nested archives, capabilities, and findings. JSON output contains `schema_version`, `tool_version`, `bundle_manifest`, and `scan_report`; nested findings preserve normal SkillGate fingerprints. SARIF output uses the `skillgate/mcp-bundle` run category for GitHub code scanning.
 
 `--manifest-output` writes only the deterministic bundle manifest: archive hash and limits, manifest summary, member states, embedded binary inventory, and nested archive paths. It is written on successful scans, including scans that later exit `1` because `--fail-on` matched.
 
@@ -65,4 +66,4 @@ MCPB fatal errors use stable codes such as `mcpb_manifest_missing`, `mcpb_manife
 
 ## Non-Goals
 
-This MVP does not include SARIF output for MCPB, MCPB policy schema, GitHub Action MCPB inputs, remote registry lookups, package or dependency installation, dependency resolution, recursive archive inspection, YARA, sandbox execution, malware verdicts, automatic remediation, full MCPB JSON Schema validation, or remote schema downloads.
+This MVP does not include MCPB policy schema, remote registry lookups, package or dependency installation, dependency resolution, recursive archive inspection, YARA, sandbox execution, malware verdicts, automatic remediation, full MCPB JSON Schema validation, or remote schema downloads.

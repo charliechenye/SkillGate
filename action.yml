@@ -40,6 +40,18 @@ inputs:
     description: Append the Markdown review summary to the GitHub Step Summary.
     required: false
     default: "false"
+  mcpb-path:
+    description: Optional committed MCPB artifact path to scan.
+    required: false
+    default: ""
+  mcpb-fail-on:
+    description: Optional MCPB severity threshold that exits nonzero when matched.
+    required: false
+    default: ""
+  mcpb-sarif-output:
+    description: Optional MCPB SARIF output path for separate code scanning upload.
+    required: false
+    default: ""
 runs:
   using: composite
   steps:
@@ -78,6 +90,22 @@ runs:
       if: ${{ always() && inputs.sarif-output != '' && inputs.policy == '' }}
       shell: bash
       run: skillgate scan "${{ inputs.path }}" --format sarif --output "${{ inputs.sarif-output }}"
+    - name: Run SkillGate MCPB scan
+      if: ${{ inputs.mcpb-path != '' }}
+      shell: bash
+      run: |
+        args=(mcpb scan "${{ inputs.mcpb-path }}")
+        if [ "${{ inputs.mcpb-fail-on }}" != "" ]; then
+          args+=(--fail-on "${{ inputs.mcpb-fail-on }}")
+        fi
+        skillgate "${args[@]}"
+    - name: Generate MCPB SARIF
+      if: ${{ always() && inputs.mcpb-path != '' && inputs.mcpb-sarif-output != '' }}
+      shell: bash
+      run: >
+        skillgate mcpb scan "${{ inputs.mcpb-path }}"
+        --format sarif
+        --output "${{ inputs.mcpb-sarif-output }}"
     - name: Generate SkillGate review summary
       if: ${{ always() && (inputs.summary-output != '' || inputs.json-output != '' || inputs.step-summary == 'true') }}
       shell: bash
