@@ -109,3 +109,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload "${{ needs.resolve-tag.outputs.release_tag }}" release-assets/* --clobber
+      - name: Notify Personal Website of Release
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.WEBSITE_DISPATCH_TOKEN }}
+          script: |
+            await github.rest.repos.createDispatchEvent({
+              owner: 'charliechenye',
+              repo: 'personal-website',
+              event_type: 'skillgate-release',
+              client_payload: {
+                tag: '${{ needs.resolve-tag.outputs.release_tag }}'
+              }
+            });

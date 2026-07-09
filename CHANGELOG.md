@@ -6,38 +6,33 @@ Released 2026-07-09.
 
 ### Added
 
-- Added `skillgate demo skill` for a packaged deterministic Agent Skill review
-  input that can be validated and scanned without executing helper files.
-- Added guided review sessions for first local review, pre-install review, and
-  policy/baseline approval workflows.
+- Added `skillgate demo skill` for a packaged deterministic Agent Skill review input that can be validated and scanned without executing helper files.
+- Added guided review sessions for first local review, pre-install review, and policy/baseline approval workflows.
 - Added `skillgate mcpb scan` for deterministic pre-install inspection of MCP bundles without executing server content.
-- Added text, JSON, and SARIF MCPB reports with startup metadata, member scan state, embedded-artifact inventory, and optional bundle-manifest output.
+- Added text, JSON, and SARIF MCPB reports with startup metadata, member scan state, embedded-artifact inventory, and optional bundle manifest output.
 - Added composite Action inputs for scanning committed MCPB artifacts and emitting separate MCPB SARIF for GitHub code scanning.
 - Added `SG014` for MCPB startup and reference mismatches and `SG015` for embedded executables and retained nested archives requiring review.
 - Added `skillgate --version` for quick CLI identity checks.
-- Added `skillgate demo mcpb` for a packaged deterministic first-run MCPB demo with optional immediate scan output.
+- Added `skillgate demo mcpb` for a packaged deterministic first run MCPB demo with optional immediate scan output.
 - Added a deterministic MCPB demo source fixture and builder for public scan reports and release smoke tests.
 - Added `skillgate skills validate` for deterministic Agent Skills structure and metadata validation without code execution.
 - Added Agent Skills validation fixtures and documentation covering frontmatter, tool declarations, local references, and misplaced executables.
-- Added public scan report examples for a clean documentation skill, a remote-download review item, and a reviewable MCPB bundle.
+- Added public scan report examples for a clean documentation skill, a remote download review item, and a reviewable MCPB bundle.
 - Added a reusable, bounded ZIP inspection foundation with deterministic archive and member manifests for future MCPB pre-install scanning.
-- Added fail-closed protections for unsafe paths, duplicate normalized entries, path-type collisions, symlinks, special files, nested archives, unsupported compression, encryption, and resource-limit violations.
-- Added streaming archive and member hashing with automatic temporary-file cleanup and no execution of extracted content.
+- Added fail-closed protections for unsafe paths, duplicate normalized entries, path type collisions, symlinks, special files, nested archives, unsupported compression, encryption, and resource limit violations.
+- Added streaming archive and member hashing with automatic temporary file cleanup and no execution of extracted content.
 
 ### Changed
 
 - Bumped the Python and Node wrapper metadata to `0.1.2` for this release.
-- Expanded first-run README onboarding from one MCPB demo to paired Agent Skill
-  and MCPB demos, with explicit reviewer decision checkpoints.
+- Expanded first run README onboarding from one MCPB demo to paired Agent Skill and MCPB demos, with explicit reviewer decision checkpoints.
 - Simplified README onboarding around pre-install scans, pre-merge scans, and policy enforcement before advanced workflows.
 - Updated the release checklist with explicit PyPI, `pipx`, `uvx`, and yanking/rollback validation steps.
 - Reorganized the archive inspection foundation into focused internal modules without changing its safety behavior, stable errors, or manifest contract.
 
 ### Fixed
 
-- Kept intentional demo and test findings visible in local and pull-request
-  scans while making SARIF Code Scanning publication non-blocking for pull
-  request CI.
+- Kept intentional demo and test findings visible in local and pull request scans while making SARIF Code Scanning publication non blocking for pull request CI.
 
 ## 0.1.1 - Release consistency and review ergonomics
 
