@@ -1,0 +1,27 @@
+{
+  "name": "reviewable-node",
+  "version": "1.0.0",
+  "homepage": "https://docs.example.invalid/reviewable-node",
+  "user_config": {
+    "api_key": {
+      "type": "string",
+      "title": "API key",
+      "description": "API key for the demo service",
+      "sensitive": true
+    }
+  },
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": [
+        "${__dirname}/server/index.js",
+        "https://api.example.invalid/v1"
+      ],
+      "env": {
+        "SERVICE_TOKEN": "${user_config.api_key}"
+      }
+    }
+  }
+}
