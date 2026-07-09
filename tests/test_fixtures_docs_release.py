@@ -218,7 +218,10 @@ def test_release_metadata_and_roadmap_are_consistent() -> None:
     assert 'SKILLGATE_VERSION="v0.1.1"' in release_checklist
     assert "git tag -f v0 v0.1.1" in release_checklist
     assert "Do not publish the root npm package" in release_checklist
-    assert "Do not upload to PyPI for this GitHub-first release" in release_checklist
+    assert "PyPI publication is an\nexplicit maintainer step" in release_checklist
+    assert "pipx install --force openevalgate-skillgate" in release_checklist
+    assert "uvx openevalgate-skillgate scan" in release_checklist
+    assert "prefer yanking the affected file or version" in release_checklist
 
     unreleased, released = changelog.split("## 0.1.1", maxsplit=1)
 
@@ -287,7 +290,8 @@ def test_docs_are_main_branch_and_discovery_friendly() -> None:
     )
     dependabot = yaml.safe_load((ROOT / ".github" / "dependabot.yml").read_text())
     assert "branch=main" in readme
-    assert "## 30-Second Demo" in readme
+    assert "## Start With Three Workflows" in readme
+    assert "docs/public-scan-reports/README.md" in readme
     assert "docs/examples/github-action-minimal.md" in readme
     assert "refs/tags/v0" in readme
     assert 'SkillGate.git@v0"' in readme

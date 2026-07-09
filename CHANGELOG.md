@@ -7,12 +7,16 @@
 - Added `skillgate mcpb scan` for deterministic pre-install inspection of MCP bundles without executing server content.
 - Added text and JSON MCPB reports with startup metadata, member scan state, embedded-artifact inventory, and optional bundle-manifest output.
 - Added `SG014` for MCPB startup and reference mismatches and `SG015` for embedded executables and retained nested archives requiring review.
+- Added a deterministic MCPB demo source fixture and builder for public scan reports and release smoke tests.
+- Added public scan report examples for a clean documentation skill, a remote-download review item, and a reviewable MCPB bundle.
 - Added a reusable, bounded ZIP inspection foundation with deterministic archive and member manifests for future MCPB pre-install scanning.
 - Added fail-closed protections for unsafe paths, duplicate normalized entries, path-type collisions, symlinks, special files, nested archives, unsupported compression, encryption, and resource-limit violations.
 - Added streaming archive and member hashing with automatic temporary-file cleanup and no execution of extracted content.
 
 ### Changed
 
+- Simplified README onboarding around pre-install scans, pre-merge scans, and policy enforcement before advanced workflows.
+- Updated the release checklist with explicit PyPI, `pipx`, `uvx`, and yanking/rollback validation steps.
 - Reorganized the archive inspection foundation into focused internal modules without changing its safety behavior, stable errors, or manifest contract.
 
 ### Fixed

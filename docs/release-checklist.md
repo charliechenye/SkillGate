@@ -8,7 +8,8 @@ Use this checklist to publish and validate `v0.1.1`. Run commands from a clean
 Assistant can prepare files, run local checks, and build artifacts. Pushing tags,
 creating the GitHub Release, moving the stable `v0` tag, and validating GitHub
 Actions require your repository credentials and final maintainer approval.
-Uploading distributions to npm or PyPI is intentionally deferred.
+Uploading distributions to npm is intentionally deferred. PyPI publication is an
+explicit maintainer step for distribution-ready releases.
 
 ## 1. Preflight
 
@@ -62,6 +63,13 @@ their reduced examples and machine-readable attribution metadata.
 
 ## 4. Package Build Verification
 
+Install release build tools in the active environment if they are not already
+available:
+
+```powershell
+python -m pip install build twine
+```
+
 Remove old local build artifacts if needed, then build the source distribution
 and wheel:
 
@@ -78,7 +86,7 @@ Get-ChildItem dist
 
 The `twine check` command should report that every artifact passed.
 
-## 5. Optional Clean Install Smoke Test
+## 5. Clean Install Smoke Tests
 
 Create a disposable virtual environment and install the wheel:
 
@@ -87,9 +95,20 @@ python -m venv .venv-release
 .\.venv-release\Scripts\python -m pip install --upgrade pip
 .\.venv-release\Scripts\python -m pip install dist\openevalgate_skillgate-0.1.1-py3-none-any.whl
 .\.venv-release\Scripts\skillgate rules list
+.\.venv-release\Scripts\skillgate scan fixtures\benchmark\01-safe-documentation-skill
 ```
 
 Delete `.venv-release` after the smoke test if you do not want to keep it.
+
+Also verify the post-publication user paths from a clean shell after the package
+is published:
+
+```powershell
+pipx run openevalgate-skillgate rules list
+pipx install --force openevalgate-skillgate
+skillgate scan fixtures\benchmark\01-safe-documentation-skill
+uvx openevalgate-skillgate scan fixtures\benchmark\01-safe-documentation-skill
+```
 
 ## 6. Create The `v0.1.1` Tag
 
@@ -154,8 +173,8 @@ values for every platform asset.
 
 ## 9. Verify GitHub Install Paths
 
-Before moving `v0`, verify tagged installs through the paths customers are
-expected to use:
+Before moving `v0`, verify tagged GitHub installs through the paths customers
+may use when they require commit or tag pinning:
 
 ```powershell
 python -m pip install --force-reinstall "git+https://github.com/charliechenye/SkillGate.git@v0.1.1"
@@ -167,7 +186,36 @@ $env:SKILLGATE_VERSION="v0.1.1"; npx --yes github:charliechenye/SkillGate#v0.1.1
 GitHub installs require `git` on the customer machine. For teams that require
 immutable installs, replace `v0.1.1` with the full release commit SHA.
 
-## 10. Move And Verify Stable `v0`
+## 10. Publish To PyPI
+
+Use PyPI Trusted Publishing if it is configured for this repository. If Trusted
+Publishing is not configured, use a scoped upload token from a clean maintainer
+environment.
+
+Optional TestPyPI rehearsal:
+
+```powershell
+python -m twine upload --repository testpypi dist\*
+python -m pip install --index-url https://test.pypi.org/simple --extra-index-url https://pypi.org/simple openevalgate-skillgate
+skillgate rules list
+```
+
+For production PyPI:
+
+```powershell
+python -m twine upload dist\*
+python -m pip install --force-reinstall openevalgate-skillgate
+skillgate rules list
+pipx run openevalgate-skillgate scan fixtures\benchmark\01-safe-documentation-skill
+uvx openevalgate-skillgate scan fixtures\benchmark\01-safe-documentation-skill
+```
+
+If a bad distribution is published, prefer yanking the affected file or version
+on PyPI with a clear reason rather than deleting history. Then publish a fixed
+patch release and update GitHub release notes, README install guidance, and any
+public scan reports that mention the affected version.
+
+## 11. Move And Verify Stable `v0`
 
 After the `v0.1.1` release assets and install paths are validated, move the
 stable `v0` compatibility tag:
@@ -192,7 +240,7 @@ workflows using `charliechenye/SkillGate@v0`, including:
 - `summary-output`
 - `json-output`
 
-## 11. Deferred npm Publication
+## 12. Deferred npm Publication
 
 Do not publish the root npm package until the package name and distribution
 strategy are intentionally chosen. The root `package.json` is marked
@@ -217,30 +265,13 @@ npx skillgate scan .
 Only then update README and `docs/node-wrapper.md` to promote bare
 `npx skillgate scan .` as a supported install path.
 
-## 12. Deferred PyPI Publication
-
-Do not upload to PyPI for this GitHub-first release. When you decide to publish
-to PyPI later, choose between trusted publishing and credential-based upload,
-rebuild clean artifacts, validate them, and upload:
-
-```powershell
-python -m build
-python -m twine check dist\*
-python -m twine upload dist\*
-```
-
-If you use TestPyPI first, upload to TestPyPI, install from TestPyPI in a clean
-environment, and rebuild clean artifacts before the production PyPI upload. Once
-PyPI publication is complete, verify `python -m pip install
-openevalgate-skillgate` from a clean environment and update the README so that
-command is the first install path.
-
 ## 13. Post-Release Verification
 
 Also verify:
 
 - GitHub shows the `v0.1.1` release and the `v0` tag.
 - README Action examples use `charliechenye/SkillGate@v0`.
-- README install instructions lead with a GitHub-tag install.
+- README install instructions accurately distinguish the current GitHub-tag path
+  from the PyPI `pipx install openevalgate-skillgate` path after publication.
 - The social preview renders correctly on GitHub.
 - Repository description and topics match the README FAQ and discovery notes.
