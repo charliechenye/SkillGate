@@ -154,3 +154,61 @@ jobs:
             skillgate-summary.md
             skillgate-review.json
 ```
+
+## Repository Plus Committed MCPB Bundle
+
+Use this when a repository commits or builds an MCPB artifact that should be
+reviewed separately from the source tree. Upload the repository SARIF and MCPB
+SARIF as two files so GitHub code scanning can preserve the distinct run
+categories.
+
+```yaml
+name: SkillGate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  skillgate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - uses: charliechenye/SkillGate@v0
+        with:
+          path: .
+          sarif-output: skillgate.sarif
+          mcpb-path: dist/server.mcpb
+          mcpb-fail-on: high
+          mcpb-sarif-output: skillgate-mcpb.sarif
+          step-summary: "true"
+          summary-output: skillgate-summary.md
+          json-output: skillgate-review.json
+
+      - uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: skillgate.sarif
+
+      - uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: skillgate-mcpb.sarif
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: skillgate-review
+          path: |
+            skillgate-summary.md
+            skillgate-review.json
+```

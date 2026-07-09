@@ -238,6 +238,9 @@ def test_action_uses_action_path_and_explicit_policy_behavior() -> None:
     assert action["inputs"]["summary-output"]["default"] == ""
     assert action["inputs"]["json-output"]["default"] == ""
     assert action["inputs"]["step-summary"]["default"] == "false"
+    assert action["inputs"]["mcpb-path"]["default"] == ""
+    assert action["inputs"]["mcpb-fail-on"]["default"] == ""
+    assert action["inputs"]["mcpb-sarif-output"]["default"] == ""
     steps = {step["name"]: step for step in action["runs"]["steps"]}
     assert steps["Install SkillGate"]["run"] == 'python -m pip install "${{ github.action_path }}"'
     assert steps["Run SkillGate policy check"]["if"] == "${{ inputs.policy != '' }}"
@@ -264,6 +267,14 @@ def test_action_uses_action_path_and_explicit_policy_behavior() -> None:
     assert steps["Generate SARIF"]["if"] == (
         "${{ always() && inputs.sarif-output != '' && inputs.policy == '' }}"
     )
+    assert steps["Run SkillGate MCPB scan"]["if"] == "${{ inputs.mcpb-path != '' }}"
+    assert 'args=(mcpb scan "${{ inputs.mcpb-path }}")' in steps["Run SkillGate MCPB scan"]["run"]
+    assert "--fail-on" in steps["Run SkillGate MCPB scan"]["run"]
+    assert steps["Generate MCPB SARIF"]["if"] == (
+        "${{ always() && inputs.mcpb-path != '' && inputs.mcpb-sarif-output != '' }}"
+    )
+    assert "--format sarif" in steps["Generate MCPB SARIF"]["run"]
+    assert "${{ inputs.mcpb-sarif-output }}" in steps["Generate MCPB SARIF"]["run"]
     assert steps["Generate SkillGate review summary"]["if"] == (
         "${{ always() && (inputs.summary-output != '' || inputs.json-output != '' || "
         "inputs.step-summary == 'true') }}"
@@ -276,6 +287,10 @@ def test_action_uses_action_path_and_explicit_policy_behavior() -> None:
         "Generate policy-aware SARIF"
     )
     assert step_names.index("Generate SARIF") < step_names.index(
+        "Generate SkillGate review summary"
+    )
+    assert step_names.index("Run SkillGate MCPB scan") < step_names.index("Generate MCPB SARIF")
+    assert step_names.index("Generate MCPB SARIF") < step_names.index(
         "Generate SkillGate review summary"
     )
 
@@ -316,17 +331,19 @@ def test_docs_are_main_branch_and_discovery_friendly() -> None:
     assert "SkillGate generates SARIF" in action_examples
     assert "GitHub's upload action" in action_examples
     assert "uploads that SARIF file" in action_examples
-    assert action_examples.count("name: SkillGate") == 3
-    assert action_examples.count("security-events: write") == 3
-    assert action_examples.count("sarif-output: skillgate.sarif") == 3
-    assert action_examples.count('step-summary: "true"') == 3
-    assert action_examples.count("json-output: skillgate-review.json") == 3
-    assert action_examples.count("github/codeql-action/upload-sarif@v4") == 3
-    assert action_examples.count("actions/upload-artifact@v7") == 3
+    assert "mcpb-path: dist/server.mcpb" in action_examples
+    assert "mcpb-sarif-output: skillgate-mcpb.sarif" in action_examples
+    assert action_examples.count("name: SkillGate") == 4
+    assert action_examples.count("security-events: write") == 4
+    assert action_examples.count("sarif-output: skillgate.sarif") == 4
+    assert action_examples.count('step-summary: "true"') == 4
+    assert action_examples.count("json-output: skillgate-review.json") == 4
+    assert action_examples.count("github/codeql-action/upload-sarif@v4") == 5
+    assert action_examples.count("actions/upload-artifact@v7") == 4
     assert "actions/upload-artifact@v4" not in action_examples
     assert "actions/upload-artifact@v6" not in action_examples
     assert "actions/download-artifact@v4" not in action_examples
-    assert action_examples.count("if: always()") == 6
+    assert action_examples.count("if: always()") == 9
     assert 'fail-on-drift: "true"' in action_examples
     assert workflow["jobs"]["skillgate"]["env"]["FORCE_JAVASCRIPT_ACTIONS_TO_NODE24"] is True
     assert "actions/upload-artifact@v7" in workflow_text

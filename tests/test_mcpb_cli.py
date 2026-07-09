@@ -109,6 +109,46 @@ def test_text_and_json_scan(tmp_path: Path) -> None:
     assert str(path) not in json_result.output
 
 
+def test_sarif_scan_uses_mcp_bundle_category(tmp_path: Path) -> None:
+    path = bundle(tmp_path / "safe.mcpb")
+    result = runner.invoke(app, ["mcpb", "scan", str(path), "--format", "sarif"])
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert data["version"] == "2.1.0"
+    assert data["runs"][0]["automationDetails"]["id"] == "skillgate/mcp-bundle"
+    assert data["runs"][0]["results"] == []
+    assert str(path) not in result.output
+
+
+def test_sarif_scan_includes_mcpb_rule_metadata_and_fail_on(tmp_path: Path) -> None:
+    data = manifest(
+        server={
+            "type": "node",
+            "entry_point": "server/missing.js",
+            "mcp_config": {"command": "node", "args": ["${__dirname}/server/missing.js"]},
+        }
+    )
+    path = build_mcpb(
+        tmp_path / "review.mcpb",
+        [
+            ("manifest.json", json.dumps(data, sort_keys=True).encode()),
+            ("deps/pkg.whl", b"PK\x03\x04nested"),
+        ],
+    )
+    result = runner.invoke(
+        app,
+        ["mcpb", "scan", str(path), "--format", "sarif", "--fail-on", "high"],
+    )
+    assert result.exit_code == 1
+    sarif = json.loads(result.output)
+    rules = {rule["id"]: rule for rule in sarif["runs"][0]["tool"]["driver"]["rules"]}
+    assert {"SG014", "SG015"} <= set(rules)
+    assert "capability:mcpb_startup" in rules["SG014"]["properties"]["tags"]
+    assert "capability:mcpb_embedded_artifact" in rules["SG015"]["properties"]["tags"]
+    result_ids = {item["ruleId"] for item in sarif["runs"][0]["results"]}
+    assert {"SG014", "SG015"} <= result_ids
+
+
 def test_fail_on_writes_manifest_output_on_exit_1(tmp_path: Path) -> None:
     data = manifest(
         server={
@@ -175,7 +215,7 @@ def test_conflicting_output_paths_fail_before_scanning(tmp_path: Path) -> None:
 
 def test_invalid_format_and_missing_path_are_typer_errors(tmp_path: Path) -> None:
     path = bundle(tmp_path / "safe.mcpb")
-    result = runner.invoke(app, ["mcpb", "scan", str(path), "--format", "sarif"])
+    result = runner.invoke(app, ["mcpb", "scan", str(path), "--format", "xml"])
     assert result.exit_code == 2
     missing = runner.invoke(app, ["mcpb", "scan"])
     assert missing.exit_code == 2

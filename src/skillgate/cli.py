@@ -203,7 +203,7 @@ def mcpb_scan(
     ] = None,
 ) -> None:
     """Inspect an MCP bundle before installing or executing its server."""
-    output_format = validate_format(output_format, {"text", "json"})
+    output_format = validate_format(output_format, {"text", "json", "sarif"})
     fail_on = validate_fail_on(fail_on)
     if output and manifest_output and output.resolve() == manifest_output.resolve():
         data = {
@@ -235,7 +235,12 @@ def mcpb_scan(
     if manifest_output:
         write_or_print(mcpb_manifest_json(result), manifest_output, console)
     failed = scan_failed(result.scan_report, fail_on)
-    content = mcpb_scan_json(result) if output_format == "json" else mcpb_scan_text(result)
+    if output_format == "json":
+        content = mcpb_scan_json(result)
+    elif output_format == "sarif":
+        content = render_scan(result.scan_report, output_format, sarif_category="mcp_bundle")
+    else:
+        content = mcpb_scan_text(result)
     if failed and output_format == "text":
         content = append_scan_failure_text(content, fail_on or "")
     write_or_print(content, output, console)

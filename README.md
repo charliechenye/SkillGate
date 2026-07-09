@@ -251,13 +251,14 @@ Use `mcpb scan` to inspect a local MCP bundle before installing or executing its
 ```bash
 skillgate mcpb scan bundle.mcpb
 skillgate mcpb scan bundle.mcpb --format json
+skillgate mcpb scan bundle.mcpb --format sarif --output skillgate-mcpb.sarif
 skillgate mcpb scan bundle.mcpb --fail-on high
 skillgate mcpb scan bundle.mcpb --manifest-output bundle-manifest.json
 ```
 
-SkillGate does not execute bundle content, start MCP servers, install packages, or resolve dependencies. It safely inspects the ZIP-based bundle, parses the root `manifest.json` narrowly for startup-relevant fields, inventories members, selects first-party source for the existing rule engine, and reports deterministic text or JSON output.
+SkillGate does not execute bundle content, start MCP servers, install packages, or resolve dependencies. It safely inspects the ZIP-based bundle, parses the root `manifest.json` narrowly for startup-relevant fields, inventories members, selects first-party source for the existing rule engine, and reports deterministic text, JSON, or SARIF output.
 
-Nested archives are retained and inventoried but are not recursively inspected. Embedded executables and shared libraries are identified for review; SkillGate does not declare them malicious. Manifest interpretation is intentionally narrow rather than complete MCPB schema validation. MCPB SARIF and policy support are deferred until the text and JSON contracts stabilize.
+Nested archives are retained and inventoried but are not recursively inspected. Embedded executables and shared libraries are identified for review; SkillGate does not declare them malicious. Manifest interpretation is intentionally narrow rather than complete MCPB schema validation. MCPB policy support is deferred until bundle-specific enforcement needs are clearer.
 
 See [MCPB pre-install scanning](docs/mcpb-preinstall-scan.md) for the threat model, output fields, exit codes, limits, and examples.
 
@@ -317,10 +318,11 @@ Any scan that supports SARIF can be uploaded to GitHub code scanning:
 skillgate scan . --format sarif --output skillgate.sarif
 skillgate check . --policy skillgate.yaml --format sarif --output skillgate.sarif --dry-run
 skillgate github scan https://github.com/OWNER/REPO --format sarif --output skillgate.sarif
+skillgate mcpb scan bundle.mcpb --format sarif --output skillgate-mcpb.sarif
 skillgate mcp registry compare . --server io.example.server --format sarif --output registry-drift.sarif
 ```
 
-Plain `scan` SARIF reports static findings. Policy-aware `check` SARIF includes policy waiver and suppression metadata while `--dry-run` keeps SARIF generation from becoming a second blocking step. SARIF output includes deterministic alert fingerprints, stable run categories, capability tags, severity tags, and capability taxa. Local scans use `skillgate/local-repository`, remote GitHub scans use `skillgate/remote-github`, and MCP registry comparisons use `skillgate/mcp-registry-compare`.
+Plain `scan` SARIF reports static findings. Policy-aware `check` SARIF includes policy waiver and suppression metadata while `--dry-run` keeps SARIF generation from becoming a second blocking step. SARIF output includes deterministic alert fingerprints, stable run categories, capability tags, severity tags, and capability taxa. Local scans use `skillgate/local-repository`, remote GitHub scans use `skillgate/remote-github`, MCPB scans use `skillgate/mcp-bundle`, and MCP registry comparisons use `skillgate/mcp-registry-compare`.
 
 The repository includes `.github/workflows/skillgate.yml` as a complete example workflow and a composite action for CI adoption:
 
