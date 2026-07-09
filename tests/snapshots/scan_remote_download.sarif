@@ -211,6 +211,20 @@
               }
             },
             {
+              "id": "mcpb_embedded_artifact",
+              "name": "mcpb_embedded_artifact",
+              "shortDescription": {
+                "text": "SkillGate capability: mcpb_embedded_artifact"
+              }
+            },
+            {
+              "id": "mcpb_startup",
+              "name": "mcpb_startup",
+              "shortDescription": {
+                "text": "SkillGate capability: mcpb_startup"
+              }
+            },
+            {
               "id": "network_egress",
               "name": "network_egress",
               "shortDescription": {
@@ -262,7 +276,7 @@
           "rules": [
             {
               "fullDescription": {
-                "text": "The file appears to invoke shell execution."
+                "text": "Detects shell commands and process execution APIs in agent files."
               },
               "id": "SG001",
               "name": "SG001",
@@ -279,7 +293,7 @@
             },
             {
               "fullDescription": {
-                "text": "The file contains a destructive command pattern."
+                "text": "Detects command patterns that may delete data or destroy local state."
               },
               "id": "SG002",
               "name": "SG002",
@@ -296,7 +310,7 @@
             },
             {
               "fullDescription": {
-                "text": "The file appears to access a network resource."
+                "text": "Detects common network access patterns and extracts hosts when possible."
               },
               "id": "SG003",
               "name": "SG003",
@@ -313,7 +327,7 @@
             },
             {
               "fullDescription": {
-                "text": "Remote content is executed."
+                "text": "Detects downloaded remote content that is immediately executed."
               },
               "id": "SG004",
               "name": "SG004",
@@ -330,7 +344,7 @@
             },
             {
               "fullDescription": {
-                "text": "A likely secret is referenced."
+                "text": "Detects references to likely secret environment variables and paths."
               },
               "id": "SG005",
               "name": "SG005",
@@ -347,7 +361,7 @@
             },
             {
               "fullDescription": {
-                "text": "The file may write to the filesystem."
+                "text": "Detects likely filesystem writes in scripts and instructions."
               },
               "id": "SG006",
               "name": "SG006",
@@ -364,7 +378,7 @@
             },
             {
               "fullDescription": {
-                "text": "Instruction-conflict language is present."
+                "text": "Detects narrow prompt override, concealment, or approval-bypass language."
               },
               "id": "SG007",
               "name": "SG007",
@@ -376,12 +390,12 @@
                 ]
               },
               "shortDescription": {
-                "text": "Prompt override language detected"
+                "text": "Prompt override or instruction-conflict language detected"
               }
             },
             {
               "fullDescription": {
-                "text": "Hidden or encoded content is present."
+                "text": "Detects hidden Unicode controls, long Base64-like blobs, and obvious encoding."
               },
               "id": "SG008",
               "name": "SG008",
@@ -398,7 +412,7 @@
             },
             {
               "fullDescription": {
-                "text": "An MCP server configuration is present."
+                "text": "Parses MCP server command, arguments, environment names, and endpoints."
               },
               "id": "SG009",
               "name": "SG009",
@@ -415,7 +429,7 @@
             },
             {
               "fullDescription": {
-                "text": "Declared MCP tool metadata is risky."
+                "text": "Detects declared MCP tool metadata with hidden instructions, suspicious names, or high-risk input schema fields."
               },
               "id": "SG011",
               "name": "SG011",
@@ -432,7 +446,7 @@
             },
             {
               "fullDescription": {
-                "text": "Declared MCP transport metadata is risky."
+                "text": "Detects known dangerous MCP transport shapes such as stdio package transports, shell wrappers, localhost bridges, unauthenticated remotes, and secret headers."
               },
               "id": "SG012",
               "name": "SG012",
@@ -449,7 +463,7 @@
             },
             {
               "fullDescription": {
-                "text": "Local MCP registry metadata drifted."
+                "text": "Detects differences between local MCP metadata and remote registry metadata."
               },
               "id": "SG013",
               "name": "SG013",
@@ -462,6 +476,40 @@
               },
               "shortDescription": {
                 "text": "MCP registry metadata drift detected"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "Detects missing or conflicting MCPB startup files, local references, manifest versions, and server declarations."
+              },
+              "id": "SG014",
+              "name": "SG014",
+              "properties": {
+                "tags": [
+                  "skillgate",
+                  "capability:mcpb_startup",
+                  "severity:high"
+                ]
+              },
+              "shortDescription": {
+                "text": "MCPB startup or bundle reference mismatch"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "Detects bundled executable artifacts and retained nested archives that SkillGate does not execute or recursively inspect."
+              },
+              "id": "SG015",
+              "name": "SG015",
+              "properties": {
+                "tags": [
+                  "skillgate",
+                  "capability:mcpb_embedded_artifact",
+                  "severity:high"
+                ]
+              },
+              "shortDescription": {
+                "text": "MCPB embedded executable or nested archive requires review"
               }
             }
           ],

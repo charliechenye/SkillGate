@@ -5,7 +5,8 @@
 ### Added
 
 - Added `skillgate mcpb scan` for deterministic pre-install inspection of MCP bundles without executing server content.
-- Added text and JSON MCPB reports with startup metadata, member scan state, embedded-artifact inventory, and optional bundle-manifest output.
+- Added text, JSON, and SARIF MCPB reports with startup metadata, member scan state, embedded-artifact inventory, and optional bundle-manifest output.
+- Added composite Action inputs for scanning committed MCPB artifacts and emitting separate MCPB SARIF for GitHub code scanning.
 - Added `SG014` for MCPB startup and reference mismatches and `SG015` for embedded executables and retained nested archives requiring review.
 - Added `skillgate --version` for quick CLI identity checks.
 - Added `skillgate demo mcpb` for a packaged deterministic first-run MCPB demo with optional immediate scan output.

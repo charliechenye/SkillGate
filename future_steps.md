@@ -28,6 +28,7 @@ The shipped baseline includes:
 - baseline creation and capability-drift detection;
 - provenance verification for policy and baseline files;
 - SARIF output and GitHub code-scanning integration;
+- MCPB SARIF output and composite Action support for scanning committed MCPB artifacts;
 - reviewer-friendly Markdown and JSON summaries;
 - GitHub Step Summary support;
 - structured MCP registry drift output;
@@ -206,9 +207,6 @@ Only begin this batch after the MCPB text and JSON output contracts have been ex
 
 Potential additions:
 
-- SARIF output;
-- `skillgate/mcp-bundle` SARIF run category;
-- GitHub Action support for scanning committed MCPB artifacts;
 - policy controls for bundle-specific findings;
 - richer package metadata interpretation;
 - declared file inventory comparisons;
