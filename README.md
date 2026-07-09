@@ -74,6 +74,7 @@ For concrete examples of how to interpret output, see the
 | Use case | Start here | What you get |
 | --- | --- | --- |
 | Scan a local skill or agent repo | [`skillgate scan .`](#1-scan-a-local-repository) | Nonblocking findings and capability inventory |
+| Validate an Agent Skill before publishing | [`skillgate skills validate PATH`](#1a-validate-an-agent-skill) | Deterministic structure and metadata checks |
 | Check a public GitHub skill repo before installing | [`skillgate github scan URL`](#2-scan-a-github-repository-before-installing) | Sparse remote scan with immutable ref manifest |
 | Block unapproved behavior in CI | [`skillgate check . --policy skillgate.yaml`](#3-enforce-policy-in-ci) | Policy violations, explanations, approvals, waivers |
 | Detect capability drift after review | [`skillgate baseline create`](#4-track-approved-baselines-and-drift) | Stable lockfile and `SG010` drift findings |
@@ -173,6 +174,24 @@ skillgate rules list
 skillgate explain SG004
 ```
 
+## 1A. Validate An Agent Skill
+
+Use `skills validate` to check a skill before publishing or installing it. The
+validator reads only the skill file and local files; it never executes scripts,
+installs packages, calls a network, or uses an LLM:
+
+```bash
+skillgate skills validate path/to/my-skill
+skillgate skills validate path/to/my-skill/SKILL.md --format json
+skillgate skills validate skills/ --fail-on medium
+```
+
+It checks frontmatter, slug-style names, directory/name consistency, recommended
+metadata, declared tool breadth, local references, and executable files outside
+`scripts/`. Findings are advisory unless `--fail-on` is supplied. See the
+[Agent Skills validation guide](docs/skills-validation.md) for examples and
+limitations.
+
 ## 2. Scan A GitHub Repository Before Installing
 
 Use `github scan` before copying or installing public skills or agent tooling:
@@ -217,6 +236,7 @@ Docs and schema:
 - [Policy schema reference](docs/policy-schema.md)
 - [Machine-readable JSON Schema](schemas/skillgate-policy.schema.json)
 - [Schema-aware editor setup](docs/editor-setup.md)
+- [Agent Skills validation](docs/skills-validation.md)
 - [Example policy](skillgate.example.yaml)
 
 ## 4. Track Approved Baselines And Drift
@@ -379,6 +399,12 @@ To scan installed Codex skills from a source checkout without installing SkillGa
 ```bash
 python samples/scan_installed_skills.py
 python samples/scan_installed_skills.py --root ~/.codex/skills --fail-on high
+```
+
+For structural validation of a single installed skill, use:
+
+```bash
+skillgate skills validate ~/.codex/skills/my-skill
 ```
 
 ## What SkillGate Does Not Do
