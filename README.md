@@ -17,6 +17,28 @@ SkillGate is a local-first static trust gate for AI-agent skills, instruction fi
 
 SkillGate does not execute repository code, start MCP servers, call LLMs, or install remote packages. It scans files, reports capabilities and findings, and lets teams block unapproved behavior with policy-as-code.
 
+## Try The Local Demo
+
+After installation, build and scan a deterministic MCPB demo without downloading
+or running any third-party code:
+
+```bash
+skillgate demo mcpb --output test-outputs/reviewable-node.mcpb --scan
+```
+
+The demo prints the bundle hash, detects the startup entry point, and reports
+the endpoint and secret references a reviewer should inspect:
+
+```text
+Built deterministic demo MCPB: test-outputs/reviewable-node.mcpb
+SHA-256: 6948b641f88671717de7142ce075f21f9710621392b115a311eee05831fe5a1c
+
+SkillGate MCPB scan completed
+Entry point: server/index.js
+Endpoint: https://api.example.invalid/v1
+Secret reference: SERVICE_TOKEN
+```
+
 ## Start With Three Workflows
 
 Before installing a public skill, MCP server, or MCP bundle:
@@ -66,6 +88,7 @@ Install the latest compatible GitHub release tag today:
 
 ```bash
 python -m pip install "git+https://github.com/charliechenye/SkillGate.git@v0"
+skillgate --version
 skillgate --help
 ```
 
@@ -123,6 +146,7 @@ For contributor or source-checkout development:
 
 ```bash
 python -m pip install -e .
+skillgate --version
 skillgate --help
 ```
 

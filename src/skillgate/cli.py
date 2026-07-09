@@ -6,8 +6,10 @@ from typing import Annotated
 import typer
 from rich.console import Console
 
+from skillgate import __version__
 from skillgate.archive import ArchiveError
 from skillgate.baseline import create_baseline, diff_against_baseline, load_baseline, save_baseline
+from skillgate.demo import DEMO_MCPB_SHA256, build_demo_mcpb
 from skillgate.fixtures import (
     FixtureSummaryError,
     fixture_summary_payload,
@@ -50,8 +52,13 @@ from skillgate.rule_docs import RULE_DOCS, get_rule_doc, rule_doc_to_data, rule_
 from skillgate.scan import filter_report_by_severity, scan_repository
 from skillgate.sources import RemoteScanLimits, SourceError, fetch_github_sparse
 
-app = typer.Typer(help="Trust checks for AI-agent skills and MCP configurations.")
+app = typer.Typer(
+    help="Trust checks for AI-agent skills and MCP configurations.",
+    invoke_without_command=True,
+    no_args_is_help=True,
+)
 baseline_app = typer.Typer(help="Create and manage approved SkillGate baselines.")
+demo_app = typer.Typer(help="Build local deterministic SkillGate demos.")
 fixtures_app = typer.Typer(help="Inspect benchmark fixture expectations.")
 github_app = typer.Typer(help="Scan remote GitHub repositories before installing skills.")
 policy_app = typer.Typer(help="Inspect SkillGate policy helpers.")
@@ -62,6 +69,7 @@ mcp_app = typer.Typer(help="Inspect MCP metadata without installing servers.")
 mcpb_app = typer.Typer(help="Inspect MCP bundles before installing or executing their servers.")
 mcp_registry_app = typer.Typer(help="Scan and compare MCP registry metadata.")
 app.add_typer(baseline_app, name="baseline")
+app.add_typer(demo_app, name="demo")
 app.add_typer(fixtures_app, name="fixtures")
 app.add_typer(github_app, name="github")
 app.add_typer(mcp_app, name="mcp")
@@ -72,6 +80,23 @@ app.add_typer(review_app, name="review")
 app.add_typer(rules_app, name="rules")
 mcp_app.add_typer(mcp_registry_app, name="registry")
 console = Console()
+
+
+@app.callback()
+def main(
+    version: Annotated[
+        bool,
+        typer.Option(
+            "--version",
+            help="Show the SkillGate version and exit.",
+            is_eager=True,
+        ),
+    ] = False,
+) -> None:
+    """Trust checks for AI-agent skills and MCP configurations."""
+    if version:
+        console.file.write(f"SkillGate {__version__}\n")
+        raise typer.Exit()
 
 
 def validate_format(value: str, allowed: set[str]) -> str:
@@ -122,6 +147,40 @@ def render_scan_command_output(
     if failed and output_format == "text":
         content = append_scan_failure_text(content, fail_on or "")
     return content, failed
+
+
+@demo_app.command("mcpb")
+def demo_mcpb(
+    output: Annotated[
+        Path,
+        typer.Option("--output", "-o", help="Write the deterministic demo MCPB bundle."),
+    ] = Path("skillgate-demo.mcpb"),
+    scan: Annotated[
+        bool,
+        typer.Option("--scan", help="Scan the demo bundle immediately after building it."),
+    ] = False,
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="Overwrite the output file if it already exists."),
+    ] = False,
+) -> None:
+    """Build the deterministic reviewable MCPB demo bundle."""
+    if output.exists() and not force:
+        console.file.write(f"Error: output file already exists: {output}\n")
+        raise typer.Exit(2)
+
+    digest = build_demo_mcpb(output)
+    console.file.write(f"Built deterministic demo MCPB: {output}\n")
+    console.file.write(f"SHA-256: {digest}\n")
+    if digest != DEMO_MCPB_SHA256:
+        console.file.write("Error: demo MCPB hash did not match the expected value\n")
+        raise typer.Exit(2)
+    if scan:
+        result = scan_mcpb(output)
+        console.file.write("\n")
+        console.file.write(mcpb_scan_text(result))
+    else:
+        console.file.write(f"Next: skillgate mcpb scan {output}\n")
 
 
 @mcpb_app.command("scan")

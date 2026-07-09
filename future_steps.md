@@ -35,7 +35,8 @@ The shipped baseline includes:
 - a GitHub-first Node wrapper backed by checksummed release binaries;
 - bounded release-manifest and binary downloads;
 - a reusable, fail-closed ZIP archive inspection foundation organized into focused internal modules;
-- the MCPB pre-install scan MVP with text and JSON output, manifest output, retained nested-archive inventory, embedded-artifact review findings, and no bundle execution.
+- the MCPB pre-install scan MVP with text and JSON output, manifest output, retained nested-archive inventory, embedded-artifact review findings, and no bundle execution;
+- a packaged `skillgate demo mcpb` first-run demo that builds a deterministic synthetic bundle and can scan it immediately.
 
 These capabilities are release history, not future work. Keep detailed records in `CHANGELOG.md`.
 

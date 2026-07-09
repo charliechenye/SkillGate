@@ -9,16 +9,18 @@ skillgate mcpb scan bundle.mcpb --fail-on high
 skillgate mcpb scan bundle.mcpb --manifest-output bundle-manifest.json
 ```
 
-For a deterministic demo from a source checkout:
+For a deterministic demo from any SkillGate install:
 
 ```bash
-python tools/build_demo_mcpb.py --output test-outputs/reviewable-node.mcpb
-skillgate mcpb scan test-outputs/reviewable-node.mcpb
+skillgate demo mcpb --output test-outputs/reviewable-node.mcpb --scan
 ```
 
-The demo source lives in `fixtures/mcpb-demo/reviewable-node`. It intentionally
+The demo source is packaged with SkillGate and mirrored in
+`fixtures/mcpb-demo/reviewable-node` for source-checkout tests. It intentionally
 declares a runtime endpoint and secret-like configuration reference so reviewers
 can see a useful pre-install result without using a real third-party bundle.
+The generated archive SHA-256 is
+`6948b641f88671717de7142ce075f21f9710621392b115a311eee05831fe5a1c`.
 
 ## Threat Model
 

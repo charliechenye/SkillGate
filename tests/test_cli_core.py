@@ -4,9 +4,16 @@ import json
 
 from conftest import FIXTURES, ROOT, clean_test_dir, runner
 
+from skillgate import __version__
 from skillgate.cli import app
 from skillgate.sarif import FINGERPRINT_KEY
 from skillgate.scan import scan_repository
+
+
+def test_cli_version() -> None:
+    result = runner.invoke(app, ["--version"])
+    assert result.exit_code == 0
+    assert result.output == f"SkillGate {__version__}\n"
 
 
 def test_cli_scan_exit_code_and_output() -> None:

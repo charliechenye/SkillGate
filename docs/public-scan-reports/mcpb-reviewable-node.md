@@ -2,7 +2,8 @@
 
 ## Source
 
-- Input source: `fixtures/mcpb-demo/reviewable-node`
+- Input source: packaged `skillgate demo mcpb` source, mirrored at
+  `fixtures/mcpb-demo/reviewable-node`
 - Built artifact: `test-outputs/reviewable-node.mcpb`
 - Archive SHA-256: `6948b641f88671717de7142ce075f21f9710621392b115a311eee05831fe5a1c`
 - Scanner version: `0.1.1`
@@ -10,8 +11,20 @@
 ## Commands
 
 ```bash
-python tools/build_demo_mcpb.py --output test-outputs/reviewable-node.mcpb
+skillgate demo mcpb --output test-outputs/reviewable-node.mcpb --scan
 skillgate mcpb scan test-outputs/reviewable-node.mcpb --format json
+```
+
+## Demo Transcript
+
+```text
+Built deterministic demo MCPB: test-outputs/reviewable-node.mcpb
+SHA-256: 6948b641f88671717de7142ce075f21f9710621392b115a311eee05831fe5a1c
+
+SkillGate MCPB scan completed
+Entry point: server/index.js
+Endpoint: https://api.example.invalid/v1
+Secret reference: SERVICE_TOKEN
 ```
 
 ## Capability Inventory

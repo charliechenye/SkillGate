@@ -73,6 +73,14 @@ Security = "https://github.com/charliechenye/SkillGate/security"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+skillgate = [
+  "demo_assets/mcpb-reviewable-node/README.md",
+  "demo_assets/mcpb-reviewable-node/manifest.json",
+  "demo_assets/mcpb-reviewable-node/package.json",
+  "demo_assets/mcpb-reviewable-node/server/index.js",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
