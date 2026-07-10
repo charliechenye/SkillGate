@@ -1,0 +1,39 @@
+# SkillGate Pre-install Review
+
+- Source: `<local>/05-remote-download-execute`
+- Kind: `local`
+- Decision: **review_required**
+- Tool version: `0.1.2`
+
+## Capability Inventory
+| Capability | Resource | Trust boundary | Source |
+| --- | --- | --- | --- |
+| network_egress | example.com | remote_endpoints | scripts/install.sh:2 |
+| remote_download_execution | example.com | local_execution | scripts/install.sh:2 |
+| shell_execution | <unknown> | local_execution | scripts/install.sh:1 |
+| shell_execution | <unknown> | local_execution | scripts/install.sh:2 |
+
+## Findings By Severity
+| Severity | Rule | Title | Source |
+| --- | --- | --- | --- |
+| high | SG001 | Shell execution detected | scripts/install.sh:2 |
+| high | SG004 | Remote download followed by execution | scripts/install.sh:2 |
+| medium | SG001 | Shell execution detected | scripts/install.sh:1 |
+| medium | SG003 | Network egress detected | scripts/install.sh:2 |
+
+## Agent Skills Validation
+Validated: **False**
+
+None.
+
+## Reviewer Next Actions
+- Review each high or critical finding before installation.
+- Confirm that endpoints, secret references, and startup behavior are expected.
+- Use `skillgate check` or `skillgate diff` when this review becomes an enforcement decision.
+
+## Limitations
+- This is deterministic static analysis, not a malware verdict or runtime proof.
+- SkillGate does not execute code, install packages, start servers, or invoke an agent.
+- Findings identify review signals; they do not establish maintainer intent or exploitability.
+
+No code was executed by the packet renderer.
