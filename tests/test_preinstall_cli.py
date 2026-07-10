@@ -63,3 +63,13 @@ def test_preinstall_invalid_source_exits_two() -> None:
     result = runner.invoke(app, ["review", "preinstall", "missing-source"])
     assert result.exit_code == 2
     assert "source does not exist" in result.output
+
+
+def test_preinstall_accepts_a_non_skill_local_file(tmp_path) -> None:
+    source = tmp_path / "instructions.md"
+    source.write_text("Review this text without executing it.\n", encoding="utf-8")
+    result = runner.invoke(app, ["review", "preinstall", str(source), "--format", "json"])
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["source"]["kind"] == "local"
+    assert payload["skills"]["validated"] is False

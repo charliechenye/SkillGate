@@ -8,5 +8,5 @@ allowed-tools: []
 
 # Safe greeting
 
-Return a short, friendly greeting when the user asks for one. Do not access the
-network, read or write files, invoke commands, or request secrets.
+Return a short, friendly greeting when the user asks for one. Use no external
+capabilities or tools.

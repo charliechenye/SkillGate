@@ -13,7 +13,7 @@ behavior.
 The copyable [pre-install starter repository](../../examples/preinstall-starter/)
 contains this review-only workflow with Markdown, JSON, and SARIF artifacts.
 On protected branches and manual runs, GitHub's upload action publishes the
-SARIF artifact to Code Scanning.
+SARIF artifact to Code Scanning and uploads that SARIF file for durable review.
 
 ## Nonblocking Scan With SARIF
 

@@ -67,7 +67,7 @@ from skillgate.reporting import (
 )
 from skillgate.review import render_review_markdown, review_summary_payload
 from skillgate.rule_docs import RULE_DOCS, get_rule_doc, rule_doc_to_data, rule_docs_to_data
-from skillgate.scan import filter_report_by_severity, scan_repository
+from skillgate.scan import filter_report_by_severity, scan_paths, scan_repository
 from skillgate.skills import (
     SkillsValidationError,
     discover_skill_files,
@@ -192,6 +192,8 @@ def render_scan_command_output(
 
 def _preinstall_skills(path: Path) -> dict[str, object] | None:
     try:
+        if path.is_file() and path.name != "SKILL.md":
+            return None
         if not discover_skill_files(path):
             return None
         return validate_skills(path)
@@ -285,7 +287,9 @@ def review_preinstall(
                     result.scan_report,
                 )
             else:
-                scan_report = scan_repository(path)
+                scan_report = (
+                    scan_paths(path.parent, [path]) if path.is_file() else scan_repository(path)
+                )
                 packet = build_preinstall_packet(
                     {
                         "kind": "local",
