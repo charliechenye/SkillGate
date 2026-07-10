@@ -24,17 +24,20 @@ skillgate review preinstall skills/safe-greeting \
 The review is advisory by default. Add `--fail-on high` when a local check should
 return a failing status for high or critical review signals.
 
-## GitHub Actions
+This local command is the default starter path. It writes only to the terminal
+or the local `--json-output` path; it does not contact GitHub or upload reports.
 
-The workflow in `.github/workflows/skillgate-review.yml` keeps Markdown, JSON,
-and SARIF review files as pull-request artifacts. It does not upload pull-request
-SARIF to Code Scanning, so intentional fixture or demo findings remain visible
-without becoming a blocking Code Scanning status. Pushes to `main` and manual
-runs publish SARIF to Code Scanning.
+## Optional GitHub Actions integration
+
+The workflow in `.github/workflows/skillgate-review.yml` is optional and is not
+used by the local commands above. Enable it only if you want GitHub-hosted CI.
+When enabled, it keeps Markdown, JSON, and SARIF review files as pull-request
+artifacts. It does not upload pull-request SARIF to Code Scanning. Pushes to
+`main` and manual runs publish SARIF to GitHub Code Scanning.
 
 When the repository has reviewed behavior to enforce, add a `policy` or
 `baseline` to the Action and use `fail-on-drift: "true"` as documented in the
 [Action examples](../../docs/examples/github-action-minimal.md).
 
-SkillGate does not execute the Skill, install packages, start servers, or call an
-agent during this review.
+The local review does not contact GitHub. SkillGate does not execute the Skill,
+install packages, start servers, or call an agent during this review.

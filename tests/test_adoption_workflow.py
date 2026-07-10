@@ -106,3 +106,14 @@ def test_benchmark_report_and_workflow_keep_pr_sarif_nonblocking() -> None:
     assert artifact["if"] == "always()"
     assert "skillgate.sarif" in artifact["with"]["path"]
     assert publish["if"] == "github.event_name != 'pull_request' && always()"
+
+
+def test_docs_make_external_paths_explicit() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    starter = (STARTER / "README.md").read_text(encoding="utf-8")
+    assert "The default path is local and upload-free" in readme
+    assert "Nothing in a local SkillGate invocation uploads findings automatically." in readme
+    assert "Connections are explicit opt-ins" in readme
+    assert "This local command is the default starter path." in starter
+    assert "workflow in `.github/workflows/skillgate-review.yml` is optional" in starter
+    assert "local commands above." in starter

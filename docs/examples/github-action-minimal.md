@@ -15,6 +15,10 @@ contains this review-only workflow with Markdown, JSON, and SARIF artifacts.
 On protected branches and manual runs, GitHub's upload action publishes the
 SARIF artifact to Code Scanning and uploads that SARIF file for durable review.
 
+These Action examples are optional GitHub integrations. They do not change the
+local-only behavior of SkillGate commands, which write reports locally and do
+not upload findings.
+
 ## Nonblocking Scan With SARIF
 
 Use this as the lightest adoption path. Without `policy`, the Action runs a

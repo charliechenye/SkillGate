@@ -75,8 +75,26 @@ skillgate check . --policy skillgate.yaml
 ```
 
 That is the primary workflow. Baselines, provenance, inventory reports, registry
-comparison, SARIF upload, and advanced GitHub Action settings are available
-after the first useful scan.
+comparison, optional SARIF export, and optional GitHub Action settings are
+available after the first useful scan.
+
+## Connection Boundaries
+
+The default path is local and upload-free:
+
+- `scan`, `skills validate`, `review preinstall` with a local path, and `mcpb
+  scan` read local files and write results to the terminal or local output files.
+- These local paths do not call GitHub, upload reports, install packages, start
+  servers, or execute scanned content.
+
+Connections are explicit opt-ins:
+
+- `github scan` and `review preinstall` with a GitHub URL make bounded requests
+  to GitHub to fetch the requested source for static review.
+- GitHub Actions, SARIF uploads, Actions artifacts, and Code Scanning are
+  optional integrations used only when a repository owner enables a workflow.
+
+Nothing in a local SkillGate invocation uploads findings automatically.
 
 For a copyable first repository, use the
 [pre-install starter](examples/preinstall-starter/README.md) and its
@@ -100,7 +118,7 @@ For a guided walkthrough with a deterministic local input, see the
 | Inspect an MCP bundle before installing | [`skillgate mcpb scan bundle.mcpb`](#5-scan-an-mcp-bundle-before-installing) | Static startup, file, endpoint, secret-reference, binary, and nested-archive review |
 | Inspect MCP registry metadata without installing | [`skillgate mcp registry scan`](#6-review-mcp-registry-metadata) | MCP tool, transport, package, and registry drift checks |
 | Build a review inventory | [`skillgate inventory .`](#7-build-a-capability-inventory) | Trust-boundary summary and filterable JSON |
-| Upload findings to GitHub code scanning | [`--format sarif`](#8-export-sarif-for-github-code-scanning) | Stable SARIF alerts with capability tags |
+| Optionally export SARIF for GitHub code scanning | [`--format sarif`](#8-optionally-export-sarif-for-github-code-scanning) | Local SARIF output; upload is a separate opt-in |
 | Follow a guided review session | [Review sessions](docs/sessions/README.md) | Copy-pasteable pre-install, pre-merge, and approval workflows |
 
 ## Install
@@ -351,9 +369,10 @@ skillgate inventory . --source-file "scripts/*"
 
 Inventory output groups detected capabilities and findings by source file and summarizes trust boundaries for local execution, remote endpoints, secrets, generated files, MCP servers, prompt controls, and obfuscation.
 
-## 8. Export SARIF For GitHub Code Scanning
+## 8. Optionally Export SARIF For GitHub Code Scanning
 
-Any scan that supports SARIF can be uploaded to GitHub code scanning:
+Any scan that supports SARIF can write a local SARIF file. This command does not
+upload anything:
 
 ```bash
 skillgate scan . --format sarif --output skillgate.sarif
@@ -365,7 +384,9 @@ skillgate mcp registry compare . --server io.example.server --format sarif --out
 
 Plain `scan` SARIF reports static findings. Policy-aware `check` SARIF includes policy waiver and suppression metadata while `--dry-run` keeps SARIF generation from becoming a second blocking step. SARIF output includes deterministic alert fingerprints, stable run categories, capability tags, severity tags, and capability taxa. Local scans use `skillgate/local-repository`, remote GitHub scans use `skillgate/remote-github`, MCPB scans use `skillgate/mcp-bundle`, and MCP registry comparisons use `skillgate/mcp-registry-compare`.
 
-The repository includes `.github/workflows/skillgate.yml` as a complete example workflow and a composite action for CI adoption:
+If you explicitly choose GitHub CI, the repository includes
+`.github/workflows/skillgate.yml` and a composite Action example. Those workflows
+are separate from local execution and may upload artifacts or SARIF to GitHub:
 
 ```yaml
 steps:
@@ -381,7 +402,7 @@ steps:
       json-output: skillgate-review.json
 ```
 
-Add `policy: skillgate.yaml` when the repository has a policy file and should block unapproved behavior. Without `policy`, the Action runs a nonblocking scan. When both `policy` and `sarif-output` are supplied, the Action uploads policy-aware SARIF with waiver suppressions.
+Add `policy: skillgate.yaml` when the repository has a policy file and should block unapproved behavior. Without `policy`, the optional Action runs a nonblocking scan. When both `policy` and `sarif-output` are supplied, that GitHub workflow can upload policy-aware SARIF with waiver suppressions.
 
 For pull-request review, add `step-summary: "true"` to publish a Markdown summary in the GitHub job page. Add `json-output: skillgate-review.json` when you also want a downloadable machine-readable review artifact with introduced capabilities, removed capabilities, changed trust boundaries, high-risk findings, policy violations, active waivers, and artifact locations.
 

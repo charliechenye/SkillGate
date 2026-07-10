@@ -74,11 +74,12 @@ review items unless there is evidence for a stronger claim.
 
 ### 4. Make first adoption copyable
 
-Add a starter repository with a minimal safe Agent Skill, a first-run README, a
-local pre-install review command, and a review-only GitHub Action. Pull requests
-should retain Markdown, JSON, and SARIF as artifacts. Main-branch and manual
-runs may publish SARIF to Code Scanning; pull requests should remain reviewable
-without making intentional fixture findings a blocking status.
+Add a starter repository with a minimal safe Agent Skill and a first-run local
+pre-install review command. An optional GitHub Action may retain Markdown, JSON,
+and SARIF as artifacts. If a repository owner enables that integration,
+main-branch and manual runs may publish SARIF to Code Scanning; pull requests
+should remain reviewable without making intentional fixture findings a blocking
+status.
 
 The documented escalation path is:
 

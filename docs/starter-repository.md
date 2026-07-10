@@ -5,7 +5,11 @@ new Agent Skill repository needs a safe first review. It demonstrates the full
 adoption path without requiring a real third-party package or executing any
 repository content.
 
-The starter workflow has two deliberate modes:
+The local review command is the default path. It reads the checked-out files and
+writes reports locally; it does not contact GitHub or upload findings.
+
+The GitHub workflow is a separate, optional integration with two deliberate
+modes:
 
 - Pull requests retain Markdown, JSON, and SARIF as artifacts. Findings remain
   reviewable but do not create a blocking Code Scanning status.
