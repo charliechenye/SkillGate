@@ -135,7 +135,8 @@ Teams that require maximum reproducibility should pin the full commit SHA in
 install commands and GitHub Action references.
 
 GitHub installs require Python 3.11 or newer and `git` on the customer machine.
-After PyPI publication, the preferred low-friction install path will be:
+PyPI publication is deferred for `0.1.3`. When it is intentionally revisited,
+the planned distribution name is `openevalgate-skillgate`:
 
 ```bash
 pipx install openevalgate-skillgate
@@ -162,9 +163,9 @@ is marked private until then. Details: [GitHub-first Node wrapper](docs/node-wra
 For contributor or source-checkout development:
 
 ```bash
-python -m pip install -e .
-skillgate --version
-skillgate --help
+uv sync --locked --group dev
+uv run skillgate --version
+uv run skillgate --help
 ```
 
 ## 1. Scan A Local Repository
