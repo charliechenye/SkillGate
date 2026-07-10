@@ -78,6 +78,10 @@ That is the primary workflow. Baselines, provenance, inventory reports, registry
 comparison, SARIF upload, and advanced GitHub Action settings are available
 after the first useful scan.
 
+For a copyable first repository, use the
+[pre-install starter](examples/preinstall-starter/README.md) and its
+[review-only Action workflow](docs/starter-repository.md).
+
 For concrete examples of how to interpret output, see the
 [public scan reports](docs/public-scan-reports/README.md).
 

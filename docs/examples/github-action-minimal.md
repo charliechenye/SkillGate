@@ -10,6 +10,11 @@ Publish SARIF to Code Scanning on protected branches or manual runs, or use the
 blocking policy example below when the repository is ready to enforce reviewed
 behavior.
 
+The copyable [pre-install starter repository](../../examples/preinstall-starter/)
+contains this review-only workflow with Markdown, JSON, and SARIF artifacts.
+On protected branches and manual runs, GitHub's upload action publishes the
+SARIF artifact to Code Scanning.
+
 ## Nonblocking Scan With SARIF
 
 Use this as the lightest adoption path. Without `policy`, the Action runs a

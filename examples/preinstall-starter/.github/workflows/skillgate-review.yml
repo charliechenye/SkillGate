@@ -1,0 +1,39 @@
+name: SkillGate pre-install review
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: charliechenye/SkillGate@v0
+        with:
+          path: .
+          sarif-output: skillgate.sarif
+          summary-output: skillgate-review.md
+          json-output: skillgate-review.json
+          step-summary: "true"
+
+      - name: Upload review artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: skillgate-review
+          path: |
+            skillgate-review.md
+            skillgate-review.json
+            skillgate.sarif
+
+      - name: Publish SARIF on protected branches and manual runs
+        if: github.event_name != 'pull_request' && always()
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: skillgate.sarif
