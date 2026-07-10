@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Annotated
+from urllib.parse import urlsplit
 
 import typer
 from rich.console import Console
@@ -32,10 +33,21 @@ from skillgate.mcp_registry import (
 from skillgate.mcpb.errors import McpbError, mcpb_archive_error_data
 from skillgate.mcpb.reporting import mcpb_manifest_json, mcpb_scan_json, mcpb_scan_text
 from skillgate.mcpb.scan import scan_mcpb
-from skillgate.models import SEVERITY_ORDER, DiffReport, severity_at_or_above, stable_json
+from skillgate.models import (
+    SEVERITY_ORDER,
+    DiffReport,
+    model_to_data,
+    severity_at_or_above,
+    stable_json,
+)
 from skillgate.policy import evaluate_policy, load_policy
 from skillgate.policy_schema import POLICY_JSON_SCHEMA
 from skillgate.policy_templates import POLICY_PROFILES, policy_template_yaml
+from skillgate.preinstall import (
+    build_preinstall_packet,
+    preinstall_packet_json,
+    render_preinstall_markdown,
+)
 from skillgate.provenance import (
     ProvenanceError,
     create_provenance_manifest,
@@ -57,6 +69,7 @@ from skillgate.rule_docs import RULE_DOCS, get_rule_doc, rule_doc_to_data, rule_
 from skillgate.scan import filter_report_by_severity, scan_repository
 from skillgate.skills import (
     SkillsValidationError,
+    discover_skill_files,
     skills_failed,
     skills_json,
     skills_text,
@@ -174,6 +187,136 @@ def render_scan_command_output(
     if failed and output_format == "text":
         content = append_scan_failure_text(content, fail_on or "")
     return content, failed
+
+
+def _preinstall_skills(path: Path) -> dict[str, object] | None:
+    try:
+        if not discover_skill_files(path):
+            return None
+        return validate_skills(path)
+    except SkillsValidationError as exc:
+        if "no SKILL.md files found" in str(exc):
+            return None
+        raise
+
+
+def _preinstall_failed(packet: dict[str, object], fail_on: str | None) -> bool:
+    if fail_on is None:
+        return False
+    findings = packet["findings"]
+    return any(
+        severity_at_or_above(item["severity"], fail_on)
+        for items in findings["groups"].values()
+        for item in items
+    )
+
+
+def _is_github_url(value: str) -> bool:
+    parsed = urlsplit(value)
+    return parsed.scheme in {"http", "https"} and parsed.netloc.lower() == "github.com"
+
+
+@review_app.command("preinstall")
+def review_preinstall(
+    source: Annotated[
+        str,
+        typer.Argument(help="Local path, GitHub repository URL, or local .mcpb bundle."),
+    ],
+    output_format: Annotated[
+        str,
+        typer.Option("--format", help="Output format: markdown or json."),
+    ] = "markdown",
+    fail_on: Annotated[
+        str | None,
+        typer.Option(
+            "--fail-on",
+            help="Exit 1 when scan or validation findings reach this severity.",
+        ),
+    ] = None,
+    output: Annotated[
+        Path | None,
+        typer.Option("--output", "-o", help="Write the primary review packet."),
+    ] = None,
+    json_output: Annotated[
+        Path | None,
+        typer.Option("--json-output", help="Also write the machine-readable packet JSON."),
+    ] = None,
+) -> None:
+    """Create an advisory review packet before installing an agent artifact."""
+    output_format = validate_format(output_format, {"markdown", "json"})
+    fail_on = validate_skills_fail_on(fail_on)
+    if output and json_output and output.resolve() == json_output.resolve():
+        console.file.write("Error: --output and --json-output must be different paths\n")
+        raise typer.Exit(2)
+
+    sparse = None
+    try:
+        if _is_github_url(source):
+            sparse = fetch_github_sparse(source)
+            scan_path = sparse.root
+            scan_report = scan_repository(scan_path)
+            skills_payload = _preinstall_skills(scan_path)
+            packet = build_preinstall_packet(
+                {
+                    "kind": "github",
+                    "reference": source,
+                    "revision": sparse.manifest.get("commit_sha")
+                    or sparse.manifest.get("resolved_ref"),
+                    "metadata": sparse.manifest,
+                },
+                scan_report,
+                skills_payload,
+            )
+        else:
+            path = Path(source).expanduser().resolve()
+            if not path.exists():
+                raise ValueError(f"source does not exist: {path}")
+            if path.suffix.lower() == ".mcpb":
+                result = scan_mcpb(path)
+                packet = build_preinstall_packet(
+                    {
+                        "kind": "mcpb",
+                        "reference": str(path),
+                        "path": str(path),
+                        "digest": result.bundle_manifest.archive.sha256,
+                        "metadata": model_to_data(result.bundle_manifest),
+                    },
+                    result.scan_report,
+                )
+            else:
+                scan_report = scan_repository(path)
+                packet = build_preinstall_packet(
+                    {
+                        "kind": "local",
+                        "reference": str(path),
+                        "path": str(path),
+                        "metadata": {"input_type": "directory" if path.is_dir() else "file"},
+                    },
+                    scan_report,
+                    _preinstall_skills(path),
+                )
+    except (
+        ArchiveError,
+        McpbError,
+        OSError,
+        SourceError,
+        SkillsValidationError,
+        ValueError,
+    ) as exc:
+        console.file.write(f"Error: {exc}\n")
+        raise typer.Exit(2) from exc
+    finally:
+        if sparse is not None:
+            sparse.cleanup()
+
+    json_content = preinstall_packet_json(packet)
+    if json_output:
+        write_or_print(json_content, json_output, console)
+    content = json_content if output_format == "json" else render_preinstall_markdown(packet)
+    if _preinstall_failed(packet, fail_on) and output_format == "markdown":
+        content += f"\nReview threshold failed: findings at or above `{fail_on}`.\n"
+    write_or_print(content, output, console)
+    raise typer.Exit(1 if _preinstall_failed(packet, fail_on) else 0)
 
 
 @demo_app.command("mcpb")
