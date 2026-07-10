@@ -80,6 +80,20 @@ def test_cli_fixtures_summary_json() -> None:
     assert all(item["status"] == "pass" for item in data["fixtures"])
 
 
+def test_cli_fixtures_summary_markdown_is_reviewable() -> None:
+    result = runner.invoke(
+        app,
+        ["fixtures", "summary", str(FIXTURES), "--format", "markdown"],
+    )
+    assert result.exit_code == 0
+    assert "# SkillGate Benchmark Report" in result.output
+    assert "Scanner version:" in result.output
+    assert "## Rule Coverage" in result.output
+    assert "Expected fixtures" in result.output
+    assert "## Attribution" in result.output
+    assert "not a real-world detection accuracy benchmark" in result.output
+
+
 def test_cli_provenance_create_and_verify() -> None:
     workdir = clean_test_dir("provenance-create-verify")
     (workdir / "SKILL.md").write_text("Safe\n", encoding="utf-8")

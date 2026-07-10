@@ -17,6 +17,7 @@ from skillgate.demo import (
 )
 from skillgate.fixtures import (
     FixtureSummaryError,
+    fixture_summary_markdown,
     fixture_summary_payload,
     fixture_summary_text,
     summarize_fixtures,
@@ -819,7 +820,7 @@ def fixtures_summary(
     output_format: Annotated[str, typer.Option("--format", help="Output format.")] = "json",
 ) -> None:
     """Summarize benchmark fixture expectations and actual findings."""
-    output_format = validate_format(output_format, {"text", "json"})
+    output_format = validate_format(output_format, {"text", "json", "markdown"})
     try:
         summaries = summarize_fixtures(path)
     except FixtureSummaryError as exc:
@@ -827,6 +828,8 @@ def fixtures_summary(
         raise typer.Exit(2) from exc
     if output_format == "json":
         console.file.write(stable_json(fixture_summary_payload(path, summaries)))
+    elif output_format == "markdown":
+        console.file.write(fixture_summary_markdown(path, summaries))
     else:
         console.file.write(fixture_summary_text(path, summaries))
     raise typer.Exit(1 if any(summary.status == "fail" for summary in summaries) else 0)
