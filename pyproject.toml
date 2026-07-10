@@ -53,12 +53,6 @@ dependencies = [
   "typer>=0.12",
 ]
 
-[project.optional-dependencies]
-dev = [
-  "pytest>=8.0",
-  "ruff>=0.5",
-]
-
 [project.scripts]
 skillgate = "skillgate.cli:app"
 
@@ -86,7 +80,7 @@ skillgate = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = [".", "src"]
 addopts = "-p no:cacheprovider"
 
 [tool.ruff]
@@ -110,5 +104,7 @@ quote-style = "double"
 
 [dependency-groups]
 dev = [
+    "pytest>=8.0",
+    "ruff>=0.5",
     "twine>=6.2.0",
 ]
