@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import PurePosixPath
 from urllib.parse import urlparse
 
 from skillgate.models import Severity
@@ -29,6 +30,10 @@ REMOTE_EXEC_RE = re.compile(
     r"(?i)(curl\b.*\|\s*(?:bash|sh|zsh)|wget\b.*\|\s*(?:bash|sh|zsh)|"
     r"\biex\s*\(\s*iwr\b|python\s+-c\s+['\"]?\$?\(?(?:curl|wget)\b)"
 )
+DOWNLOAD_COMMAND_RE = re.compile(r"(?i)\b(?P<command>curl|wget)\b(?P<args>.*)")
+DOWNLOAD_OUTPUT_RE = re.compile(r"(?i)(?:^|\s)(?:--output|-o)\s+(?P<target>[^\s;&|]+)")
+REMOTE_NAME_FLAG_RE = re.compile(r"(?i)(?:^|\s)(?:-[^\s;&|]*O[^\s;&|]*|--remote-name)(?:\s|$)")
+SHELL_FILE_RE = re.compile(r"(?i)\b(?:bash|sh|zsh)\s+(?P<target>[^\s;&|]+)")
 SECRET_RE = re.compile(
     r"(?i)(AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|GITHUB_TOKEN|OPENAI_API_KEY|"
     r"ANTHROPIC_API_KEY|AZURE_CLIENT_SECRET|GOOGLE_APPLICATION_CREDENTIALS|"
@@ -125,6 +130,46 @@ def extract_write_target(line: str, fallback_match: re.Match[str]) -> str | None
         if match:
             return match.group("target").strip("'\"")
     return next((group for group in fallback_match.groups() if group), None)
+
+
+def normalize_file_target(value: str) -> str:
+    return PurePosixPath(value.strip("'\"` ").replace("\\", "/")).name
+
+
+def downloaded_file_target(line: str) -> str | None:
+    command_match = DOWNLOAD_COMMAND_RE.search(line)
+    if not command_match:
+        return None
+    command = command_match.group("command").lower()
+    args = command_match.group("args")
+    output_match = DOWNLOAD_OUTPUT_RE.search(args)
+    if output_match:
+        return normalize_file_target(output_match.group("target"))
+    if command == "curl" and not REMOTE_NAME_FLAG_RE.search(args):
+        return None
+    url_match = URL_RE.search(args)
+    if not url_match:
+        return None
+    path = urlparse(url_match.group(0).strip("'\"`,)")).path.rstrip("/")
+    target = PurePosixPath(path).name
+    return target or None
+
+
+def multiline_remote_execution_matches(
+    text: str, window: int = 3
+) -> list[tuple[int, str, int, str]]:
+    lines = text.splitlines()
+    matches: list[tuple[int, str, int, str]] = []
+    for index, line in enumerate(lines):
+        downloaded = downloaded_file_target(line)
+        if not downloaded:
+            continue
+        for execution_index in range(index + 1, min(index + window + 1, len(lines))):
+            execution = SHELL_FILE_RE.search(lines[execution_index])
+            if execution and normalize_file_target(execution.group("target")) == downloaded:
+                matches.append((index + 1, line, execution_index + 1, lines[execution_index]))
+                break
+    return matches
 
 
 class ShellExecutionRule:
@@ -246,6 +291,39 @@ class RemoteDownloadExecutionRule:
                     number,
                     resource=host,
                     command=line.strip(),
+                )
+            )
+        for (
+            download_line_number,
+            download_line,
+            execution_line_number,
+            execution_line,
+        ) in multiline_remote_execution_matches(file.text):
+            host = extract_host(download_line)
+            evidence = (
+                f"download line {download_line_number}: {download_line.strip()} -> "
+                f"execution line {execution_line_number}: {execution_line.strip()}"
+            )
+            result.findings.append(
+                make_finding(
+                    rule_id=self.rule_id,
+                    title=self.title,
+                    description="The file downloads remote content and executes it.",
+                    severity="high",
+                    capability="remote_download_execution",
+                    file_path=file.path,
+                    line_number=execution_line_number,
+                    evidence=evidence,
+                    remediation="Pin and review downloaded artifacts before execution.",
+                )
+            )
+            result.capabilities.append(
+                make_capability(
+                    "remote_download_execution",
+                    file.path,
+                    execution_line_number,
+                    resource=host,
+                    command=evidence,
                 )
             )
         return result
