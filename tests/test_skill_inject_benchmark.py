@@ -8,6 +8,7 @@ import pytest
 from tools.benchmark_skill_inject import (
     BenchmarkInputError,
     build_payload,
+    control_metrics,
     render_markdown,
 )
 
@@ -47,12 +48,32 @@ def test_local_skill_inject_benchmark_is_differential_and_has_controls(tmp_path:
     assert payload["scope"]["source_mode"] == "user-provided local checkout"
     assert payload["scope"]["payloads_executed"] is False
     assert payload["scope"]["network_access"] is False
+    assert (
+        payload["scope"]["injection_accuracy_metrics"]
+        == "not computed without authored negative controls"
+    )
     assert payload["summary"]["cases_evaluated"] == 1
     assert payload["summary"]["cases_with_any_new_signal"] == 1
     assert payload["summary"]["rule_case_hits"] == {"SG002": 1}
     assert payload["controls"]["metrics"]["precision"] == 1
     assert payload["controls"]["metrics"]["recall"] == 1
     assert "static SkillGate signals" in render_markdown(payload)
+
+
+def test_control_metrics_count_unexpected_rules_as_false_positives() -> None:
+    metrics = control_metrics(
+        [
+            {"expected_rule_ids": ["SG001"], "actual_rule_ids": ["SG001"]},
+            {"expected_rule_ids": [], "actual_rule_ids": ["SG002"]},
+        ]
+    )
+
+    assert metrics["true_positive"] == 1
+    assert metrics["false_positive"] == 1
+    assert metrics["false_negative"] == 0
+    assert metrics["precision"] == 0.5
+    assert metrics["recall"] == 1
+    assert metrics["f1"] == pytest.approx(2 / 3)
 
 
 def test_benchmark_rejects_non_skill_inject_source(tmp_path: Path) -> None:

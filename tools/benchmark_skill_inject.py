@@ -237,6 +237,7 @@ def run_injection_benchmark(source: Path) -> dict[str, Any]:
             "network_access": False,
             "docker_or_agent_runtime": False,
             "measurement": "new static SkillGate findings versus the clean skill copy",
+            "injection_accuracy_metrics": "not computed without authored negative controls",
         },
         "summary": {
             "cases_evaluated": len(results),
@@ -293,6 +294,7 @@ def control_metrics(results: list[dict[str, Any]]) -> dict[str, Any]:
     f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0
     return {
         "cases": len(results),
+        "interpretation": "authored control cases only",
         "rule_universe": list(RULE_IDS),
         "true_positive": true_positive,
         "false_positive": false_positive,
