@@ -2,8 +2,22 @@
 
 These examples use the stable `charliechenye/SkillGate@v0` Action tag. Teams
 that require immutable Action references should pin a full commit SHA instead.
-SkillGate generates SARIF when `sarif-output` is supplied; GitHub's upload action
-uploads that SARIF file to code scanning.
+SkillGate generates SARIF when `sarif-output` is supplied.
+
+For pull requests, retain SARIF as an artifact so intentional demo and test
+findings remain reviewable without creating a blocking Code Scanning status.
+Publish SARIF to Code Scanning on protected branches or manual runs, or use the
+blocking policy example below when the repository is ready to enforce reviewed
+behavior.
+
+The copyable [pre-install starter repository](../../examples/preinstall-starter/)
+contains this review-only workflow with Markdown, JSON, and SARIF artifacts.
+On protected branches and manual runs, GitHub's upload action publishes the
+SARIF artifact to Code Scanning and uploads that SARIF file for durable review.
+
+These Action examples are optional GitHub integrations. They do not change the
+local-only behavior of SkillGate commands, which write reports locally and do
+not upload findings.
 
 ## Nonblocking Scan With SARIF
 
@@ -41,7 +55,7 @@ jobs:
           json-output: skillgate-review.json
 
       - uses: github/codeql-action/upload-sarif@v4
-        if: always()
+        if: github.event_name != 'pull_request' && always()
         with:
           sarif_file: skillgate.sarif
 
@@ -52,6 +66,7 @@ jobs:
           path: |
             skillgate-summary.md
             skillgate-review.json
+            skillgate.sarif
 ```
 
 ## Blocking Policy Check With Policy-Aware SARIF
@@ -92,7 +107,7 @@ jobs:
           json-output: skillgate-review.json
 
       - uses: github/codeql-action/upload-sarif@v4
-        if: always()
+        if: github.event_name != 'pull_request' && always()
         with:
           sarif_file: skillgate.sarif
 
@@ -103,6 +118,7 @@ jobs:
           path: |
             skillgate-summary.md
             skillgate-review.json
+            skillgate.sarif
 ```
 
 ## Baseline Drift Blocking
@@ -142,7 +158,7 @@ jobs:
           fail-on-drift: "true"
 
       - uses: github/codeql-action/upload-sarif@v4
-        if: always()
+        if: github.event_name != 'pull_request' && always()
         with:
           sarif_file: skillgate.sarif
 
@@ -153,6 +169,7 @@ jobs:
           path: |
             skillgate-summary.md
             skillgate-review.json
+            skillgate.sarif
 ```
 
 ## Repository Plus Committed MCPB Bundle
@@ -195,12 +212,12 @@ jobs:
           json-output: skillgate-review.json
 
       - uses: github/codeql-action/upload-sarif@v4
-        if: always()
+        if: github.event_name != 'pull_request' && always()
         with:
           sarif_file: skillgate.sarif
 
       - uses: github/codeql-action/upload-sarif@v4
-        if: always()
+        if: github.event_name != 'pull_request' && always()
         with:
           sarif_file: skillgate-mcpb.sarif
 
@@ -211,4 +228,6 @@ jobs:
           path: |
             skillgate-summary.md
             skillgate-review.json
+            skillgate.sarif
+            skillgate-mcpb.sarif
 ```

@@ -80,6 +80,20 @@ def test_cli_fixtures_summary_json() -> None:
     assert all(item["status"] == "pass" for item in data["fixtures"])
 
 
+def test_cli_fixtures_summary_markdown_is_reviewable() -> None:
+    result = runner.invoke(
+        app,
+        ["fixtures", "summary", str(FIXTURES), "--format", "markdown"],
+    )
+    assert result.exit_code == 0
+    assert "# SkillGate Benchmark Report" in result.output
+    assert "Scanner version:" in result.output
+    assert "## Rule Coverage" in result.output
+    assert "Expected fixtures" in result.output
+    assert "## Attribution" in result.output
+    assert "not a real-world detection accuracy benchmark" in result.output
+
+
 def test_cli_provenance_create_and_verify() -> None:
     workdir = clean_test_dir("provenance-create-verify")
     (workdir / "SKILL.md").write_text("Safe\n", encoding="utf-8")
@@ -364,7 +378,8 @@ def test_docs_are_main_branch_and_discovery_friendly() -> None:
     assert "actions/upload-artifact@v4" not in action_examples
     assert "actions/upload-artifact@v6" not in action_examples
     assert "actions/download-artifact@v4" not in action_examples
-    assert action_examples.count("if: always()") == 9
+    assert action_examples.count("if: always()") == 4
+    assert action_examples.count("if: github.event_name != 'pull_request' && always()") == 5
     assert 'fail-on-drift: "true"' in action_examples
     assert workflow["jobs"]["skillgate"]["env"]["FORCE_JAVASCRIPT_ACTIONS_TO_NODE24"] is True
     assert "actions/upload-artifact@v7" in workflow_text

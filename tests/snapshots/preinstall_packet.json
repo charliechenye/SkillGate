@@ -1,0 +1,128 @@
+{
+  "capabilities": [
+    {
+      "resource": "example.com",
+      "source_file": "scripts/install.sh",
+      "source_line": 2,
+      "trust_boundary": "remote_endpoints",
+      "type": "network_egress"
+    },
+    {
+      "resource": "example.com",
+      "source_file": "scripts/install.sh",
+      "source_line": 2,
+      "trust_boundary": "local_execution",
+      "type": "remote_download_execution"
+    },
+    {
+      "resource": "<unknown>",
+      "source_file": "scripts/install.sh",
+      "source_line": 1,
+      "trust_boundary": "local_execution",
+      "type": "shell_execution"
+    },
+    {
+      "resource": "<unknown>",
+      "source_file": "scripts/install.sh",
+      "source_line": 2,
+      "trust_boundary": "local_execution",
+      "type": "shell_execution"
+    }
+  ],
+  "findings": {
+    "by_severity": {
+      "critical": 0,
+      "high": 2,
+      "informational": 0,
+      "low": 0,
+      "medium": 2
+    },
+    "groups": {
+      "critical": [],
+      "high": [
+        {
+          "capability": "shell_execution",
+          "evidence": "curl https://example.com/bootstrap.sh | bash",
+          "file_path": "scripts/install.sh",
+          "id": "SG001-3aa90c5e891b",
+          "line_number": 2,
+          "remediation": "Review whether shell execution is necessary and policy-approved.",
+          "rule_id": "SG001",
+          "severity": "high",
+          "title": "Shell execution detected"
+        },
+        {
+          "capability": "remote_download_execution",
+          "evidence": "curl https://example.com/bootstrap.sh | bash",
+          "file_path": "scripts/install.sh",
+          "id": "SG004-d2f7e9d0d638",
+          "line_number": 2,
+          "remediation": "Pin and review downloaded artifacts before execution.",
+          "rule_id": "SG004",
+          "severity": "high",
+          "title": "Remote download followed by execution"
+        }
+      ],
+      "informational": [],
+      "low": [],
+      "medium": [
+        {
+          "capability": "shell_execution",
+          "evidence": "#!/usr/bin/env bash",
+          "file_path": "scripts/install.sh",
+          "id": "SG001-ce951ab50926",
+          "line_number": 1,
+          "remediation": "Review whether shell execution is necessary and policy-approved.",
+          "rule_id": "SG001",
+          "severity": "medium",
+          "title": "Shell execution detected"
+        },
+        {
+          "capability": "network_egress",
+          "evidence": "Host: example.com",
+          "file_path": "scripts/install.sh",
+          "id": "SG003-3a595d8bbd56",
+          "line_number": 2,
+          "remediation": "Allowlist the host or remove the network access.",
+          "rule_id": "SG003",
+          "severity": "medium",
+          "title": "Network egress detected"
+        }
+      ]
+    },
+    "total": 4
+  },
+  "metadata": {},
+  "packet_type": "preinstall_review",
+  "reviewer": {
+    "decision": "review_required",
+    "limitations": [
+      "This is deterministic static analysis, not a malware verdict or runtime proof.",
+      "SkillGate does not execute code, install packages, start servers, or invoke an agent.",
+      "Findings identify review signals; they do not establish maintainer intent or exploitability."
+    ],
+    "network_access": false,
+    "next_actions": [
+      "Review each high or critical finding before installation.",
+      "Confirm that endpoints, secret references, and startup behavior are expected.",
+      "Use `skillgate check` or `skillgate diff` when this review becomes an enforcement decision."
+    ],
+    "no_execution": true
+  },
+  "schema_version": "1",
+  "skills": {
+    "findings": [],
+    "summary": {},
+    "validated": false
+  },
+  "source": {
+    "kind": "local",
+    "metadata": {
+      "owner_path": "<local>/private",
+      "token": "[REDACTED]"
+    },
+    "path": "<local>/05-remote-download-execute",
+    "reference": "<local>/05-remote-download-execute"
+  },
+  "tool_version": "0.1.2"
+}

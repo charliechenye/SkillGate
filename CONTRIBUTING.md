@@ -101,3 +101,20 @@ python tools/update_snapshots.py --accept
 ## Documentation
 
 Documentation should be clear about the threat model. SkillGate detects static risks and capability drift; it does not prove that an agent skill or MCP server is safe.
+
+# Development setup
+
+SkillGate uses Python 3.12 for its reproducible development environment. Install
+[`uv`](https://docs.astral.sh/uv/) and run:
+
+```bash
+uv sync --locked --group dev
+uv run pytest
+uv run ruff check .
+uv run ruff format --check .
+npm test
+```
+
+Use `uv run` for repository tools so local execution matches CI. If dependency
+metadata changes, regenerate `uv.lock` with `uv lock`, review the diff, and
+verify it with `uv sync --locked` before opening a pull request.

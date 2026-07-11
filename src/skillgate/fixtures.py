@@ -5,6 +5,7 @@ from pathlib import Path
 
 import yaml
 
+from skillgate import __version__
 from skillgate.baseline import create_baseline, diff_against_baseline
 from skillgate.scan import scan_repository
 
@@ -152,3 +153,80 @@ def fixture_summary_text(root: Path, summaries: list[FixtureSummary]) -> str:
         ]
     )
     return "\n".join(lines) + "\n"
+
+
+def fixture_summary_markdown(root: Path, summaries: list[FixtureSummary]) -> str:
+    expected_rules = sorted(
+        {rule_id for summary in summaries for rule_id in summary.expected_rule_ids}
+    )
+    actual_rules = sorted(
+        {
+            rule_id
+            for summary in summaries
+            for rule_id in [*summary.actual_rule_ids, *summary.diff_rule_ids]
+        }
+    )
+    lines = [
+        "# SkillGate Benchmark Report",
+        "",
+        f"- Scanner version: `{__version__}`",
+        f"- Fixture root: `{root.as_posix()}`",
+        f"- Fixtures: {len(summaries)}",
+        f"- Passed: {sum(1 for summary in summaries if summary.status == 'pass')}",
+        f"- Failed: {sum(1 for summary in summaries if summary.status == 'fail')}",
+        "",
+        "## Rule Coverage",
+        "",
+        "| Rule | Expected fixtures | Actual fixtures | Coverage status |",
+        "| --- | ---: | ---: | --- |",
+    ]
+    for rule_id in sorted(set(expected_rules) | set(actual_rules)):
+        expected_count = sum(rule_id in summary.expected_rule_ids for summary in summaries)
+        actual_count = sum(
+            rule_id in summary.actual_rule_ids or rule_id in summary.diff_rule_ids
+            for summary in summaries
+        )
+        status = "covered" if expected_count == actual_count else "mismatch"
+        lines.append(f"| {rule_id} | {expected_count} | {actual_count} | {status} |")
+    lines.extend(
+        [
+            "",
+            "## Fixture Results",
+            "",
+            "| Fixture | Status | Expected rules | Actual rules | Attribution |",
+            "| --- | --- | --- | --- | --- |",
+        ]
+    )
+    for summary in summaries:
+        actual = sorted(set(summary.actual_rule_ids) | set(summary.diff_rule_ids))
+        attribution = "yes" if summary.attribution else "no"
+        lines.append(
+            f"| `{summary.name}` | **{summary.status}** | "
+            f"`{', '.join(summary.expected_rule_ids) or 'none'}` | "
+            f"`{', '.join(actual) or 'none'}` | {attribution} |"
+        )
+    lines.extend(
+        [
+            "",
+            "## Reproduce",
+            "",
+            "```bash",
+            "skillgate fixtures summary fixtures/benchmark --format markdown",
+            "```",
+            "",
+            "## Attribution",
+            "",
+            "Public-pattern fixtures retain source URLs, retrieval dates, and reduction "
+            "notes in their expected-findings metadata.",
+            "",
+            "## Limitations",
+            "",
+            "This report verifies deterministic fixture expectations and rule coverage. It "
+            "is not a real-world detection accuracy benchmark, malware verdict, or "
+            "completeness claim.",
+            "Fixtures are intentionally reduced examples and may not represent the "
+            "behavior, context, or security posture of their source projects.",
+            "",
+        ]
+    )
+    return "\n".join(lines)
