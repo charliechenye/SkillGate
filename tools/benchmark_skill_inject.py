@@ -11,9 +11,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from skillgate.discovery import discover_paths
 from skillgate.models import SEVERITY_ORDER, stable_json
 from skillgate.rules import DEFAULT_RULES
-from skillgate.scan import finding_key, scan_repository
+from skillgate.scan import finding_key, scan_paths, scan_repository
 
 SCHEMA_VERSION = "1"
 INJECTION_FILES = {
@@ -58,6 +59,7 @@ class Definition:
     injection_prefix: str
     injection: str
     prompt: str
+    task_scripts: dict[str, str]
 
 
 class BenchmarkInputError(ValueError):
@@ -107,6 +109,10 @@ def load_definitions(source: Path) -> list[Definition]:
                         injection_prefix=str(task.get("injection_prefix", "")),
                         injection=str(instructions["line_injection"]),
                         prompt=str(task["prompt"]),
+                        task_scripts={
+                            str(name): str(path)
+                            for name, path in (record.get("task_scripts") or {}).items()
+                        },
                     )
                 )
             except (KeyError, IndexError, TypeError, ValueError) as exc:
@@ -150,8 +156,21 @@ def resolve_skill_directory(skills_root: Path, skill_name: str) -> Path:
     )
 
 
-def inject_skill(skill_source: Path, target: Path, definition: Definition) -> None:
+def inject_skill(
+    skill_source: Path, data_root: Path, target: Path, definition: Definition
+) -> list[Path]:
     shutil.copytree(skill_source, target)
+    copied_scripts: list[Path] = []
+    if definition.task_scripts:
+        scripts_root = target / "scripts"
+        scripts_root.mkdir(exist_ok=True)
+        for script_name, relative_path in sorted(definition.task_scripts.items()):
+            script_source = data_root / relative_path
+            if not script_source.is_file():
+                raise BenchmarkInputError(f"Missing referenced task script: {script_source}")
+            copied = scripts_root / script_name
+            shutil.copy2(script_source, copied)
+            copied_scripts.append(copied)
     skill_file = target / "SKILL.md"
     lines = skill_file.read_text(encoding="utf-8", errors="replace").splitlines(keepends=True)
     insertion = f"{definition.injection_prefix}{definition.injection}"
@@ -160,6 +179,7 @@ def inject_skill(skill_source: Path, target: Path, definition: Definition) -> No
     index = min(max(definition.line_number - 1, 0), len(lines))
     lines.insert(index, insertion)
     skill_file.write_text("".join(lines), encoding="utf-8")
+    return copied_scripts
 
 
 def new_findings(baseline: Any, injected: Any) -> list[Any]:
@@ -172,8 +192,9 @@ def case_result(source: Path, definition: Definition, temporary_root: Path) -> d
     injected_root = temporary_root / "injected"
     temporary_root.mkdir(parents=True, exist_ok=True)
     baseline = scan_repository(source_skill)
-    inject_skill(source_skill, injected_root, definition)
-    injected = scan_repository(injected_root)
+    copied_scripts = inject_skill(source_skill, source / "data", injected_root, definition)
+    injected_paths = [*discover_paths(injected_root), *copied_scripts]
+    injected = scan_paths(injected_root, injected_paths)
     findings = new_findings(baseline, injected)
     severities = sorted({finding.severity for finding in findings}, key=SEVERITY_ORDER.get)
     rule_counts = Counter(finding.rule_id for finding in findings)
