@@ -471,6 +471,19 @@ python tools/update_snapshots.py --check
 
 Fixture summaries compare `expected-findings.yaml` files with actual scan output. Public-pattern fixtures include machine-readable attribution metadata.
 
+For an optional local-only static comparison against a user-provided checkout of
+[Skill-Inject](https://github.com/aisa-group/skill-inject), use:
+
+```bash
+uv run python tools/benchmark_skill_inject.py /path/to/local/skill-inject --format markdown
+```
+
+This adapter does not download the corpus, execute payloads or task scripts,
+start Docker, call model APIs, or make network requests. See the
+[Skill-Inject benchmark report](docs/benchmark/skill-inject.md) for scope,
+limitations, and the current results. Its coverage numbers are static-signal
+measurements, not agent attack success or general accuracy claims.
+
 Contributor docs:
 
 - [CONTRIBUTING.md](CONTRIBUTING.md)
