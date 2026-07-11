@@ -15,7 +15,8 @@ DESTRUCTIVE_RE = re.compile(
     r"Remove-Item\s+.*-Recurse|sudo\s+rm\s+-[a-z]*r[a-z]*f|rm\s+-r\b|"
     r"shutil\.rmtree|Path\s*\([^)]*\)\.(?:unlink|rmdir)\s*\(|"
     r"fs\.(?:rm|rmSync|unlink|unlinkSync|rmdir|rmdirSync)\s*\(|"
-    r"\bformat\b|\bmkfs\b|drop\s+database|truncate\s+table|git\s+clean\s+-fdx)"
+    r"\bformat\s+(?:/[a-z]+\s+)*[a-z]:|\bmkfs(?:\.[a-z0-9]+)?\s+|"
+    r"drop\s+database|truncate\s+table|git\s+clean\s+-fdx)"
 )
 NETWORK_RE = re.compile(
     r"(?i)(?:\b(?:curl|wget|Invoke-WebRequest|Invoke-RestMethod|Start-BitsTransfer|"

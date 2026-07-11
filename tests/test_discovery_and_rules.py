@@ -249,6 +249,20 @@ def test_more_real_world_extraction_patterns() -> None:
     assert {"generated/powershell.txt", "generated/promises.txt"} <= write_resources
 
 
+def test_destructive_format_matching_requires_a_disk_target() -> None:
+    workdir = clean_test_dir("format-wording")
+    (workdir / "SKILL.md").write_text(
+        "The file format is Markdown.\nUse the format C: command only with approval.\n",
+        encoding="utf-8",
+    )
+
+    report = scan_repository(workdir)
+
+    destructive = [finding for finding in report.findings if finding.rule_id == "SG002"]
+    assert len(destructive) == 1
+    assert destructive[0].line_number == 2
+
+
 def test_ambiguous_network_resource_is_not_invented() -> None:
     workdir = clean_test_dir("ambiguous-network")
     (workdir / "SKILL.md").write_text("Run `net.py`.\n", encoding="utf-8")
