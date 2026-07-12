@@ -13,7 +13,7 @@ The adapter evaluates one representative task for each of the 84 injection defin
 | Cases evaluated | 84 |
 | Cases with any new static signal | 77/84 (91.7%) |
 | Cases with a high/critical new signal | 14/84 (16.7%) |
-| Total new findings | 883 |
+| Total new findings | 893 |
 | Missed cases | 7 |
 | Payloads executed | No |
 | Network access | No |
@@ -51,7 +51,7 @@ These misses are mostly semantic or policy-manipulation instructions without a c
 
 Before the SG002 precision fix, the same differential exercise produced 77/84 cases with any signal and 54/84 cases with a high/critical signal. That high/critical figure was inflated by the standalone `format` matcher reporting ordinary prose such as “file format.”
 
-After requiring a disk target for `format`, and after including the corpus’s referenced task scripts as inert files, the current result is 14/84 high/critical cases and 883 new findings. The earlier 54/84 and 924-finding result is retained only as a regression baseline, not as the current quality claim.
+After requiring a disk target for `format`, including the corpus’s referenced task scripts as inert files, and enabling bounded logical spans, the current result is 14/84 high/critical cases and 893 new findings. The earlier 54/84 and 924-finding result is retained only as a regression baseline, not as the current quality claim.
 
 The new SG004 bounded correlation also covers the multi-line pattern used by the corpus:
 
@@ -78,7 +78,7 @@ The current control set scores 1.000 accuracy, precision, recall, and F1. These 
 Provide a local checkout of Skill-Inject explicitly:
 
 ```bash
-uv run python tools/benchmark_skill_inject.py /path/to/local/skill-inject --format markdown
+uv run python tools/benchmark_skill_inject.py /path/to/local/skill-inject --format markdown --enforce-gates
 uv run python tools/benchmark_skill_inject.py /path/to/local/skill-inject \
   --format json --output skill-inject.json
 ```
