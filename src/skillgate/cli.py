@@ -257,7 +257,7 @@ def review_preinstall(
         if _is_github_url(source):
             sparse = fetch_github_sparse(source)
             scan_path = sparse.root
-            scan_report = scan_repository(scan_path)
+            scan_report = scan_repository(scan_path, format_aware=True)
             skills_payload = _preinstall_skills(scan_path)
             packet = build_preinstall_packet(
                 {
@@ -275,7 +275,7 @@ def review_preinstall(
             if not path.exists():
                 raise ValueError(f"source does not exist: {path}")
             if path.suffix.lower() == ".mcpb":
-                result = scan_mcpb(path)
+                result = scan_mcpb(path, format_aware=True)
                 packet = build_preinstall_packet(
                     {
                         "kind": "mcpb",
@@ -288,7 +288,9 @@ def review_preinstall(
                 )
             else:
                 scan_report = (
-                    scan_paths(path.parent, [path]) if path.is_file() else scan_repository(path)
+                    scan_paths(path.parent, [path], format_aware=True)
+                    if path.is_file()
+                    else scan_repository(path, format_aware=True)
                 )
                 packet = build_preinstall_packet(
                     {
@@ -618,6 +620,13 @@ def scan(
             help="Exit 1 when displayed findings are at or above this severity.",
         ),
     ] = None,
+    format_aware: Annotated[
+        bool,
+        typer.Option(
+            "--format-aware",
+            help="Also analyze bounded logical spans across safe formatting breaks.",
+        ),
+    ] = False,
     output: Annotated[
         Path | None, typer.Option("--output", "-o", help="Write output to a file.")
     ] = None,
@@ -626,7 +635,7 @@ def scan(
     output_format = validate_format(output_format, {"text", "json", "sarif"})
     severity = validate_severity(severity)
     fail_on = validate_fail_on(fail_on)
-    report = filter_report_by_severity(scan_repository(path), severity)
+    report = filter_report_by_severity(scan_repository(path, format_aware=format_aware), severity)
     content, failed = render_scan_command_output(report, output_format, fail_on)
     write_or_print(content, output, console)
     raise typer.Exit(1 if failed else 0)
@@ -883,6 +892,13 @@ def check(
             help="Show policy violations and suggested approvals without failing.",
         ),
     ] = False,
+    format_aware: Annotated[
+        bool,
+        typer.Option(
+            "--format-aware",
+            help="Also analyze bounded logical spans across safe formatting breaks.",
+        ),
+    ] = False,
     output: Annotated[
         Path | None, typer.Option("--output", "-o", help="Write output to a file.")
     ] = None,
@@ -894,7 +910,7 @@ def check(
     except ValueError as exc:
         console.file.write(f"Error: {exc}\n")
         raise typer.Exit(2) from exc
-    report = scan_repository(path)
+    report = scan_repository(path, format_aware=format_aware)
     result = evaluate_policy(report, policy_data)
     if output_format == "text":
         content = check_text(result, dry_run=dry_run)
@@ -1004,6 +1020,13 @@ def diff(
         bool,
         typer.Option("--fail-on-drift", help="Exit 1 when baseline drift is detected."),
     ] = False,
+    format_aware: Annotated[
+        bool,
+        typer.Option(
+            "--format-aware",
+            help="Also analyze bounded logical spans across safe formatting breaks.",
+        ),
+    ] = False,
     output_format: Annotated[str, typer.Option("--format", help="Output format.")] = "text",
 ) -> None:
     """Compare a repository against an approved baseline."""
@@ -1013,7 +1036,7 @@ def diff(
     except ValueError as exc:
         console.file.write(f"Error: {exc}\n")
         raise typer.Exit(2) from exc
-    report, scan_report = diff_against_baseline(path, lock)
+    report, scan_report = diff_against_baseline(path, lock, format_aware=format_aware)
     if policy:
         try:
             policy_data = load_policy(policy)

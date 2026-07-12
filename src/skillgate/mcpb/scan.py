@@ -55,7 +55,7 @@ MACHO_MAGIC = {b"\xfe\xed\xfa\xce", b"\xce\xfa\xed\xfe", b"\xfe\xed\xfa\xcf", b"
 PREFIX_BYTES = 8
 
 
-def scan_mcpb(path: Path | str) -> McpbScanResult:
+def scan_mcpb(path: Path | str, *, format_aware: bool = False) -> McpbScanResult:
     limits = replace(DEFAULT_ARCHIVE_LIMITS, allow_nested_archives=True)
     with inspect_archive(path, limits=limits) as archive:
         member_by_path = {member.normalized_path: member for member in archive.members}
@@ -73,7 +73,7 @@ def scan_mcpb(path: Path | str) -> McpbScanResult:
         selected = _selected_source_paths(
             archive.extraction_root, archive.members, analysis, embedded
         )
-        generic_report = scan_paths(archive.extraction_root, selected)
+        generic_report = scan_paths(archive.extraction_root, selected, format_aware=format_aware)
         findings = [*generic_report.findings, *_mcpb_findings(archive.members, analysis, embedded)]
         capabilities = [
             *generic_report.capabilities,
