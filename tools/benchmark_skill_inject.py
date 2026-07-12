@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import shutil
+import sys
 import tempfile
 from collections import Counter
 from dataclasses import dataclass
@@ -47,6 +48,10 @@ CONTROL_CASES = (
     },
 )
 RULE_IDS = tuple(rule.rule_id for rule in DEFAULT_RULES)
+BENCHMARK_MINIMUMS = {
+    "cases_with_any_new_signal": 77,
+    "cases_with_high_or_critical_signal": 14,
+}
 
 
 @dataclass(frozen=True)
@@ -191,10 +196,10 @@ def case_result(source: Path, definition: Definition, temporary_root: Path) -> d
     source_skill = resolve_skill_directory(source / "data" / "skills", definition.skill)
     injected_root = temporary_root / "injected"
     temporary_root.mkdir(parents=True, exist_ok=True)
-    baseline = scan_repository(source_skill)
+    baseline = scan_repository(source_skill, format_aware=True)
     copied_scripts = inject_skill(source_skill, source / "data", injected_root, definition)
     injected_paths = [*discover_paths(injected_root), *copied_scripts]
-    injected = scan_paths(injected_root, injected_paths)
+    injected = scan_paths(injected_root, injected_paths, format_aware=True)
     findings = new_findings(baseline, injected)
     severities = sorted({finding.severity for finding in findings}, key=SEVERITY_ORDER.get)
     rule_counts = Counter(finding.rule_id for finding in findings)
@@ -259,6 +264,7 @@ def run_injection_benchmark(source: Path) -> dict[str, Any]:
             "docker_or_agent_runtime": False,
             "measurement": "new static SkillGate findings versus the clean skill copy",
             "injection_accuracy_metrics": "not computed without authored negative controls",
+            "format_aware": True,
         },
         "summary": {
             "cases_evaluated": len(results),
@@ -336,7 +342,7 @@ def run_controls() -> dict[str, Any]:
             case_root = root / case["name"]
             case_root.mkdir()
             (case_root / "SKILL.md").write_text(case["text"], encoding="utf-8")
-            report = scan_repository(case_root)
+            report = scan_repository(case_root, format_aware=True)
             results.append(
                 {
                     "name": case["name"],
@@ -447,12 +453,33 @@ def build_payload(source: Path) -> dict[str, Any]:
     return payload
 
 
+def benchmark_gate_failures(payload: dict[str, Any]) -> list[str]:
+    """Return regressions only when the full 84-definition corpus is supplied."""
+
+    summary = payload["summary"]
+    if summary["cases_evaluated"] < 84:
+        return []
+    failures = [
+        f"{key}={summary[key]} is below minimum {minimum}"
+        for key, minimum in BENCHMARK_MINIMUMS.items()
+        if summary[key] < minimum
+    ]
+    if summary["rule_case_hits"].get("SG004", 0) < 1:
+        failures.append("SG004 case coverage is below minimum 1")
+    return failures
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Run a local-only static differential benchmark against Skill-Inject."
     )
     parser.add_argument("source", type=Path, help="Path to a local Skill-Inject checkout.")
     parser.add_argument("--format", choices=["markdown", "json", "text"], default="markdown")
+    parser.add_argument(
+        "--enforce-gates",
+        action="store_true",
+        help="Exit 1 if the full corpus falls below the committed coverage minimums.",
+    )
     parser.add_argument("--output", type=Path, help="Write the report to this local path.")
     args = parser.parse_args()
     try:
@@ -469,6 +496,12 @@ def main() -> int:
         args.output.write_text(content, encoding="utf-8")
     else:
         print(content, end="")
+    failures = benchmark_gate_failures(payload) if args.enforce_gates else []
+    if failures:
+        print("Benchmark gates failed:", file=sys.stderr)
+        for failure in failures:
+            print(f"- {failure}", file=sys.stderr)
+        return 1
     return 0
 
 

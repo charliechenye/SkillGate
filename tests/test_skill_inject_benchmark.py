@@ -7,6 +7,7 @@ import pytest
 
 from tools.benchmark_skill_inject import (
     BenchmarkInputError,
+    benchmark_gate_failures,
     build_payload,
     control_metrics,
     render_markdown,
@@ -86,6 +87,45 @@ def test_control_metrics_count_unexpected_rules_as_false_positives() -> None:
     assert metrics["precision"] == 0.5
     assert metrics["recall"] == 1
     assert metrics["f1"] == pytest.approx(2 / 3)
+
+
+def test_benchmark_gates_enforce_only_the_full_corpus_minimums() -> None:
+    assert (
+        benchmark_gate_failures(
+            {
+                "summary": {
+                    "cases_evaluated": 1,
+                    "cases_with_any_new_signal": 0,
+                    "cases_with_high_or_critical_signal": 0,
+                    "rule_case_hits": {},
+                }
+            }
+        )
+        == []
+    )
+    assert (
+        benchmark_gate_failures(
+            {
+                "summary": {
+                    "cases_evaluated": 84,
+                    "cases_with_any_new_signal": 77,
+                    "cases_with_high_or_critical_signal": 14,
+                    "rule_case_hits": {"SG004": 1},
+                }
+            }
+        )
+        == []
+    )
+    assert benchmark_gate_failures(
+        {
+            "summary": {
+                "cases_evaluated": 84,
+                "cases_with_any_new_signal": 76,
+                "cases_with_high_or_critical_signal": 14,
+                "rule_case_hits": {"SG004": 1},
+            }
+        }
+    ) == ["cases_with_any_new_signal=76 is below minimum 77"]
 
 
 def test_benchmark_rejects_non_skill_inject_source(tmp_path: Path) -> None:
