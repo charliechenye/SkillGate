@@ -13,6 +13,7 @@ class FileContent:
     path: str
     file_type: str
     text: str
+    format_aware: bool = False
 
 
 @dataclass

@@ -47,11 +47,14 @@ def unique_findings(findings: list[Finding]) -> list[Finding]:
     return sorted(by_id.values(), key=finding_key)
 
 
-def load_file_content(root: Path, path: Path, file_type: str) -> FileContent:
+def load_file_content(
+    root: Path, path: Path, file_type: str, *, format_aware: bool = False
+) -> FileContent:
     return FileContent(
         path=path.resolve().relative_to(root.resolve()).as_posix(),
         file_type=file_type,
         text=path.read_text(encoding="utf-8", errors="replace"),
+        format_aware=format_aware,
     )
 
 
@@ -69,7 +72,7 @@ def findings_summary(
     }
 
 
-def scan_paths(root: Path, paths: Iterable[Path]) -> ScanReport:
+def scan_paths(root: Path, paths: Iterable[Path], *, format_aware: bool = False) -> ScanReport:
     root = root.resolve()
     if not root.exists() or not root.is_dir():
         raise ValueError("scan root must be an existing directory")
@@ -94,7 +97,9 @@ def scan_paths(root: Path, paths: Iterable[Path]) -> ScanReport:
     metadata_by_path = {item.path: item for item in scanned_files}
     for path in paths:
         rel = path.resolve().relative_to(root).as_posix()
-        file = load_file_content(root, path, metadata_by_path[rel].file_type)
+        file = load_file_content(
+            root, path, metadata_by_path[rel].file_type, format_aware=format_aware
+        )
         for rule in DEFAULT_RULES:
             result = rule.analyze(file)
             findings.extend(result.findings)
@@ -113,8 +118,8 @@ def scan_paths(root: Path, paths: Iterable[Path]) -> ScanReport:
     )
 
 
-def scan_repository(root: Path) -> ScanReport:
-    return scan_paths(root, discover_paths(root))
+def scan_repository(root: Path, *, format_aware: bool = False) -> ScanReport:
+    return scan_paths(root, discover_paths(root), format_aware=format_aware)
 
 
 def filter_report_by_severity(report: ScanReport, threshold: str | None) -> ScanReport:

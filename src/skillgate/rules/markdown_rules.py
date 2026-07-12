@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 
+from skillgate.logical import iter_logical_spans
 from skillgate.models import Severity
 from skillgate.rules.base import FileContent, RuleResult, make_capability, make_finding
 
@@ -43,6 +44,30 @@ class PromptOverrideRule:
                     )
                 )
                 result.capabilities.append(make_capability("prompt_override", file.path, number))
+        if file.format_aware:
+            for span in iter_logical_spans(file.text, file.file_type):
+                if not PROMPT_OVERRIDE_RE.search(span.text):
+                    continue
+                result.findings.append(
+                    make_finding(
+                        rule_id=self.rule_id,
+                        title=self.title,
+                        description=(
+                            "The file contains narrow prompt override or concealment language."
+                        ),
+                        severity="high",
+                        capability="prompt_override",
+                        file_path=file.path,
+                        line_number=span.start_line,
+                        evidence=span.evidence,
+                        remediation=(
+                            "Remove instruction-conflict language unless explicitly reviewed."
+                        ),
+                    )
+                )
+                result.capabilities.append(
+                    make_capability("prompt_override", file.path, span.start_line)
+                )
         return result
 
 
@@ -78,4 +103,32 @@ class SuspiciousUnicodeRule:
                 result.capabilities.append(
                     make_capability("obfuscation", file.path, number, resource=reason)
                 )
+        if file.format_aware:
+            for span in iter_logical_spans(file.text, file.file_type):
+                reason = None
+                if BIDI_OR_ZERO_WIDTH_RE.search(span.text):
+                    reason = "Bidirectional or zero-width Unicode control character"
+                elif BASE64_BLOB_RE.search(span.text):
+                    reason = "Excessive Base64-like blob"
+                elif ENCODED_EXEC_RE.search(span.text):
+                    reason = "Encoded command execution pattern"
+                if reason:
+                    result.findings.append(
+                        make_finding(
+                            rule_id=self.rule_id,
+                            title=self.title,
+                            description=(
+                                "The file contains suspicious Unicode or obvious obfuscation."
+                            ),
+                            severity="medium",
+                            capability="obfuscation",
+                            file_path=file.path,
+                            line_number=span.start_line,
+                            evidence=reason,
+                            remediation="Remove hidden characters or encoded command execution.",
+                        )
+                    )
+                    result.capabilities.append(
+                        make_capability("obfuscation", file.path, span.start_line, resource=reason)
+                    )
         return result
