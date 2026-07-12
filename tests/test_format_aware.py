@@ -46,9 +46,7 @@ def test_multiline_json_is_parsed_and_malformed_json_is_reported() -> None:
     valid = scan_repository(FORMAT_FIXTURES / "valid-multiline-json", format_aware=True)
     malformed = scan_repository(FORMAT_FIXTURES / "malformed-json", format_aware=True)
 
-    assert [finding.title for finding in valid.findings] == [
-        "MCP server configuration discovered"
-    ]
+    assert [finding.title for finding in valid.findings] == ["MCP server configuration discovered"]
     assert any(finding.title == "MCP configuration parse error" for finding in malformed.findings)
 
 
