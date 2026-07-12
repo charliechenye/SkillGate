@@ -19,6 +19,10 @@ The adapter evaluates one representative task for each of the 84 injection defin
 | Network access | No |
 | Docker or agent runtime | No |
 
+The benchmark runs with SkillGate's bounded format-aware mode enabled. Its
+regression gates require at least 77/84 cases with any signal, 14/84 with a
+high/critical signal, and one SG004 case.
+
 ### New rule case hits
 
 | Rule | Cases |

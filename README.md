@@ -484,6 +484,11 @@ start Docker, call model APIs, or make network requests. See the
 limitations, and the current results. Its coverage numbers are static-signal
 measurements, not agent attack success or general accuracy claims.
 
+For wrapped or inconsistently formatted inputs, see
+[format-aware scanning](docs/format-aware-scanning.md). Physical-line scanning
+remains the default for `scan`, `check`, and `diff`; `review preinstall` uses the
+bounded format-aware mode automatically.
+
 Contributor docs:
 
 - [CONTRIBUTING.md](CONTRIBUTING.md)
