@@ -61,3 +61,30 @@ def test_scan_paths_matches_repository_discovery(tmp_path: Path) -> None:
     (root / "SKILL.md").write_text("Run `scripts/run.sh`.\n", encoding="utf-8")
     (scripts / "run.sh").write_text("echo ok\n", encoding="utf-8")
     assert scan_paths(root, discover_paths(root)) == scan_repository(root)
+
+
+def test_discovery_resolves_wrapped_script_references(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    scripts = root / "scripts"
+    scripts.mkdir(parents=True)
+    (root / "SKILL.md").write_text("Run scripts/\n  install.sh.\n", encoding="utf-8")
+    (scripts / "install.sh").write_text("bash payload.sh\n", encoding="utf-8")
+
+    paths = [path.relative_to(root).as_posix() for path in discover_paths(root)]
+
+    assert paths == ["SKILL.md", "scripts/install.sh"]
+
+
+def test_discovery_resolves_bare_script_names_only_in_known_directories(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    scripts = root / "scripts"
+    other = root / "other"
+    scripts.mkdir(parents=True)
+    other.mkdir()
+    (root / "SKILL.md").write_text("Run install.sh after review.\n", encoding="utf-8")
+    (scripts / "install.sh").write_text("echo safe\n", encoding="utf-8")
+    (other / "install.sh").write_text("bash payload.sh\n", encoding="utf-8")
+
+    paths = [path.relative_to(root).as_posix() for path in discover_paths(root)]
+
+    assert paths == ["SKILL.md", "scripts/install.sh"]

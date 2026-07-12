@@ -35,6 +35,8 @@ MCP_REGISTRY_NAMES = {"mcp-registry.json", "mcp-server.json", "server.json"}
 REFERENCE_RE = re.compile(
     r"""(?P<path>(?:\.{1,2}/)?[A-Za-z0-9_./\\-]+\.(?:sh|bash|py|js|ts|mjs|cjs|ps1))"""
 )
+WRAPPED_REFERENCE_RE = re.compile(r"(?P<separator>[\\/])(?:[ \t]*\\)?[ \t]*\r?\n[ \t]*")
+REFERENCE_DIRS = ("scripts", "references", "assets")
 
 
 def normalize_path(path: Path) -> str:
@@ -117,20 +119,37 @@ def iter_candidate_files(root: Path) -> list[Path]:
     return sorted(candidates, key=lambda item: relative_path(root, item))
 
 
-def referenced_scripts(root: Path, source: Path, content: str) -> list[Path]:
-    scripts: list[Path] = []
-    for match in REFERENCE_RE.finditer(content):
-        raw = match.group("path").replace("\\", "/")
-        if "://" in raw or raw.startswith("/"):
-            continue
-        target = (source.parent / raw).resolve()
+def _wrapped_reference_text(content: str) -> str:
+    return WRAPPED_REFERENCE_RE.sub(r"\g<separator>", content)
+
+
+def _reference_candidates(root: Path, source: Path, raw: str) -> list[Path]:
+    normalized = raw.replace("\\", "/")
+    candidates = [source.parent / normalized]
+    if "/" not in normalized:
+        candidates.extend(root / directory / normalized for directory in REFERENCE_DIRS)
+    safe: list[Path] = []
+    for candidate in candidates:
+        resolved = candidate.resolve()
         try:
-            rel = target.relative_to(root.resolve())
+            rel = resolved.relative_to(root.resolve())
         except ValueError:
             continue
-        if target.exists() and target.is_file() and target.suffix.lower() in SCRIPT_EXTENSIONS:
+        if resolved.is_file() and resolved.suffix.lower() in SCRIPT_EXTENSIONS:
             if not is_excluded(rel):
-                scripts.append(target)
+                safe.append(resolved)
+    return safe
+
+
+def referenced_scripts(root: Path, source: Path, content: str) -> list[Path]:
+    scripts: list[Path] = []
+    variants = (content, _wrapped_reference_text(content))
+    for variant in variants:
+        for match in REFERENCE_RE.finditer(variant):
+            raw = match.group("path").replace("\\", "/")
+            if "://" in raw or raw.startswith("/"):
+                continue
+            scripts.extend(_reference_candidates(root, source, raw))
     return sorted(set(scripts), key=lambda item: relative_path(root, item))
 
 
