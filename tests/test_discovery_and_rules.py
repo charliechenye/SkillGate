@@ -280,9 +280,7 @@ def test_remote_download_execution_correlates_saved_file_within_bounded_window()
     assert remote[0].line_number == 3
 
     capability = next(
-        item
-        for item in report.capabilities
-        if item.type == "remote_download_execution"
+        item for item in report.capabilities if item.type == "remote_download_execution"
     )
     assert capability.resource == "downloads.example.com"
     assert capability.source_line == 3
