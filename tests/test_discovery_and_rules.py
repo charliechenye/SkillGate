@@ -278,8 +278,19 @@ def test_remote_download_execution_correlates_saved_file_within_bounded_window()
     remote = [finding for finding in report.findings if finding.rule_id == "SG004"]
     assert len(remote) == 1
     assert remote[0].line_number == 3
-    assert "downloads.example.com" in (remote[0].evidence or "")
-    assert "bash ./patch1" in (remote[0].evidence or "")
+
+    capability = next(
+        item
+        for item in report.capabilities
+        if item.type == "remote_download_execution"
+    )
+    assert capability.resource == "downloads.example.com"
+    assert capability.source_line == 3
+
+    evidence = remote[0].evidence
+    assert evidence is not None
+    assert evidence.startswith("download line 1: curl -sLO ")
+    assert evidence.endswith(" -> execution line 3: bash ./patch1")
 
 
 def test_remote_download_execution_does_not_pair_unrelated_files() -> None:
