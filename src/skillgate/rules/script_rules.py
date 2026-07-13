@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import re
+from pathlib import PurePosixPath
 from urllib.parse import urlparse
 
+from skillgate.logical import LogicalSpan, iter_logical_spans
 from skillgate.models import Severity
 from skillgate.rules.base import FileContent, RuleResult, make_capability, make_finding
 
@@ -15,7 +17,8 @@ DESTRUCTIVE_RE = re.compile(
     r"Remove-Item\s+.*-Recurse|sudo\s+rm\s+-[a-z]*r[a-z]*f|rm\s+-r\b|"
     r"shutil\.rmtree|Path\s*\([^)]*\)\.(?:unlink|rmdir)\s*\(|"
     r"fs\.(?:rm|rmSync|unlink|unlinkSync|rmdir|rmdirSync)\s*\(|"
-    r"\bformat\b|\bmkfs\b|drop\s+database|truncate\s+table|git\s+clean\s+-fdx)"
+    r"\bformat\s+(?:/[a-z]+\s+)*[a-z]:|\bmkfs(?:\.[a-z0-9]+)?\s+|"
+    r"drop\s+database|truncate\s+table|git\s+clean\s+-fdx)"
 )
 NETWORK_RE = re.compile(
     r"(?i)(?:\b(?:curl|wget|Invoke-WebRequest|Invoke-RestMethod|Start-BitsTransfer|"
@@ -28,6 +31,10 @@ REMOTE_EXEC_RE = re.compile(
     r"(?i)(curl\b.*\|\s*(?:bash|sh|zsh)|wget\b.*\|\s*(?:bash|sh|zsh)|"
     r"\biex\s*\(\s*iwr\b|python\s+-c\s+['\"]?\$?\(?(?:curl|wget)\b)"
 )
+DOWNLOAD_COMMAND_RE = re.compile(r"(?i)\b(?P<command>curl|wget)\b(?P<args>.*)")
+DOWNLOAD_OUTPUT_RE = re.compile(r"(?i)(?:^|\s)(?:--output|-o)\s+(?P<target>[^\s;&|]+)")
+REMOTE_NAME_FLAG_RE = re.compile(r"(?i)(?:^|\s)(?:-[^\s;&|]*O[^\s;&|]*|--remote-name)(?:\s|$)")
+SHELL_FILE_RE = re.compile(r"(?i)\b(?:bash|sh|zsh)\s+(?P<target>[^\s;&|]+)")
 SECRET_RE = re.compile(
     r"(?i)(AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|GITHUB_TOKEN|OPENAI_API_KEY|"
     r"ANTHROPIC_API_KEY|AZURE_CLIENT_SECRET|GOOGLE_APPLICATION_CREDENTIALS|"
@@ -74,6 +81,19 @@ def line_matches(text: str, pattern: re.Pattern[str]) -> list[tuple[int, str, re
         match = pattern.search(line)
         if match:
             matches.append((number, line, match))
+    return matches
+
+
+def logical_matches(
+    file: FileContent, pattern: re.Pattern[str]
+) -> list[tuple[LogicalSpan, re.Match[str]]]:
+    if not file.format_aware:
+        return []
+    matches = []
+    for span in iter_logical_spans(file.text, file.file_type):
+        match = pattern.search(span.text)
+        if match:
+            matches.append((span, match))
     return matches
 
 
@@ -126,6 +146,46 @@ def extract_write_target(line: str, fallback_match: re.Match[str]) -> str | None
     return next((group for group in fallback_match.groups() if group), None)
 
 
+def normalize_file_target(value: str) -> str:
+    return PurePosixPath(value.strip("'\"` ").replace("\\", "/")).name
+
+
+def downloaded_file_target(line: str) -> str | None:
+    command_match = DOWNLOAD_COMMAND_RE.search(line)
+    if not command_match:
+        return None
+    command = command_match.group("command").lower()
+    args = command_match.group("args")
+    output_match = DOWNLOAD_OUTPUT_RE.search(args)
+    if output_match:
+        return normalize_file_target(output_match.group("target"))
+    if command == "curl" and not REMOTE_NAME_FLAG_RE.search(args):
+        return None
+    url_match = URL_RE.search(args)
+    if not url_match:
+        return None
+    path = urlparse(url_match.group(0).strip("'\"`,)")).path.rstrip("/")
+    target = PurePosixPath(path).name
+    return target or None
+
+
+def multiline_remote_execution_matches(
+    text: str, window: int = 3
+) -> list[tuple[int, str, int, str]]:
+    lines = text.splitlines()
+    matches: list[tuple[int, str, int, str]] = []
+    for index, line in enumerate(lines):
+        downloaded = downloaded_file_target(line)
+        if not downloaded:
+            continue
+        for execution_index in range(index + 1, min(index + window + 1, len(lines))):
+            execution = SHELL_FILE_RE.search(lines[execution_index])
+            if execution and normalize_file_target(execution.group("target")) == downloaded:
+                matches.append((index + 1, line, execution_index + 1, lines[execution_index]))
+                break
+    return matches
+
+
 class ShellExecutionRule:
     rule_id = "SG001"
     title = "Shell execution detected"
@@ -152,6 +212,30 @@ class ShellExecutionRule:
             )
             result.capabilities.append(
                 make_capability("shell_execution", file.path, number, command=line.strip())
+            )
+        for span, _match in logical_matches(file, SHELL_RE):
+            severity: Severity = (
+                "high"
+                if DESTRUCTIVE_RE.search(span.text) or REMOTE_EXEC_RE.search(span.text)
+                else "medium"
+            )
+            result.findings.append(
+                make_finding(
+                    rule_id=self.rule_id,
+                    title=self.title,
+                    description="The file appears to invoke a shell or process execution API.",
+                    severity=severity,
+                    capability="shell_execution",
+                    file_path=file.path,
+                    line_number=span.start_line,
+                    evidence=span.evidence,
+                    remediation="Review whether shell execution is necessary and policy-approved.",
+                )
+            )
+            result.capabilities.append(
+                make_capability(
+                    "shell_execution", file.path, span.start_line, command=span.evidence.strip()
+                )
             )
         return result
 
@@ -182,6 +266,27 @@ class DestructiveCommandRule:
             result.capabilities.append(
                 make_capability("destructive_action", file.path, number, command=line.strip())
             )
+        for span, _match in logical_matches(file, DESTRUCTIVE_RE):
+            result.findings.append(
+                make_finding(
+                    rule_id=self.rule_id,
+                    title=self.title,
+                    description=(
+                        "The file contains a command pattern that may delete or destroy data."
+                    ),
+                    severity="high",
+                    capability="destructive_action",
+                    file_path=file.path,
+                    line_number=span.start_line,
+                    evidence=span.evidence,
+                    remediation="Remove the destructive action or require explicit review.",
+                )
+            )
+            result.capabilities.append(
+                make_capability(
+                    "destructive_action", file.path, span.start_line, command=span.evidence.strip()
+                )
+            )
         return result
 
 
@@ -211,6 +316,31 @@ class NetworkEgressRule:
             result.capabilities.append(
                 make_capability(
                     "network_egress", file.path, number, resource=host, command=line.strip()
+                )
+            )
+        for span, _match in logical_matches(file, NETWORK_RE):
+            host = extract_host(span.text)
+            evidence = f"Host: {host}" if host else span.evidence
+            result.findings.append(
+                make_finding(
+                    rule_id=self.rule_id,
+                    title=self.title,
+                    description="The file appears to access a network resource.",
+                    severity="medium",
+                    capability="network_egress",
+                    file_path=file.path,
+                    line_number=span.start_line,
+                    evidence=evidence,
+                    remediation="Allowlist the host or remove the network access.",
+                )
+            )
+            result.capabilities.append(
+                make_capability(
+                    "network_egress",
+                    file.path,
+                    span.start_line,
+                    resource=host,
+                    command=span.evidence.strip(),
                 )
             )
         return result
@@ -247,6 +377,72 @@ class RemoteDownloadExecutionRule:
                     command=line.strip(),
                 )
             )
+        for (
+            download_line_number,
+            download_line,
+            execution_line_number,
+            execution_line,
+        ) in multiline_remote_execution_matches(file.text):
+            host = extract_host(download_line)
+            evidence = (
+                f"download line {download_line_number}: {download_line.strip()} -> "
+                f"execution line {execution_line_number}: {execution_line.strip()}"
+            )
+            result.findings.append(
+                make_finding(
+                    rule_id=self.rule_id,
+                    title=self.title,
+                    description="The file downloads remote content and executes it.",
+                    severity="high",
+                    capability="remote_download_execution",
+                    file_path=file.path,
+                    line_number=execution_line_number,
+                    evidence=evidence,
+                    remediation="Pin and review downloaded artifacts before execution.",
+                )
+            )
+            result.capabilities.append(
+                make_capability(
+                    "remote_download_execution",
+                    file.path,
+                    execution_line_number,
+                    resource=host,
+                    command=evidence,
+                )
+            )
+        if file.format_aware:
+            for span in iter_logical_spans(file.text, file.file_type):
+                if span.reason != "script-continuation":
+                    continue
+                downloaded = downloaded_file_target(span.text)
+                execution = SHELL_FILE_RE.search(span.text)
+                if not downloaded or not execution:
+                    continue
+                if normalize_file_target(execution.group("target")) != downloaded:
+                    continue
+                host = extract_host(span.text)
+                result.findings.append(
+                    make_finding(
+                        rule_id=self.rule_id,
+                        title=self.title,
+                        description="The file downloads remote content and executes it.",
+                        severity="high",
+                        capability="remote_download_execution",
+                        file_path=file.path,
+                        line_number=span.start_line,
+                        evidence=span.evidence,
+                        remediation="Pin and review downloaded artifacts before execution.",
+                    )
+                )
+                result.capabilities.append(
+                    make_capability(
+                        "remote_download_execution",
+                        file.path,
+                        span.start_line,
+                        resource=host,
+                        command=span.evidence.strip(),
+                    )
+                )
         return result
 
 
@@ -280,6 +476,29 @@ class SecretAccessRule:
             result.capabilities.append(
                 make_capability("secret_access", file.path, number, resource=secret_name)
             )
+        for span, match in logical_matches(file, SECRET_RE):
+            secret_name = match.group(1).strip("'\"/ ")
+            evidence = (
+                f"Environment variable: {secret_name}" if secret_name.isupper() else secret_name
+            )
+            result.findings.append(
+                make_finding(
+                    rule_id=self.rule_id,
+                    title=self.title,
+                    description=(
+                        "The file references a likely secret, credential, or secret-bearing path."
+                    ),
+                    severity="high",
+                    capability="secret_access",
+                    file_path=file.path,
+                    line_number=span.start_line,
+                    evidence=evidence,
+                    remediation="Avoid broad secret access or require explicit review.",
+                )
+            )
+            result.capabilities.append(
+                make_capability("secret_access", file.path, span.start_line, resource=secret_name)
+            )
         return result
 
 
@@ -308,6 +527,30 @@ class FilesystemWriteRule:
             result.capabilities.append(
                 make_capability(
                     "filesystem_write", file.path, number, resource=target, command=line.strip()
+                )
+            )
+        for span, match in logical_matches(file, WRITE_RE):
+            target = extract_write_target(span.text, match)
+            result.findings.append(
+                make_finding(
+                    rule_id=self.rule_id,
+                    title=self.title,
+                    description="The file appears to write to the filesystem.",
+                    severity="medium",
+                    capability="filesystem_write",
+                    file_path=file.path,
+                    line_number=span.start_line,
+                    evidence=f"Target: {target}" if target else span.evidence,
+                    remediation="Constrain writes to policy-approved paths.",
+                )
+            )
+            result.capabilities.append(
+                make_capability(
+                    "filesystem_write",
+                    file.path,
+                    span.start_line,
+                    resource=target,
+                    command=span.evidence.strip(),
                 )
             )
         return result

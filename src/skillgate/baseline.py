@@ -18,8 +18,8 @@ from skillgate.rules.base import make_finding
 from skillgate.scan import canonical_capability, scan_repository
 
 
-def create_baseline(root: Path) -> BaselineLock:
-    report = scan_repository(root)
+def create_baseline(root: Path, *, format_aware: bool = False) -> BaselineLock:
+    report = scan_repository(root, format_aware=format_aware)
     return BaselineLock(
         schema_version=SCHEMA_VERSION,
         created_at=datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
@@ -89,8 +89,10 @@ def mcp_change_findings(before: list[Capability], after: list[Capability]) -> li
     return findings
 
 
-def diff_against_baseline(root: Path, baseline: BaselineLock) -> tuple[DiffReport, object]:
-    report = scan_repository(root)
+def diff_against_baseline(
+    root: Path, baseline: BaselineLock, *, format_aware: bool = False
+) -> tuple[DiffReport, object]:
+    report = scan_repository(root, format_aware=format_aware)
     baseline_files = {item.path: item for item in baseline.files}
     current_files = {item.path: item for item in report.scanned_files}
     added_files = sorted(set(current_files) - set(baseline_files))
