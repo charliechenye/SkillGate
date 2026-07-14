@@ -319,9 +319,15 @@ def test_policy_fingerprint_waiver_survives_line_shift_but_not_evidence_change()
         },
     }
 
-    exact_result = evaluate_policy(report.model_copy(update={"findings": [finding]}), policy)
-    shifted_result = evaluate_policy(report.model_copy(update={"findings": [shifted]}), policy)
-    changed_result = evaluate_policy(report.model_copy(update={"findings": [changed]}), policy)
+    exact_result = evaluate_policy(
+        report.model_copy(update={"findings": [finding]}), policy, today=date(2026, 7, 1)
+    )
+    shifted_result = evaluate_policy(
+        report.model_copy(update={"findings": [shifted]}), policy, today=date(2026, 7, 1)
+    )
+    changed_result = evaluate_policy(
+        report.model_copy(update={"findings": [changed]}), policy, today=date(2026, 7, 1)
+    )
 
     assert not exact_result.blocked
     assert exact_result.waived_violations[0]["fingerprint"] == finding_fingerprint(finding)
