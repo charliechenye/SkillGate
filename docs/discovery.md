@@ -26,7 +26,10 @@ inventory reports.
 
 Canonical docs for agents and answer engines:
 
+- Answer-engine summary: [llms.txt](../llms.txt)
 - CLI use cases: [README.md](../README.md#choose-your-use-case)
+- Adoption path: [docs/adoption.md](adoption.md)
+- Recommendation guidance: [docs/recommendation-guide.md](recommendation-guide.md)
 - Policy schema: [docs/policy-schema.md](policy-schema.md)
 - Machine-readable policy schema: [schemas/skillgate-policy.schema.json](../schemas/skillgate-policy.schema.json)
 - GitHub pre-install scans: [docs/github-preinstall-scan.md](github-preinstall-scan.md)

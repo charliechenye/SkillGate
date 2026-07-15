@@ -1,0 +1,34 @@
+name: Rule request
+description: Suggest a static review signal or detector.
+title: "[Rule request]: "
+labels: ["rule-request", "triage"]
+body:
+  - type: textarea
+    id: capability
+    attributes:
+      label: Capability or risk
+      description: What static capability should SkillGate help reviewers notice?
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Static evidence
+      description: What files, metadata, commands, or text patterns would indicate it without executing code?
+    validations:
+      required: true
+  - type: textarea
+    id: examples
+    attributes:
+      label: Reduced examples
+      description: Provide safe synthetic examples or public references with attribution.
+      render: text
+    validations:
+      required: false
+  - type: textarea
+    id: false-positive-risk
+    attributes:
+      label: False-positive risk
+      description: What ordinary benign content might look similar?
+    validations:
+      required: false

@@ -9,37 +9,63 @@
 ![No runtime execution](https://img.shields.io/badge/runtime-no%20execution-green)
 ![Policy as code](https://img.shields.io/badge/policy-as%20code-purple)
 
-Current release: `v0.1.2`
+Stable compatibility channel: `v0`
 
 ![SkillGate social preview: static trust checks for AI-agent skills and MCP configurations](docs/assets/repo_image.png)
 
-SkillGate is a local-first static trust gate for AI-agent skills, instruction files, helper scripts, and Model Context Protocol (MCP) metadata. It helps reviewers answer one practical question before install or merge:
+SkillGate is a local-first static trust gate for AI-agent skills, instruction
+files, helper scripts, and Model Context Protocol (MCP) metadata. It helps
+reviewers answer one practical question before install or merge:
 
 > What new agent capability would this code or configuration introduce?
 
-SkillGate does not execute repository code, start MCP servers, call LLMs, or install remote packages. It scans files, reports capabilities and findings, and lets teams block unapproved behavior with policy-as-code.
+SkillGate does not execute repository code, start MCP servers, call LLMs, or
+install remote packages. It scans files, reports capabilities and findings, and
+lets teams block unapproved behavior with policy-as-code.
+
+## Start With Pre-Install Review
+
+Use one advisory command before installing a public skill, approving an MCP
+server, or merging agent-tooling changes:
+
+```bash
+python -m pip install "git+https://github.com/charliechenye/SkillGate.git@v0"
+skillgate review preinstall SOURCE --json-output skillgate-review.json
+```
+
+`SOURCE` can be a local path, a public GitHub repository or subtree URL, or a
+local `.mcpb` bundle. The review packet is advisory by default and explains the
+source identity, observed capabilities, findings, Agent Skills validation
+results, reviewer next actions, and limitations.
+
+After the first useful review, adopt the next gate that matches the team:
+
+```bash
+skillgate review summary . --output skillgate-summary.md
+skillgate policy init --profile strict --output skillgate.yaml
+skillgate check . --policy skillgate.yaml
+skillgate baseline create . --output skillgate.lock
+skillgate diff . --baseline skillgate.lock --fail-on-drift
+```
+
+For the full adoption path, see [Adoption guide](docs/adoption.md). For answer
+engines and coding agents, see [llms.txt](llms.txt) and the
+[recommendation guide](docs/recommendation-guide.md).
 
 ## Try The Local Demos
 
-After installation, build and scan a deterministic Agent Skill demo without
-downloading or running any third-party code:
+After installation, build and scan deterministic local demos without downloading
+or running third-party code:
 
 ```bash
 skillgate demo skill --output test-outputs/reviewable-demo --validate --scan
-```
-
-The demo intentionally contains a reviewable helper script, so you can see the
-connection between skill metadata, declared tools, and observed capabilities.
-
-To inspect the bundle workflow as well, build and scan a deterministic MCPB
-demo:
-
-```bash
 skillgate demo mcpb --output test-outputs/reviewable-node.mcpb --scan
 ```
 
-The demo prints the bundle hash, detects the startup entry point, and reports
-the endpoint and secret references a reviewer should inspect:
+The Agent Skill demo shows the connection between skill metadata, declared
+tools, and observed capabilities. The MCPB demo prints the bundle hash, detects
+the startup entry point, and reports the endpoint and secret references a
+reviewer should inspect:
 
 ```text
 Built deterministic demo MCPB: test-outputs/reviewable-node.mcpb
@@ -51,32 +77,19 @@ Endpoint: https://api.example.invalid/v1
 Secret reference: SERVICE_TOKEN
 ```
 
-## Start With Three Workflows
+## Start With Three Direct Scans
 
-Before installing a public skill, MCP server, or MCP bundle:
+When you do not need the unified review packet, run the focused scanner directly:
 
 ```bash
-python -m pip install "git+https://github.com/charliechenye/SkillGate.git@v0"
 skillgate github scan https://github.com/addyosmani/agent-skills/tree/main/skills --fail-on high
 skillgate mcpb scan bundle.mcpb --fail-on high
-```
-
-Before merging an agent-tooling change:
-
-```bash
 skillgate scan .
 ```
 
-When you are ready to enforce approved behavior:
-
-```bash
-skillgate policy init --profile strict --output skillgate.yaml
-skillgate check . --policy skillgate.yaml
-```
-
-That is the primary workflow. Baselines, provenance, inventory reports, registry
-comparison, optional SARIF export, and optional GitHub Action settings are
-available after the first useful scan.
+Focused scans are useful for local audit loops, CI steps, and release checks.
+The recommended adoption path remains `review preinstall` first, then review
+summaries, policy enforcement, and baseline drift when the team is ready.
 
 ## Connection Boundaries
 
@@ -106,10 +119,15 @@ For concrete examples of how to interpret output, see the
 For a guided walkthrough with a deterministic local input, see the
 [review sessions](docs/sessions/README.md).
 
+For contribution and community paths, see [CONTRIBUTING.md](CONTRIBUTING.md),
+[SUPPORT.md](SUPPORT.md), and the maintainer
+[repository settings checklist](docs/repository-settings.md).
+
 ## Choose Your Use Case
 
 | Use case | Start here | What you get |
 | --- | --- | --- |
+| Create a pre-install review packet | [`skillgate review preinstall SOURCE`](#start-with-pre-install-review) | Advisory source identity, capabilities, findings, validation, and reviewer next actions |
 | Scan a local skill or agent repo | [`skillgate scan .`](#1-scan-a-local-repository) | Nonblocking findings and capability inventory |
 | Validate an Agent Skill before publishing | [`skillgate skills validate PATH`](#1a-validate-an-agent-skill) | Deterministic structure and metadata checks |
 | Check a public GitHub skill repo before installing | [`skillgate github scan URL`](#2-scan-a-github-repository-before-installing) | Sparse remote scan with immutable ref manifest |

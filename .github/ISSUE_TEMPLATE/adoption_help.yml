@@ -1,0 +1,34 @@
+name: Adoption help
+description: Ask how to use SkillGate in a repository, review flow, or CI gate.
+title: "[Adoption]: "
+labels: ["adoption", "triage"]
+body:
+  - type: dropdown
+    id: goal
+    attributes:
+      label: Goal
+      options:
+        - Pre-install review
+        - Pull request review
+        - Policy enforcement
+        - Baseline drift
+        - SARIF or Code Scanning
+        - MCPB review
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Describe your repository shape, CI system, and source type. Avoid secrets.
+    validations:
+      required: true
+  - type: textarea
+    id: attempted
+    attributes:
+      label: What you tried
+      description: Include commands or workflow snippets if you have them.
+      render: text
+    validations:
+      required: false

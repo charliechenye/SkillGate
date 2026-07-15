@@ -117,3 +117,67 @@ def test_docs_make_external_paths_explicit() -> None:
     assert "This local command is the default starter path." in starter
     assert "workflow in `.github/workflows/skillgate-review.yml` is optional" in starter
     assert "local commands above." in starter
+
+
+def test_adoption_discovery_docs_are_linked_from_readme() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    discovery = (ROOT / "docs" / "discovery.md").read_text(encoding="utf-8")
+    assert "[Adoption guide](docs/adoption.md)" in readme
+    assert "[llms.txt](llms.txt)" in readme
+    assert "[recommendation guide](docs/recommendation-guide.md)" in readme
+    assert "[SUPPORT.md](SUPPORT.md)" in readme
+    assert "[repository settings checklist](docs/repository-settings.md)" in readme
+    assert "[llms.txt](../llms.txt)" in discovery
+    assert "[docs/adoption.md](adoption.md)" in discovery
+    assert "[docs/recommendation-guide.md](recommendation-guide.md)" in discovery
+
+
+def test_llms_txt_names_primary_commands_and_boundaries() -> None:
+    llms = (ROOT / "llms.txt").read_text(encoding="utf-8")
+    for command in [
+        "skillgate review preinstall SOURCE",
+        "skillgate scan .",
+        "skillgate github scan https://github.com/OWNER/REPO",
+        "skillgate mcpb scan bundle.mcpb",
+        "skillgate check . --policy skillgate.yaml",
+    ]:
+        assert command in llms
+    assert "does not execute scanned code" in llms
+    assert "install packages" in llms
+    assert "start MCP servers" in llms
+    assert "call LLM APIs" in llms
+    assert "upload findings automatically" in llms
+
+
+def test_contributing_uses_single_uv_setup_story() -> None:
+    contributing = (ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8")
+    assert contributing.count("## Development Setup") == 1
+    assert "# Development setup" not in contributing
+    assert 'python -m pip install -e ".[dev]"' not in contributing
+    assert "uv sync --locked --group dev" in contributing
+    assert "uv run pytest" in contributing
+    assert "uv run ruff check ." in contributing
+    assert "uv run ruff format --check ." in contributing
+    assert "npm test" in contributing
+
+
+def test_github_community_templates_exist_and_parse() -> None:
+    pr_template = ROOT / ".github" / "PULL_REQUEST_TEMPLATE.md"
+    assert pr_template.exists()
+    assert "SkillGate Invariants" in pr_template.read_text(encoding="utf-8")
+
+    template_dir = ROOT / ".github" / "ISSUE_TEMPLATE"
+    for name in [
+        "bug_report.yml",
+        "false_positive.yml",
+        "rule_request.yml",
+        "adoption_help.yml",
+    ]:
+        template = template_dir / name
+        assert template.exists()
+        payload = yaml.safe_load(template.read_text(encoding="utf-8"))
+        assert payload["name"]
+        assert payload["body"]
+
+    assert (ROOT / "CODE_OF_CONDUCT.md").exists()
+    assert (ROOT / "SUPPORT.md").exists()
