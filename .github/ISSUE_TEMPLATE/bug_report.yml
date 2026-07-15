@@ -1,0 +1,47 @@
+name: Bug report
+description: Report incorrect behavior, crashes, or confusing output.
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: SkillGate version
+      placeholder: "skillgate --version"
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Command
+      description: Paste the exact command. Remove private paths or secrets if needed.
+      render: bash
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Sanitized output
+      description: Include relevant output, finding IDs, or traceback text. Do not include secrets.
+      render: text
+    validations:
+      required: false
+  - type: dropdown
+    id: source
+    attributes:
+      label: Source type
+      options:
+        - Local path
+        - GitHub URL
+        - MCPB bundle
+        - GitHub Action
+        - Other
+    validations:
+      required: true

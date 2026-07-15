@@ -1,18 +1,28 @@
 # Contributing To SkillGate
 
-Thanks for helping improve SkillGate. The project is a deterministic static scanner for AI-agent skills, MCP configurations, instruction files, and helper scripts, so changes should stay stable, reviewable, and easy to reproduce.
+Thanks for helping improve SkillGate. The project is a deterministic static
+scanner for AI-agent skills, MCP configurations, instruction files, and helper
+scripts, so changes should stay stable, reviewable, and easy to reproduce.
 
 ## Development Setup
 
+SkillGate uses Python 3.12 for its reproducible development environment. Install
+[`uv`](https://docs.astral.sh/uv/) and run:
+
 ```bash
-python -m pip install -e ".[dev]"
-python -m pytest
-python tools/update_snapshots.py --check
-python -m ruff check .
-python -m ruff format --check .
+uv sync --locked --group dev
+uv run pytest
+uv run python tools/update_snapshots.py --check
+uv run ruff check .
+uv run ruff format --check .
+npm test
 ```
 
-Use Python 3.11 or newer. The repository uses LF line endings through `.gitattributes`.
+Use `uv run` for repository tools so local execution matches CI. If dependency
+metadata changes, regenerate `uv.lock` with `uv lock`, review the diff, and
+verify it with `uv sync --locked` before opening a pull request.
+
+The repository uses LF line endings through `.gitattributes`.
 
 ## Contribution Workflow
 
@@ -24,7 +34,8 @@ Use Python 3.11 or newer. The repository uses LF line endings through `.gitattri
 
 ## Adding A Rule Or Detector
 
-Rules should be deterministic and static. Do not execute repository code, call LLMs, access external services, or add telemetry.
+Rules should be deterministic and static. Do not execute repository code, call
+LLMs, access external services, or add telemetry.
 
 Use this workflow when adding detection behavior:
 
@@ -32,8 +43,8 @@ Use this workflow when adding detection behavior:
 2. Add or update rule metadata in the rule documentation registry so `skillgate rules list` and `skillgate explain` stay complete.
 3. Add a reduced benchmark fixture under `fixtures/benchmark/`.
 4. Add `expected-findings.yaml` with the exact expected rule IDs.
-5. Add a focused regression test in `tests/test_skillgate.py`.
-6. Run `python -m skillgate fixtures summary fixtures/benchmark --format json`.
+5. Add a focused regression test in the closest matching `tests/test_*.py` file.
+6. Run `uv run skillgate fixtures summary fixtures/benchmark --format json`.
 7. Update golden snapshots only when public CLI output intentionally changes.
 8. Update `CHANGELOG.md` and `future_steps.md` for user-facing or roadmap changes.
 
@@ -43,7 +54,9 @@ unknown rather than inventing a value.
 
 ## Adding Benchmark Fixtures
 
-Benchmark fixtures should be small, safe, and reproducible. Public-pattern fixtures should be reduced and nonverbatim unless the source license and attribution are explicitly handled.
+Benchmark fixtures should be small, safe, and reproducible. Public-pattern
+fixtures should be reduced and nonverbatim unless the source license and
+attribution are explicitly handled.
 
 Name new fixtures with a two-digit sequence and a short behavior label, such as
 `22-public-pattern-mcp-tool-poisoning`. Keep examples synthetic or reduced from
@@ -58,7 +71,7 @@ Each fixture should include:
 Verify fixtures with:
 
 ```bash
-python -m skillgate fixtures summary fixtures/benchmark --format json
+uv run skillgate fixtures summary fixtures/benchmark --format json
 ```
 
 ## Adding Non-Benchmark Comparison Fixtures
@@ -89,32 +102,18 @@ Snapshot outputs are maintained by a repo-local helper rather than the public
 files, run:
 
 ```bash
-python tools/update_snapshots.py --check --artifacts test-outputs/snapshots
+uv run python tools/update_snapshots.py --check --artifacts test-outputs/snapshots
 ```
 
 If the output change is intentional, update the tracked snapshots with:
 
 ```bash
-python tools/update_snapshots.py --accept
+uv run python tools/update_snapshots.py --accept
 ```
 
 ## Documentation
 
-Documentation should be clear about the threat model. SkillGate detects static risks and capability drift; it does not prove that an agent skill or MCP server is safe.
-
-# Development setup
-
-SkillGate uses Python 3.12 for its reproducible development environment. Install
-[`uv`](https://docs.astral.sh/uv/) and run:
-
-```bash
-uv sync --locked --group dev
-uv run pytest
-uv run ruff check .
-uv run ruff format --check .
-npm test
-```
-
-Use `uv run` for repository tools so local execution matches CI. If dependency
-metadata changes, regenerate `uv.lock` with `uv lock`, review the diff, and
-verify it with `uv sync --locked` before opening a pull request.
+Documentation should be clear about the threat model. SkillGate detects static
+risks and capability drift; it does not prove that an agent skill or MCP server
+is safe. Prefer concrete commands, bounded claims, and links to the relevant
+review workflow.

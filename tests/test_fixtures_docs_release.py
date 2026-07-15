@@ -330,9 +330,11 @@ def test_docs_are_main_branch_and_discovery_friendly() -> None:
     )
     dependabot = yaml.safe_load((ROOT / ".github" / "dependabot.yml").read_text())
     assert "branch=main" in readme
-    assert "## Start With Three Workflows" in readme
+    assert "## Start With Pre-Install Review" in readme
+    assert "skillgate review preinstall SOURCE --json-output skillgate-review.json" in readme
+    assert "## Start With Three Direct Scans" in readme
     assert "docs/public-scan-reports/README.md" in readme
-    assert "Current release: `v0.1.2`" in readme
+    assert "Stable compatibility channel: `v0`" in readme
     assert "docs/examples/github-action-minimal.md" in readme
     assert "## Try The Local Demos" in readme
     assert "skillgate demo skill --output test-outputs/reviewable-demo --validate --scan" in readme
