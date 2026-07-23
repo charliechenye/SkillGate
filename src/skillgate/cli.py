@@ -49,6 +49,7 @@ from skillgate.preinstall import (
     preinstall_packet_json,
     render_preinstall_markdown,
 )
+from skillgate.preinstall_schema import PREINSTALL_REVIEW_JSON_SCHEMA
 from skillgate.provenance import (
     ProvenanceError,
     create_provenance_manifest,
@@ -325,6 +326,16 @@ def review_preinstall(
         content += f"\nReview threshold failed: findings at or above `{fail_on}`.\n"
     write_or_print(content, output, console)
     raise typer.Exit(1 if _preinstall_failed(packet, fail_on) else 0)
+
+
+@review_app.command("schema")
+def review_schema(
+    output: Annotated[
+        Path | None, typer.Option("--output", "-o", help="Write the review JSON Schema to a file.")
+    ] = None,
+) -> None:
+    """Print the pre-install review packet JSON Schema."""
+    write_or_print(stable_json(PREINSTALL_REVIEW_JSON_SCHEMA), output, console)
 
 
 @demo_app.command("mcpb")

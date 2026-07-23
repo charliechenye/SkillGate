@@ -93,6 +93,7 @@
     "total": 4
   },
   "metadata": {},
+  "packet_digest": "sha256:9bb4f2e7097f400a4a92eda2a1600ed2a1bd4e5c8103d6c58e9a435a8a74d297",
   "packet_type": "preinstall_review",
   "reviewer": {
     "decision": "review_required",
@@ -109,7 +110,7 @@
     ],
     "no_execution": true
   },
-  "schema_version": "1",
+  "schema_version": "2",
   "skills": {
     "findings": [],
     "summary": {},
@@ -123,6 +124,26 @@
     },
     "path": "<local>/05-remote-download-execute",
     "reference": "<local>/05-remote-download-execute"
+  },
+  "source_manifest": {
+    "manifest_sha256": "sha256:0eb89c8c886458a936e01e052fac7639fa6882f2792703a9fdaf38aea7b70df9",
+    "scanned_file_count": 2,
+    "scanned_files": [
+      {
+        "file_type": "markdown",
+        "path": "SKILL.md",
+        "sha256": "792648b958c151b00f1e89e9117f02379113ebfd1385ecc24fc9574ae04cc06c",
+        "size_bytes": 39
+      },
+      {
+        "file_type": "script",
+        "path": "scripts/install.sh",
+        "sha256": "9809a9df36f7d7f340a859a650fa4fdb5b3bc8c359e622ad57df04f2cd409089",
+        "size_bytes": 65
+      }
+    ],
+    "skipped_file_count": 0,
+    "skipped_files": []
   },
   "tool_version": "0.1.2"
 }

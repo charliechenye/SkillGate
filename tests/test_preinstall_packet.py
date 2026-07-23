@@ -10,6 +10,7 @@ from skillgate.preinstall import (
     preinstall_packet_json,
     render_preinstall_markdown,
 )
+from skillgate.preinstall_schema import PREINSTALL_REVIEW_JSON_SCHEMA
 from skillgate.scan import scan_repository
 
 SNAPSHOTS = Path(__file__).parent / "snapshots"
@@ -36,7 +37,10 @@ def test_preinstall_packet_is_stable_and_redacted() -> None:
     assert json.loads(encoded) == first
     assert "super-secret-value" not in encoded
     assert str(FIXTURES) not in encoded
-    assert first["schema_version"] == "1"
+    assert first["schema_version"] == "2"
+    assert first["packet_digest"].startswith("sha256:")
+    assert first["source_manifest"]["scanned_file_count"] == 2
+    assert first["source_manifest"]["manifest_sha256"].startswith("sha256:")
     assert first["reviewer"]["no_execution"] is True
     assert first["findings"]["by_severity"]["high"] >= 1
 
@@ -45,11 +49,21 @@ def test_preinstall_packet_markdown_has_decision_sections() -> None:
     markdown = render_preinstall_markdown(packet())
     assert markdown.startswith("# SkillGate Pre-install Review\n")
     assert "## Capability Inventory" in markdown
+    assert "## Decision Summary" in markdown
+    assert "## Source Manifest" in markdown
     assert "## Findings By Severity" in markdown
     assert "## Reviewer Next Actions" in markdown
     assert "## Limitations" in markdown
     assert "No code was executed by the packet renderer." in markdown
     assert str(FIXTURES) not in markdown
+
+
+def test_preinstall_schema_matches_packet_contract() -> None:
+    packet_data = packet()
+    schema = PREINSTALL_REVIEW_JSON_SCHEMA
+    assert schema["properties"]["schema_version"] == {"const": "2"}
+    assert set(schema["required"]) <= set(packet_data)
+    assert packet_data["packet_digest"] == packet_data["packet_digest"].lower()
 
 
 def test_preinstall_packet_snapshots_are_deterministic() -> None:

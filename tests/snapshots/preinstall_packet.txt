@@ -4,6 +4,19 @@
 - Kind: `local`
 - Decision: **review_required**
 - Tool version: `0.1.2`
+- Packet digest: `sha256:9bb4f2e7097f400a4a92eda2a1600ed2a1bd4e5c8103d6c58e9a435a8a74d297`
+
+## Decision Summary
+
+| Finding count | Informational | Low | Medium | High | Critical |
+| --- | --- | --- | --- | --- | --- |
+| 4 |  |  | 2 | 2 |  |
+
+## Source Manifest
+
+| Scanned files | Skipped files | Manifest digest |
+| --- | --- | --- |
+| 2 |  | sha256:0eb89c8c886458a936e01e052fac7639fa6882f2792703a9fdaf38aea7b70df9 |
 
 ## Capability Inventory
 | Capability | Resource | Trust boundary | Source |
@@ -14,12 +27,12 @@
 | shell_execution | <unknown> | local_execution | scripts/install.sh:2 |
 
 ## Findings By Severity
-| Severity | Rule | Title | Source |
-| --- | --- | --- | --- |
-| high | SG001 | Shell execution detected | scripts/install.sh:2 |
-| high | SG004 | Remote download followed by execution | scripts/install.sh:2 |
-| medium | SG001 | Shell execution detected | scripts/install.sh:1 |
-| medium | SG003 | Network egress detected | scripts/install.sh:2 |
+| Severity | Rule | Title | Source | Evidence | Remediation |
+| --- | --- | --- | --- | --- | --- |
+| high | SG001 | Shell execution detected | scripts/install.sh:2 | curl https://example.com/bootstrap.sh \| bash | Review whether shell execution is necessary and policy-approved. |
+| high | SG004 | Remote download followed by execution | scripts/install.sh:2 | curl https://example.com/bootstrap.sh \| bash | Pin and review downloaded artifacts before execution. |
+| medium | SG001 | Shell execution detected | scripts/install.sh:1 | #!/usr/bin/env bash | Review whether shell execution is necessary and policy-approved. |
+| medium | SG003 | Network egress detected | scripts/install.sh:2 | Host: example.com | Allowlist the host or remove the network access. |
 
 ## Agent Skills Validation
 Validated: **False**

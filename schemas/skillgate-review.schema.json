@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/charliechenye/SkillGate/blob/main/schemas/skillgate-review.schema.json",
+  "title": "SkillGate pre-install review packet",
+  "description": "A redacted, deterministic review record for an AI-agent skill, MCP source, GitHub repository, or MCPB bundle.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "packet_type",
+    "schema_version",
+    "tool_version",
+    "packet_digest",
+    "source",
+    "source_manifest",
+    "metadata",
+    "capabilities",
+    "findings",
+    "skills",
+    "reviewer"
+  ],
+  "properties": {
+    "packet_type": {"const": "preinstall_review"},
+    "schema_version": {"const": "2"},
+    "tool_version": {"type": "string"},
+    "packet_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "source": {
+      "type": "object",
+      "required": ["kind", "reference"],
+      "additionalProperties": true,
+      "properties": {
+        "kind": {"type": "string", "enum": ["local", "github", "mcpb"]},
+        "reference": {"type": "string"},
+        "path": {"type": "string"},
+        "revision": {"type": "string"},
+        "digest": {"type": "string"},
+        "metadata": {"type": "object"}
+      }
+    },
+    "source_manifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scanned_files", "skipped_files", "manifest_sha256", "scanned_file_count", "skipped_file_count"],
+      "properties": {
+        "scanned_files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "file_type", "sha256", "size_bytes"],
+            "properties": {
+              "path": {"type": "string"},
+              "file_type": {"type": "string"},
+              "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+              "size_bytes": {"type": "integer", "minimum": 0}
+            }
+          }
+        },
+        "skipped_files": {"type": "array", "items": {}},
+        "manifest_sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "scanned_file_count": {"type": "integer", "minimum": 0},
+        "skipped_file_count": {"type": "integer", "minimum": 0}
+      }
+    },
+    "metadata": {"type": "object"},
+    "capabilities": {"type": "array"},
+    "findings": {"type": "object"},
+    "skills": {"type": "object"},
+    "reviewer": {"type": "object"}
+  }
+}
