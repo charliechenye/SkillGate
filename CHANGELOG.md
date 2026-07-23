@@ -1,5 +1,17 @@
 # Change Log
 
+## Unreleased - Review evidence foundations
+
+### Added
+
+- Added deterministic pre-install packet digests, scanned-file manifests, skipped-file accounting, richer Markdown evidence, and a public review packet JSON Schema.
+- Added `skillgate review schema` for exporting the review packet contract.
+
+### Changed
+
+- Fixed GitHub pre-install packets so source identity prefers the resolved immutable commit SHA.
+- Made capability baselines stable across source-line movement and expanded MCP drift evidence to include all changed metadata fields.
+
 ## 0.1.2 - Guided review workflows
 
 Released 2026-07-09.

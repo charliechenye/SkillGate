@@ -90,6 +90,8 @@ def test_cli_fixtures_summary_markdown_is_reviewable() -> None:
     assert "Scanner version:" in result.output
     assert "## Rule Coverage" in result.output
     assert "Expected fixtures" in result.output
+    assert "SG014" in result.output
+    assert "not covered" in result.output
     assert "## Attribution" in result.output
     assert "not a real-world detection accuracy benchmark" in result.output
 
