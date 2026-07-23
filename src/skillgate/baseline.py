@@ -14,7 +14,7 @@ from skillgate.models import (
     Finding,
     stable_json,
 )
-from skillgate.rules.base import make_finding
+from skillgate.rules.base import make_finding, redact_evidence
 from skillgate.scan import canonical_capability, scan_repository
 
 
@@ -64,13 +64,18 @@ def mcp_change_findings(before: list[Capability], after: list[Capability]) -> li
         elif new_cap is None:
             evidence = f"Removed MCP server: {server}"
         elif old_cap.details != new_cap.details:
-            before_values = {
-                key: old_cap.details.get(key) for key in ["command", "args", "env", "endpoints"]
-            }
-            after_values = {
-                key: new_cap.details.get(key) for key in ["command", "args", "env", "endpoints"]
-            }
-            evidence = f"MCP server changed: {server}; before={before_values}; after={after_values}"
+            changed_fields = sorted(
+                key
+                for key in set(old_cap.details) | set(new_cap.details)
+                if old_cap.details.get(key) != new_cap.details.get(key)
+            )
+            before_values = {key: old_cap.details.get(key) for key in changed_fields}
+            after_values = {key: new_cap.details.get(key) for key in changed_fields}
+            evidence = (
+                f"MCP server changed: {server}; fields={changed_fields}; "
+                f"before={redact_evidence(str(before_values))}; "
+                f"after={redact_evidence(str(after_values))}"
+            )
         else:
             continue
         findings.append(

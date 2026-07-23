@@ -145,5 +145,8 @@ def filter_report_by_severity(report: ScanReport, threshold: str | None) -> Scan
 
 def canonical_capability(capability: Capability) -> str:
     data = capability.model_dump(mode="json")
-    data["source_line"] = data["source_line"] or None
+    # Source lines are review context, not capability identity. Keeping them out
+    # of the baseline key prevents harmless line movement from looking like a
+    # newly introduced capability.
+    data.pop("source_line", None)
     return json.dumps(data, sort_keys=True, separators=(",", ":"))

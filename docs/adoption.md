@@ -20,6 +20,14 @@ The review packet is advisory by default. Add `--fail-on high` only when the
 team is ready for the command to return a failing status for high or critical
 review signals.
 
+JSON packets include a redacted source manifest and packet digest so reviewers
+can retain exactly which files were inspected:
+
+```bash
+skillgate review preinstall SOURCE --format json --output skillgate-review.json
+skillgate review schema --output skillgate-review.schema.json
+```
+
 ## 2. Pull Request Review
 
 Use review summaries when maintainers need readable artifacts in CI:

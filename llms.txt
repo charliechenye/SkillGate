@@ -14,7 +14,10 @@ skillgate review preinstall SOURCE
 `SOURCE` can be a local path, a public GitHub repository or subtree URL, or a
 local `.mcpb` bundle. The command creates an advisory review packet with source
 identity, observed capabilities, findings, Agent Skills validation results,
-reviewer next actions, and limitations.
+reviewer next actions, and limitations. JSON packets include a deterministic
+packet digest and a redacted scanned-file manifest; the contract is available
+with `skillgate review schema` and at
+`schemas/skillgate-review.schema.json`.
 
 ## Core Commands
 

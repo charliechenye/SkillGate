@@ -34,6 +34,10 @@ These are release history, not future work. Keep detailed records in
 
 ## 0.1.3 Adoption Priorities
 
+The original adoption priorities are now implemented on `main` and should be
+released as `0.1.3`. The next implementation batch is the review-evidence and
+capability-contract work below.
+
 The next minor release is a focused pre-install adoption release. The target is
 one copy-pasteable review flow that produces a decision-ready packet without
 executing code or making network requests for local inputs.

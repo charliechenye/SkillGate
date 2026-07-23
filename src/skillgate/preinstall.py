@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 from pathlib import Path
 from typing import Any
@@ -18,7 +19,7 @@ from skillgate.models import (
     stable_json,
 )
 
-PREINSTALL_PACKET_SCHEMA_VERSION = "1"
+PREINSTALL_PACKET_SCHEMA_VERSION = "2"
 _SECRET_ASSIGNMENT_RE = re.compile(
     r"(?i)(\b(?:token|secret|password|credential|api[_-]?key|access[_-]?key)\b\s*[:=]\s*)([^\s,;]+)"
 )
@@ -77,8 +78,21 @@ def _source_record(source: dict[str, Any], root: str | None) -> dict[str, Any]:
         if source.get(key) is not None:
             record[key] = _redact_text(str(source[key]))
     if source.get("metadata"):
-        record["metadata"] = _redact_mapping(source["metadata"], root)
+        record["metadata"] = _redact_mapping(_remove_volatile_metadata(source["metadata"]), root)
     return record
+
+
+def _remove_volatile_metadata(value: Any) -> Any:
+    """Remove scan timestamps from the canonical review packet metadata."""
+    if isinstance(value, dict):
+        return {
+            str(name): _remove_volatile_metadata(item)
+            for name, item in sorted(value.items())
+            if name != "scan_started_at"
+        }
+    if isinstance(value, list):
+        return [_remove_volatile_metadata(item) for item in value]
+    return value
 
 
 def _redact_mapping(value: Any, root: str | None = None, key: str = "") -> Any:
@@ -125,6 +139,35 @@ def _capability_record(
         "source_line": data.get("source_line"),
         "trust_boundary": trust_boundary_for(data.get("type", "")) or "other",
     }
+
+
+def _source_manifest(
+    report_data: dict[str, Any], source: dict[str, Any], root: str | None
+) -> dict[str, Any]:
+    scanned_files = [
+        _redact_mapping(item, root)
+        for item in report_data.get("scanned_files", [])
+        if isinstance(item, dict)
+    ]
+    scanned_files.sort(key=lambda item: str(item.get("path", "")))
+    metadata = source.get("metadata")
+    skipped_files = []
+    if isinstance(metadata, dict) and isinstance(metadata.get("skipped_files"), list):
+        skipped_files = _redact_mapping(metadata["skipped_files"], root)
+    manifest_payload = {"scanned_files": scanned_files, "skipped_files": skipped_files}
+    manifest_digest = hashlib.sha256(stable_json(manifest_payload).encode("utf-8")).hexdigest()
+    return {
+        **manifest_payload,
+        "manifest_sha256": f"sha256:{manifest_digest}",
+        "scanned_file_count": len(scanned_files),
+        "skipped_file_count": len(skipped_files),
+    }
+
+
+def _packet_digest(packet: dict[str, Any]) -> str:
+    payload = {key: value for key, value in packet.items() if key != "packet_digest"}
+    digest = hashlib.sha256(stable_json(payload).encode("utf-8")).hexdigest()
+    return f"sha256:{digest}"
 
 
 def _severity_groups(findings: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
@@ -191,6 +234,7 @@ def build_preinstall_packet(
         "schema_version": PREINSTALL_PACKET_SCHEMA_VERSION,
         "tool_version": __version__,
         "source": _source_record(source, root),
+        "source_manifest": _source_manifest(report_data, source, root),
         "metadata": _redact_mapping(metadata or {}, root),
         "capabilities": [
             _capability_record(item, root) for item in report_data.get("capabilities", [])
@@ -216,7 +260,9 @@ def build_preinstall_packet(
             "network_access": source_kind == "github",
         },
     }
-    return _redact_mapping(packet, root)
+    redacted = _redact_mapping(packet, root)
+    redacted["packet_digest"] = _packet_digest(redacted)
+    return redacted
 
 
 def preinstall_packet_json(packet: dict[str, Any]) -> str:
@@ -234,7 +280,9 @@ def _table(headers: list[str], rows: list[list[Any]]) -> list[str]:
 
 def render_preinstall_markdown(packet: dict[str, Any]) -> str:
     source = packet["source"]
+    source_manifest = packet["source_manifest"]
     findings = packet["findings"]
+    severity_counts = findings["by_severity"]
     lines = [
         "# SkillGate Pre-install Review",
         "",
@@ -242,6 +290,40 @@ def render_preinstall_markdown(packet: dict[str, Any]) -> str:
         f"- Kind: `{source['kind']}`",
         f"- Decision: **{packet['reviewer']['decision']}**",
         f"- Tool version: `{packet['tool_version']}`",
+        f"- Packet digest: `{packet['packet_digest']}`",
+        "",
+        "## Decision Summary",
+        "",
+        *(
+            _table(
+                ["Finding count", "Informational", "Low", "Medium", "High", "Critical"],
+                [
+                    [
+                        findings["total"],
+                        severity_counts["informational"],
+                        severity_counts["low"],
+                        severity_counts["medium"],
+                        severity_counts["high"],
+                        severity_counts["critical"],
+                    ]
+                ],
+            )
+        ),
+        "",
+        "## Source Manifest",
+        "",
+        *(
+            _table(
+                ["Scanned files", "Skipped files", "Manifest digest"],
+                [
+                    [
+                        source_manifest["scanned_file_count"],
+                        source_manifest["skipped_file_count"],
+                        source_manifest["manifest_sha256"],
+                    ]
+                ],
+            )
+        ),
         "",
         "## Capability Inventory",
         *(
@@ -262,13 +344,15 @@ def render_preinstall_markdown(packet: dict[str, Any]) -> str:
         "## Findings By Severity",
         *(
             _table(
-                ["Severity", "Rule", "Title", "Source"],
+                ["Severity", "Rule", "Title", "Source", "Evidence", "Remediation"],
                 [
                     [
                         item["severity"],
                         item["rule_id"],
                         item["title"],
                         f"{item['file_path']}:{item['line_number'] or 1}",
+                        item.get("evidence") or "",
+                        item.get("remediation") or "",
                     ]
                     for item in sum(findings["groups"].values(), [])
                 ],

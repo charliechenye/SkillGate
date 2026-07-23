@@ -7,6 +7,7 @@ import yaml
 
 from skillgate import __version__
 from skillgate.baseline import create_baseline, diff_against_baseline
+from skillgate.rule_docs import RULE_DOCS
 from skillgate.scan import scan_repository
 
 
@@ -156,16 +157,7 @@ def fixture_summary_text(root: Path, summaries: list[FixtureSummary]) -> str:
 
 
 def fixture_summary_markdown(root: Path, summaries: list[FixtureSummary]) -> str:
-    expected_rules = sorted(
-        {rule_id for summary in summaries for rule_id in summary.expected_rule_ids}
-    )
-    actual_rules = sorted(
-        {
-            rule_id
-            for summary in summaries
-            for rule_id in [*summary.actual_rule_ids, *summary.diff_rule_ids]
-        }
-    )
+    all_rules = [rule.rule_id for rule in RULE_DOCS]
     lines = [
         "# SkillGate Benchmark Report",
         "",
@@ -180,13 +172,18 @@ def fixture_summary_markdown(root: Path, summaries: list[FixtureSummary]) -> str
         "| Rule | Expected fixtures | Actual fixtures | Coverage status |",
         "| --- | ---: | ---: | --- |",
     ]
-    for rule_id in sorted(set(expected_rules) | set(actual_rules)):
+    for rule_id in all_rules:
         expected_count = sum(rule_id in summary.expected_rule_ids for summary in summaries)
         actual_count = sum(
             rule_id in summary.actual_rule_ids or rule_id in summary.diff_rule_ids
             for summary in summaries
         )
-        status = "covered" if expected_count == actual_count else "mismatch"
+        if expected_count == 0 and actual_count == 0:
+            status = "not covered"
+        elif expected_count == actual_count:
+            status = "covered"
+        else:
+            status = "mismatch"
         lines.append(f"| {rule_id} | {expected_count} | {actual_count} | {status} |")
     lines.extend(
         [

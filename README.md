@@ -38,6 +38,15 @@ local `.mcpb` bundle. The review packet is advisory by default and explains the
 source identity, observed capabilities, findings, Agent Skills validation
 results, reviewer next actions, and limitations.
 
+The JSON packet includes a deterministic packet digest, scanned-file manifest,
+skipped-file accounting, and redacted evidence. The packet contract is published
+at [`schemas/skillgate-review.schema.json`](schemas/skillgate-review.schema.json)
+and can be printed with:
+
+```bash
+skillgate review schema --output skillgate-review.schema.json
+```
+
 After the first useful review, adopt the next gate that matches the team:
 
 ```bash

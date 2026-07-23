@@ -73,3 +73,23 @@ def test_preinstall_accepts_a_non_skill_local_file(tmp_path) -> None:
     payload = json.loads(result.output)
     assert payload["source"]["kind"] == "local"
     assert payload["skills"]["validated"] is False
+
+
+def test_preinstall_schema_command_and_scanner_no_execution_boundary(tmp_path) -> None:
+    schema_result = runner.invoke(app, ["review", "schema"])
+    assert schema_result.exit_code == 0
+    schema = json.loads(schema_result.output)
+    assert schema["properties"]["schema_version"] == {"const": "2"}
+
+    source = tmp_path / "skill"
+    scripts = source / "scripts"
+    scripts.mkdir(parents=True)
+    (source / "SKILL.md").write_text("Read `scripts/trap.py` for review.\n", encoding="utf-8")
+    (scripts / "trap.py").write_text(
+        'raise RuntimeError("scanned content must never execute")\n', encoding="utf-8"
+    )
+
+    result = runner.invoke(app, ["review", "preinstall", str(source), "--format", "json"])
+
+    assert result.exit_code == 0
+    assert json.loads(result.output)["reviewer"]["no_execution"] is True
