@@ -18,8 +18,16 @@ class FakeSparseResult:
         self.root = root
         self.manifest = {
             "resolved_ref": "main",
-            "commit_sha": "0123456789abcdef0123456789abcdef01234567",
-            "fetched_files": ["SKILL.md"],
+            "resolved_commit_sha": "0123456789abcdef0123456789abcdef01234567",
+            "downloaded_files": [
+                {
+                    "remote_path": "SKILL.md",
+                    "materialized_path": "SKILL.md",
+                    "sha256": "a" * 64,
+                    "size_bytes": 8,
+                    "reason": "relevant_path",
+                }
+            ],
         }
         self.cleaned = False
 
@@ -57,8 +65,8 @@ def test_mocked_github_review_uses_immutable_manifest(monkeypatch, tmp_path: Pat
     assert result.exit_code == 0
     payload = json.loads(result.output)
     assert payload["source"]["kind"] == "github"
-    assert payload["source"]["revision"] == fake.manifest["commit_sha"]
-    assert payload["source"]["metadata"]["fetched_files"] == ["SKILL.md"]
+    assert payload["source"]["revision"] == fake.manifest["resolved_commit_sha"]
+    assert payload["source"]["metadata"]["downloaded_files"][0]["remote_path"] == "SKILL.md"
     assert fake.cleaned is True
 
 

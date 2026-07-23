@@ -263,7 +263,8 @@ def review_preinstall(
                 {
                     "kind": "github",
                     "reference": source,
-                    "revision": sparse.manifest.get("commit_sha")
+                    "revision": sparse.manifest.get("resolved_commit_sha")
+                    or sparse.manifest.get("commit_sha")
                     or sparse.manifest.get("resolved_ref"),
                     "metadata": sparse.manifest,
                 },
