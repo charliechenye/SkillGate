@@ -111,8 +111,9 @@ npx --yes github:charliechenye/SkillGate#v0 -- scan .
 Explore semantic artifact linting only as an opt-in, local-first extension to
 pre-install and pre-merge review. The goal is to surface suspicious
 agent-directed instructions that are already shipped in skills, MCP configs,
-MCPB bundles, manifests, prompt templates, README files, and other static text
-artifacts.
+MCPB bundles, manifests, prompt templates, and explicitly agent-facing static
+text artifacts. Ordinary README prose, arbitrary comments, binaries, rendered
+pages, and unclassified bundled assets are not semantic inputs by default.
 
 This is not a pivot into runtime prompt-injection protection. Runtime web
 content, email, RAG stores, MCP server execution, hosted prompt firewalls,
@@ -121,9 +122,12 @@ project makes a separate product decision.
 
 Use the staged roadmap in
 [`docs/roadmaps/semantic-artifact-linting.md`](docs/roadmaps/semantic-artifact-linting.md)
-before implementing any semantic scanner. The first implementation milestone
-should be a deterministic text inventory and high-precision advisory rule pack,
-not a classifier or blocking policy gate.
+before implementing any semantic scanner. Rebase implementation work onto the
+current Review Packet schema and preserve existing `SG007`/`SG008` behavior.
+The first milestone is a bounded deterministic text inventory; a small,
+high-precision advisory rule pack follows only after an overlap matrix and
+reviewed benchmark gates exist. This is not a classifier or blocking policy
+commitment.
 
 ### Declared intent versus observed capability
 
