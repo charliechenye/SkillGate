@@ -124,17 +124,29 @@ Use the staged roadmap in
 [`docs/roadmaps/semantic-artifact-linting.md`](docs/roadmaps/semantic-artifact-linting.md)
 before implementing any semantic scanner. Rebase implementation work onto the
 current Review Packet schema and preserve existing `SG007`/`SG008` behavior.
+The staged sequence is:
+
+```text
+contract and SG007 compatibility
+→ bounded text inventory
+→ narrow advisory rules and adversarial evaluation
+→ semantic instruction drift
+→ opt-in review integration and public evidence
+→ declared-purpose/capability/instruction comparison
+→ policy and suppression support
+```
+
 The first milestone is a bounded deterministic text inventory; a small,
 high-precision advisory rule pack follows only after an overlap matrix and
-reviewed benchmark gates exist. This is not a classifier or blocking policy
-commitment.
+reviewed benchmark gates exist. Semantic policy remains gated on representative
+repository evidence. This is not a classifier or blocking-policy commitment.
 
-### Declared intent versus observed capability
+### Declared purpose, capability, and instruction comparison
 
-After the unified review flow has real usage, add an explainable comparison of
-declared tools and metadata against capabilities observed in files and scripts.
-This should report undeclared capabilities, unused declarations, and
-contradictions without inferring intent speculatively.
+After semantic review and drift have real usage, add an explainable comparison of
+what an artifact claims to do, what its code/configuration can do, and what its
+agent-facing instructions request. Report potential mismatches with evidence;
+do not infer maintainer intent or label a mismatch malicious without proof.
 
 ### Targeted MCPB and Agent Skills expansion
 
