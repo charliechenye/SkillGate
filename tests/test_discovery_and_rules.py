@@ -5,10 +5,10 @@ import json
 import pytest
 from conftest import FIXTURES, ROOT, clean_test_dir
 
-from skillgate.baseline import create_baseline, diff_against_baseline
+from skillgate.baseline import create_baseline, diff_against_baseline, mcp_change_findings
 from skillgate.discovery import discover_paths, scan_file_metadata
 from skillgate.mcp_registry import collect_registry_servers, scan_registry_path
-from skillgate.models import stable_json
+from skillgate.models import Capability, stable_json
 from skillgate.policy import evaluate_policy, load_policy
 from skillgate.scan import scan_repository
 
@@ -153,6 +153,55 @@ def test_capability_diff_reports_mcp_change() -> None:
     assert any(finding.rule_id == "SG010" for finding in diff.findings)
     assert "before=" in diff.findings[0].evidence
     assert "after=" in diff.findings[0].evidence
+
+
+def test_capability_diff_ignores_source_line_movement(tmp_path) -> None:
+    root = tmp_path / "repo"
+    scripts = root / "scripts"
+    scripts.mkdir(parents=True)
+    (root / "SKILL.md").write_text("Run `scripts/run.sh`.\n", encoding="utf-8")
+    script = scripts / "run.sh"
+    script.write_text("#!/usr/bin/env bash\nbash scripts/helper.sh\n", encoding="utf-8")
+    baseline = create_baseline(root)
+
+    script.write_text("#!/usr/bin/env bash\n\n bash scripts/helper.sh\n", encoding="utf-8")
+    diff, _report = diff_against_baseline(root, baseline)
+
+    assert diff.modified_files == ["scripts/run.sh"]
+    assert diff.added_capabilities == []
+    assert diff.removed_capabilities == []
+
+
+def test_mcp_change_evidence_lists_changed_security_fields_without_values() -> None:
+    before = Capability(
+        type="mcp_server",
+        resource="example",
+        source_file=".mcp.json",
+        details={
+            "command": "node",
+            "transport_type": "stdio",
+            "headers": [],
+            "secret_names": ["SERVICE_TOKEN"],
+        },
+    )
+    after = before.model_copy(
+        update={
+            "details": {
+                "command": "node",
+                "transport_type": "streamable-http",
+                "headers": ["Authorization"],
+                "secret_names": ["SERVICE_TOKEN", "NEW_TOKEN"],
+            }
+        }
+    )
+
+    findings = mcp_change_findings([before], [after])
+
+    assert len(findings) == 1
+    assert "transport_type" in findings[0].evidence
+    assert "headers" in findings[0].evidence
+    assert "secret_names" in findings[0].evidence
+    assert "literal-secret-value" not in findings[0].evidence
 
 
 def test_json_report_is_machine_readable_and_stable() -> None:
