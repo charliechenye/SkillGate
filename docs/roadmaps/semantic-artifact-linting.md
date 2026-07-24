@@ -213,8 +213,26 @@ When semantic mode is enabled:
 - a richer semantic result may reference `SG007` through a related-rule field;
 - the semantic Markdown view may collapse a duplicate presentation, but the
   underlying `SG007` result remains available for compatibility;
-- new `SA###` findings are reserved for coverage that existing rules do not
-  claim, such as context-aware sensitive-data or data-transmission instructions.
+- `SG005` reports the presence of a secret reference or secret-bearing path,
+  while `SA001` reports an active agent-directed instruction to access sensitive
+  data. The same evidence may support both independently valid claims;
+- `SG003` reports an observed network endpoint or egress capability, while a
+  semantic data-transmission finding reports an instruction to transmit
+  specified data. Either finding may exist without the other;
+- when capability and instruction findings arise from related evidence, the
+  semantic result includes the relevant IDs in `related_rule_ids`, and review
+  output cross-links or visually groups them without removing either
+  machine-readable result;
+- new `SA###` findings are reserved for semantic claims that existing rules do
+  not make, even when the underlying evidence overlaps.
+
+This gives reviewers three distinct layers:
+
+```text
+capability   The artifact can access or transmit.
+instruction  The artifact asks the agent to access or transmit.
+combined     Both claims are present and should be reviewed together.
+```
 
 After one compatibility cycle, maintainers may evaluate whether `SG007` should
 be narrowed or deprecated. That would require an explicit migration plan,
@@ -510,15 +528,6 @@ Deliverables:
 - privacy-safe snippets;
 - text-block inventory in JSON.
 
-Candidate files:
-
-```text
-src/skillgate/semantic/models.py
-src/skillgate/semantic/extract.py
-src/skillgate/semantic/reporting.py
-tests/test_semantic_extract.py
-```
-
 No new findings yet.
 
 Success criteria:
@@ -652,6 +661,8 @@ Success metrics:
 
 - fixture-level precision and recall per semantic category;
 - false positives per representative repository or bundle;
+- non-actionable high-confidence findings per representative repository or
+  bundle, measured separately for each MVP category;
 - findings per category and suppression demand;
 - median and p95 opt-in scan overhead;
 - reviewer actionability and category-agreement ratings.
@@ -660,9 +671,11 @@ Stage 0 should record provisional go/no-go targets before evaluation begins. A
 reasonable starting proposal is at least 90% precision on high-confidence,
 production-context fixtures; at least 70% of findings rated actionable by two
 independent reviewers; no more than 10% disagreement on category assignment;
-and no more than 25% p95 scan overhead against the normal pre-install review.
-These are fixture and representative-repository gates, not claims of
-real-world accuracy, and may be revised only with documented evidence.
+no more than 0.5 non-actionable high-confidence findings per representative
+repository or bundle per MVP category; and p95 semantic overhead below both 25%
+of normal review duration and two seconds on the representative corpus. These
+are fixture and representative-repository gates, not claims of real-world
+accuracy, and may be revised only with documented evidence.
 
 Do not enable semantic policy enforcement until the feature has been evaluated
 on at least 20 representative repositories or bundles, with source provenance
@@ -830,8 +843,9 @@ than being committed by this roadmap.
 1. Product contract: finalize SG007 compatibility, source roles, applicability,
    output fields, benchmark gates, and termination criteria.
 2. Text inventory: collect bounded semantic blocks without emitting findings.
-3. Rule MVP: add the three narrow categories with adversarial and benign
-   fixtures, keeping semantic results advisory.
+3. Rule MVP: add two new narrow SA categories with adversarial and benign
+   fixtures while preserving and contextually presenting existing `SG007`
+   coverage; keep semantic results advisory.
 4. Semantic drift: extend existing baseline concepts with normalized block
    identity, redacted diffs, and line-movement stability.
 5. Review integration and evidence: add the opt-in pre-install view only after
