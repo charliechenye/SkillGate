@@ -1,0 +1,12 @@
+schema_version: "1"
+id: 03-sa001-mcp-description
+fixture_class: positive
+semantic_categories: [SA001]
+expected_blocks:
+  - file_path: .mcp.json
+    line_number: 1
+    end_line: 1
+    source_role: tool_description
+    structured_field: mcpServers.review.description
+    agent_consumption: direct
+expected_existing_rule_ids: []

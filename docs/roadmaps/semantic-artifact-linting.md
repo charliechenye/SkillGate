@@ -473,6 +473,9 @@ together.
 
 ## Staged roadmap
 
+The completed Stage 0 contract and the boundary of the initial inventory are
+recorded in [Semantic Artifact Inventory Contract](../semantic-artifact-inventory.md).
+
 ### Stage 0: Research-to-product design record
 
 Goal:

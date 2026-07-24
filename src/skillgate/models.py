@@ -14,6 +14,17 @@ SEVERITY_ORDER = {
     "critical": 4,
 }
 Severity = Literal["informational", "low", "medium", "high", "critical"]
+SemanticSourceRole = Literal[
+    "agent_instruction",
+    "tool_description",
+    "prompt_template",
+    "manifest_metadata",
+    "documentation",
+    "test_fixture",
+    "source_comment",
+    "unknown",
+]
+AgentConsumption = Literal["direct", "possible", "unlikely"]
 
 
 class StableModel(BaseModel):
@@ -56,6 +67,33 @@ class ScanReport(StableModel):
     capabilities: list[Capability]
     findings: list[Finding]
     summary: dict[str, Any]
+
+
+class SemanticTextBlock(StableModel):
+    """A bounded, redacted agent-facing text block selected by a source adapter."""
+
+    file_path: str
+    line_number: int
+    end_line: int
+    text: str
+    source_role: SemanticSourceRole
+    structured_field: str | None = None
+    agent_consumption: AgentConsumption
+
+
+class SemanticInventorySkip(StableModel):
+    file_path: str
+    reason: str
+
+
+class SemanticTextInventory(StableModel):
+    """Deterministic semantic input inventory; it intentionally contains no findings."""
+
+    schema_version: str
+    tool_version: str
+    blocks: list[SemanticTextBlock]
+    skipped_files: list[SemanticInventorySkip]
+    summary: dict[str, int]
 
 
 class BaselineLock(StableModel):

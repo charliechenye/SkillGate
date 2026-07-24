@@ -1,0 +1,12 @@
+schema_version: "1"
+id: 19-compat-skill-ignore
+fixture_class: compatibility
+semantic_categories: []
+expected_blocks:
+  - file_path: SKILL.md
+    line_number: 1
+    end_line: 1
+    source_role: agent_instruction
+    structured_field: body
+    agent_consumption: direct
+expected_existing_rule_ids: [SG007]

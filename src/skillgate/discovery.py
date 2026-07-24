@@ -31,6 +31,25 @@ RELEVANT_NAMES = {
     "package.json",
     "pyproject.toml",
 }
+SEMANTIC_CONFIG_NAMES = {
+    ".agent.yaml",
+    ".agent.yml",
+    "agent-config.toml",
+    "agent-config.yaml",
+    "agent-config.yml",
+    "agent.toml",
+    "agent.yaml",
+    "agent.yml",
+    "agents.toml",
+    "agents.yaml",
+    "agents.yml",
+    "mcp.toml",
+    "mcp.yaml",
+    "mcp.yml",
+    "prompts.toml",
+    "prompts.yaml",
+    "prompts.yml",
+}
 MCP_REGISTRY_NAMES = {"mcp-registry.json", "mcp-server.json", "server.json"}
 REFERENCE_RE = re.compile(
     r"""(?P<path>(?:\.{1,2}/)?[A-Za-z0-9_./\\-]+\.(?:sh|bash|py|js|ts|mjs|cjs|ps1))"""
@@ -168,6 +187,25 @@ def discover_paths(root: Path) -> list[Path]:
                 if script not in discovered:
                     discovered.add(script)
                     changed = True
+    return sorted(discovered, key=lambda item: relative_path(root, item))
+
+
+def discover_semantic_paths(root: Path) -> list[Path]:
+    """Return normal discovery plus the narrow structured semantic allowlist.
+
+    The default scanner keeps its existing discovery behavior. Semantic
+    inventory extends that shared boundary only for explicitly named YAML and
+    TOML agent configuration files.
+    """
+
+    root = root.resolve()
+    discovered = set(discover_paths(root))
+    for dirpath, dirnames, filenames in os.walk(root):
+        current = Path(dirpath)
+        dirnames[:] = sorted(name for name in dirnames if name not in EXCLUDED_DIRS)
+        for filename in sorted(filenames):
+            if filename in SEMANTIC_CONFIG_NAMES:
+                discovered.add(current / filename)
     return sorted(discovered, key=lambda item: relative_path(root, item))
 
 

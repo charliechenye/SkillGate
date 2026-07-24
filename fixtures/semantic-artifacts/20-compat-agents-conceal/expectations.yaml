@@ -1,0 +1,12 @@
+schema_version: "1"
+id: 20-compat-agents-conceal
+fixture_class: compatibility
+semantic_categories: []
+expected_blocks:
+  - file_path: AGENTS.md
+    line_number: 1
+    end_line: 1
+    source_role: agent_instruction
+    structured_field: null
+    agent_consumption: direct
+expected_existing_rule_ids: [SG007]

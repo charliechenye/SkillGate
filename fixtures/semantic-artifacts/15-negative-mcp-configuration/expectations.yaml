@@ -1,0 +1,12 @@
+schema_version: "1"
+id: 15-negative-mcp-configuration
+fixture_class: negative
+semantic_categories: []
+expected_blocks:
+  - file_path: .mcp.json
+    line_number: 1
+    end_line: 1
+    source_role: tool_description
+    structured_field: mcpServers.safe.description
+    agent_consumption: direct
+expected_existing_rule_ids: []
