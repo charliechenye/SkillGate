@@ -110,12 +110,47 @@ npx --yes github:charliechenye/SkillGate#v0 -- scan .
 
 ## Later Work
 
-### Declared intent versus observed capability
+### Semantic artifact linting
 
-After the unified review flow has real usage, add an explainable comparison of
-declared tools and metadata against capabilities observed in files and scripts.
-This should report undeclared capabilities, unused declarations, and
-contradictions without inferring intent speculatively.
+Explore semantic artifact linting only as an opt-in, local-first extension to
+pre-install and pre-merge review. The goal is to surface suspicious
+agent-directed instructions that are already shipped in skills, MCP configs,
+MCPB bundles, manifests, prompt templates, and explicitly agent-facing static
+text artifacts. Ordinary README prose, arbitrary comments, binaries, rendered
+pages, and unclassified bundled assets are not semantic inputs by default.
+
+This is not a pivot into runtime prompt-injection protection. Runtime web
+content, email, RAG stores, MCP server execution, hosted prompt firewalls,
+sandboxing, and action approval enforcement remain out of scope unless the
+project makes a separate product decision.
+
+Use the staged roadmap in
+[`docs/roadmaps/semantic-artifact-linting.md`](docs/roadmaps/semantic-artifact-linting.md)
+before implementing any semantic scanner. Rebase implementation work onto the
+current Review Packet schema and preserve existing `SG007`/`SG008` behavior.
+The staged sequence is:
+
+```text
+contract and SG007 compatibility
+→ bounded text inventory
+→ narrow advisory rules and adversarial evaluation
+→ semantic instruction drift
+→ opt-in review integration and public evidence
+→ declared-purpose/capability/instruction comparison
+→ policy and suppression support
+```
+
+The first milestone is a bounded deterministic text inventory; a small,
+high-precision advisory rule pack follows only after an overlap matrix and
+reviewed benchmark gates exist. Semantic policy remains gated on representative
+repository evidence. This is not a classifier or blocking-policy commitment.
+
+### Declared purpose, capability, and instruction comparison
+
+After semantic review and drift have real usage, add an explainable comparison of
+what an artifact claims to do, what its code/configuration can do, and what its
+agent-facing instructions request. Report potential mismatches with evidence;
+do not infer maintainer intent or label a mismatch malicious without proof.
 
 ### Targeted MCPB and Agent Skills expansion
 
