@@ -7,6 +7,7 @@
 - Added deterministic pre-install packet digests, scanned-file manifests, skipped-file accounting, richer Markdown evidence, and a public review packet JSON Schema.
 - Added `skillgate review schema` for exporting the review packet contract.
 - Added a bounded, source-role-preserving semantic text inventory foundation with no findings or changes to existing review, policy, baseline, SARIF, or scan contracts.
+- Added a 24-case repository-owned semantic-artifact corpus and internal evaluation harness for future `SA001`/`SA002` rules; semantic CLI exposure remains intentionally deferred until rule-pack benchmark evidence exists.
 
 ### Changed
 

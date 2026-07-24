@@ -22,6 +22,7 @@ retain their current output and exit behavior. In particular:
 - no `SA###` IDs exist in this slice;
 - semantic text does not participate in `--fail-on`, policy evaluation,
   baseline drift, or SARIF; and
+- no semantic CLI or report format is available yet; and
 - a future review-packet integration must deliberately bump the packet schema,
   publish a matching JSON Schema, update snapshots, and document migration.
 
@@ -81,10 +82,18 @@ The existing owned fixtures are the reviewed benign seed set for this stage:
 | `fixtures/benchmark/01-safe-documentation-skill` | Safe Agent Skill input | Repository-authored fixture; MIT with this repository |
 | `fixtures/format-aware/benign-prose` | Benign direct-instruction wording | Repository-authored fixture; MIT with this repository |
 
+The committed [`fixtures/semantic-artifacts/`](../fixtures/semantic-artifacts)
+corpus adds 24 repository-owned cases: six `SA001` candidates, six `SA002`
+candidates, six benign controls, four `SG007` compatibility controls, and two
+deferred categories. Its internal test harness validates fixed labels, source
+selection, inventory blocks, and category-isolated future metrics. It does not
+emit semantic findings or calculate detector accuracy yet.
+
 Existing prompt-override fixtures remain regression inputs for `SG007`; they
 are not semantic-rule positives. Before an `SA###` rule is added, maintainers
-must add a synthetic, repository-owned corpus with explicit role and expected
-result labels, adversarial variants, and a separately reviewed benign set.
+must evaluate the rule pack against the committed corpus and the stated gates.
+Do not add a semantic CLI, including `review preinstall --semantic`, until that
+evaluation produces useful advisory evidence.
 
 The provisional go/no-go gates are: at least 90% precision on high-confidence
 production-context fixtures, at least 70% reviewer actionability from two
@@ -104,8 +113,9 @@ at least 20 representative repositories or bundles.
 - [x] Record benchmark provenance, false-positive budget, and termination
   gates.
 - [x] Add a bounded, deterministic inventory with no findings.
-- [ ] Add the synthetic semantic benchmark and review it against the gates.
+- [x] Add the synthetic semantic corpus, inventory validation, and future-rule
+  metric harness.
 - [ ] Add narrow advisory `SA###` findings only after that benchmark is ready.
 - [ ] Add line-movement-stable semantic drift before review-packet integration.
-- [ ] Version the packet and add `review preinstall --semantic` only after
-  representative-repository evidence is published.
+- [ ] Add a semantic CLI, version the packet, and add `review preinstall
+  --semantic` only after representative-repository evidence is published.

@@ -147,6 +147,12 @@ high-precision advisory rule pack follows only after an overlap matrix and
 reviewed benchmark gates exist. Semantic policy remains gated on representative
 repository evidence. This is not a classifier or blocking-policy commitment.
 
+The committed synthetic semantic-artifact corpus and its internal evaluation
+harness now validate source selection, labels, and future category metrics.
+They are test tooling, not a public product surface. A semantic CLI, including
+`review preinstall --semantic` or a standalone semantic command, is explicitly
+deferred until advisory `SA###` rules have produced useful benchmark evidence.
+
 ### Declared purpose, capability, and instruction comparison
 
 After semantic review and drift have real usage, add an explainable comparison of

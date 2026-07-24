@@ -1,0 +1,12 @@
+schema_version: "1"
+id: 17-negative-toml-summary
+fixture_class: negative
+semantic_categories: []
+expected_blocks:
+  - file_path: prompts.toml
+    line_number: 1
+    end_line: 1
+    source_role: prompt_template
+    structured_field: template
+    agent_consumption: direct
+expected_existing_rule_ids: []

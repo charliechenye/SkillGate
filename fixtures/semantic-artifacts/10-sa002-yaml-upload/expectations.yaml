@@ -1,0 +1,12 @@
+schema_version: "1"
+id: 10-sa002-yaml-upload
+fixture_class: positive
+semantic_categories: [SA002]
+expected_blocks:
+  - file_path: agent.yaml
+    line_number: 1
+    end_line: 1
+    source_role: agent_instruction
+    structured_field: instructions
+    agent_consumption: direct
+expected_existing_rule_ids: []

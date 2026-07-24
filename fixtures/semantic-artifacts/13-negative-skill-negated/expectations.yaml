@@ -1,0 +1,12 @@
+schema_version: "1"
+id: 13-negative-skill-negated
+fixture_class: negative
+semantic_categories: []
+expected_blocks:
+  - file_path: SKILL.md
+    line_number: 1
+    end_line: 1
+    source_role: agent_instruction
+    structured_field: body
+    agent_consumption: direct
+expected_existing_rule_ids: []

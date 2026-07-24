@@ -1,0 +1,12 @@
+schema_version: "1"
+id: 02-sa001-agents-private-key
+fixture_class: positive
+semantic_categories: [SA001]
+expected_blocks:
+  - file_path: AGENTS.md
+    line_number: 1
+    end_line: 1
+    source_role: agent_instruction
+    structured_field: null
+    agent_consumption: direct
+expected_existing_rule_ids: []
