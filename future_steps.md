@@ -128,6 +128,8 @@ Use the staged roadmap in
 [`docs/roadmaps/semantic-artifact-linting.md`](docs/roadmaps/semantic-artifact-linting.md)
 before implementing any semantic scanner. Rebase implementation work onto the
 current Review Packet schema and preserve existing `SG007`/`SG008` behavior.
+The initial compatibility, source-role, and inventory decisions are recorded
+in [`docs/semantic-artifact-inventory.md`](docs/semantic-artifact-inventory.md).
 The staged sequence is:
 
 ```text
