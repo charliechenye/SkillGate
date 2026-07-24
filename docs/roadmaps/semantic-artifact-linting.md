@@ -559,6 +559,15 @@ Goal:
 
 Add high-precision semantic review findings for explicit dangerous instructions.
 
+Current status:
+
+The first library-only slice is complete: `SA001` and `SA002` consume only
+`direct` inventory blocks, emit deterministic advisory JSON and Markdown
+helpers, preserve `SG007`, and link same-file `SG005`/`SG003` evidence where
+available. It passes the owned synthetic corpus at 100% recall with zero false
+positives. This is not public CLI, packet, SARIF, policy, or baseline
+integration, and it is not representative-repository evidence.
+
 Deliverables:
 
 - initial deterministic rule pack;

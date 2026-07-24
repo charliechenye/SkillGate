@@ -14,6 +14,8 @@ SEVERITY_ORDER = {
     "critical": 4,
 }
 Severity = Literal["informational", "low", "medium", "high", "critical"]
+SemanticImpact = Literal["low", "medium", "high", "critical"]
+SemanticConfidence = Literal["low", "medium", "high"]
 SemanticSourceRole = Literal[
     "agent_instruction",
     "tool_description",
@@ -93,6 +95,35 @@ class SemanticTextInventory(StableModel):
     tool_version: str
     blocks: list[SemanticTextBlock]
     skipped_files: list[SemanticInventorySkip]
+    summary: dict[str, int]
+
+
+class SemanticFinding(StableModel):
+    """An advisory finding derived from source-selected agent-facing text."""
+
+    id: str
+    rule_id: str
+    title: str
+    potential_impact: SemanticImpact
+    confidence: SemanticConfidence
+    applicability: AgentConsumption
+    file_path: str
+    line_number: int
+    end_line: int
+    evidence: str
+    category: str
+    source_role: SemanticSourceRole
+    structured_field: str | None = None
+    related_rule_ids: list[str] = Field(default_factory=list)
+    review_guidance: str
+
+
+class SemanticAnalysis(StableModel):
+    """Separate advisory semantic result family; it is not a ScanReport."""
+
+    schema_version: str
+    tool_version: str
+    findings: list[SemanticFinding]
     summary: dict[str, int]
 
 

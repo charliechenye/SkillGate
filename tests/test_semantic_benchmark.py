@@ -12,6 +12,7 @@ from skillgate.semantic_benchmark import (
     semantic_category_metrics,
     validate_semantic_benchmark_corpus,
     validate_semantic_benchmark_inventory,
+    validate_semantic_rule_pack,
 )
 
 SEMANTIC_FIXTURES = ROOT / "fixtures" / "semantic-artifacts"
@@ -39,6 +40,29 @@ def test_semantic_benchmark_inventory_is_deterministic_and_preserves_sg007() -> 
     validate_semantic_benchmark_corpus(cases)
     for case in cases:
         validate_semantic_benchmark_inventory(case)
+
+
+def test_semantic_rule_pack_matches_every_labeled_corpus_case() -> None:
+    metrics = validate_semantic_rule_pack(load_semantic_benchmark_cases(SEMANTIC_FIXTURES))
+
+    assert metrics == {
+        "SA001": {
+            "true_positive": 6,
+            "false_positive": 0,
+            "false_negative": 0,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+        },
+        "SA002": {
+            "true_positive": 6,
+            "false_positive": 0,
+            "false_negative": 0,
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+        },
+    }
 
 
 def test_semantic_metrics_are_isolated_by_reserved_category() -> None:

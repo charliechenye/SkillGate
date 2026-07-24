@@ -4,9 +4,9 @@ This document records the Stage 0 decisions for semantic artifact linting and
 the boundary of the first implementation slice. It supplements the
 [semantic artifact linting roadmap](roadmaps/semantic-artifact-linting.md).
 
-The initial implementation is a local, deterministic text inventory. It does
-not emit semantic findings, make a safety verdict, execute content, fetch
-remote inputs, or change the existing scanner's file discovery.
+The initial implementation is a local, deterministic text inventory with a
+narrow internal advisory rule pack. It does not make a safety verdict, execute
+content, fetch remote inputs, or change the existing scanner's file discovery.
 
 ## Compatibility decision
 
@@ -19,10 +19,11 @@ retain their current output and exit behavior. In particular:
 
 - `SG007` remains the only rule for its existing explicit prompt-override and
   concealment phrases;
-- no `SA###` IDs exist in this slice;
+- the library-only `SA001` and `SA002` result family remains outside existing
+  scan and review outputs;
 - semantic text does not participate in `--fail-on`, policy evaluation,
   baseline drift, or SARIF; and
-- no semantic CLI or report format is available yet; and
+- no semantic CLI or public report format is available yet; and
 - a future review-packet integration must deliberately bump the packet schema,
   publish a matching JSON Schema, update snapshots, and document migration.
 
@@ -30,15 +31,18 @@ retain their current output and exit behavior. In particular:
 
 | Existing signal | What it reports today | Semantic inventory treatment | Future semantic rule boundary |
 | --- | --- | --- | --- |
-| `SG003` | An observed network endpoint or egress capability | Inventory can preserve an instruction that names an outbound destination | A future `SA###` may report an instruction to transmit specified data; it must not claim that transmission occurred. |
-| `SG005` | A secret reference or secret-bearing path | Inventory redacts assignment values while retaining the secret name | A future `SA###` may report an agent-directed request to access sensitive data; it is distinct from mere reference presence. |
+| `SG003` | An observed network endpoint or egress capability | Inventory can preserve an instruction that names an outbound destination | `SA002` reports an instruction to transmit specified data; it must not claim that transmission occurred. Same-file evidence is linked when present. |
+| `SG005` | A secret reference or secret-bearing path | Inventory redacts assignment values while retaining the secret name | `SA001` reports an agent-directed request to access sensitive data; it is distinct from mere reference presence. Same-file evidence is linked when present. |
 | `SG007` | Narrow explicit override or concealment language | Text remains inventory evidence only | Do not create a duplicate `SA###` for the same explicit phrase. Any later richer context must cross-link `SG007`. |
 | `SG008` | Unicode controls, large Base64-like blobs, or encoded execution | Inventory preserves only source-selected text and never renders or decodes it | Do not treat obfuscation as a semantic instruction finding. |
 
-The first planned semantic categories remain reserved until benchmark gates are
-met: `SA001` for active sensitive-data access instructions and `SA002` for an
-explicit request to transmit specified data to a named destination. SkillGate
-maintainers own both categories and the `SG007` compatibility decision.
+The first semantic categories are `SA001` for direct sensitive-data access
+instructions and `SA002` for direct requests to transmit private data to a
+named destination. The current internal rule pack applies only explicit
+action-plus-target patterns in `direct` inventory blocks, suppresses explicit
+same-sentence negation, and is intentionally not exposed through a CLI or the
+existing report contracts. SkillGate maintainers own both categories and the
+`SG007` compatibility decision.
 
 ## Source-role allowlist
 
@@ -86,14 +90,17 @@ The committed [`fixtures/semantic-artifacts/`](../fixtures/semantic-artifacts)
 corpus adds 24 repository-owned cases: six `SA001` candidates, six `SA002`
 candidates, six benign controls, four `SG007` compatibility controls, and two
 deferred categories. Its internal test harness validates fixed labels, source
-selection, inventory blocks, and category-isolated future metrics. It does not
-emit semantic findings or calculate detector accuracy yet.
+selection, inventory blocks, actual rule-pack observations, and
+category-isolated metrics. The library-only pack has 100% recall and no false
+positives on this synthetic corpus. That is a regression gate for these
+fixtures, not a real-world precision, recall, or actionability claim.
 
 Existing prompt-override fixtures remain regression inputs for `SG007`; they
-are not semantic-rule positives. Before an `SA###` rule is added, maintainers
-must evaluate the rule pack against the committed corpus and the stated gates.
-Do not add a semantic CLI, including `review preinstall --semantic`, until that
-evaluation produces useful advisory evidence.
+are not semantic-rule positives. The current rule pack deliberately defers role
+hijack, trust-boundary, hidden-text, classifier, and broad prose detection.
+Do not add a semantic CLI, including `review preinstall --semantic`, until
+representative-repository and reviewer-actionability evaluation produces useful
+advisory evidence.
 
 The provisional go/no-go gates are: at least 90% precision on high-confidence
 production-context fixtures, at least 70% reviewer actionability from two
@@ -115,7 +122,9 @@ at least 20 representative repositories or bundles.
 - [x] Add a bounded, deterministic inventory with no findings.
 - [x] Add the synthetic semantic corpus, inventory validation, and future-rule
   metric harness.
-- [ ] Add narrow advisory `SA###` findings only after that benchmark is ready.
+- [x] Add narrow, library-only `SA001` and `SA002` advisory findings and
+  validate them against the synthetic corpus.
 - [ ] Add line-movement-stable semantic drift before review-packet integration.
-- [ ] Add a semantic CLI, version the packet, and add `review preinstall
-  --semantic` only after representative-repository evidence is published.
+- [ ] Publish `SA###` findings through a semantic CLI, version the packet, and
+  add `review preinstall --semantic` only after representative-repository
+  evidence is published.

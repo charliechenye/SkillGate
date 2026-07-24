@@ -12,6 +12,7 @@ import re
 import tomllib
 from collections.abc import Iterable
 from dataclasses import dataclass
+from hashlib import sha256
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -20,14 +21,19 @@ import yaml
 from skillgate import __version__
 from skillgate.discovery import classify_file, discover_semantic_paths, relative_path
 from skillgate.models import (
+    Finding,
+    SemanticAnalysis,
+    SemanticFinding,
     SemanticInventorySkip,
     SemanticTextBlock,
     SemanticTextInventory,
     stable_json,
 )
 from skillgate.rules.base import FileContent, redact_evidence
+from skillgate.scan import scan_repository
 
 SEMANTIC_INVENTORY_SCHEMA_VERSION = "1"
+SEMANTIC_ANALYSIS_SCHEMA_VERSION = "1"
 
 _DIRECT_MARKDOWN_NAMES = {
     "AGENTS.md",
@@ -87,6 +93,19 @@ _SECRET_VALUE_RE = re.compile(
     (?P<value>\"(?:\\.|[^\"])*\"|'(?:\\.|[^'])*'|[^\s,;]+)
     """
 )
+_SA001_ACTION_RE = re.compile(r"(?i)\b(?:read|inspect|open|collect|retrieve)\b")
+_SA001_TARGET_RE = re.compile(
+    r"(?i)(?:\.(?:env)(?:\b|/)|\.ssh/|\b(?:private[ -]?key|credential store|"
+    r"access[ -]?token)\b|\b(?:TOKEN|SECRET|API_KEY|ACCESS_KEY)\b|"
+    r"\b(?!PUBLIC_)[A-Z][A-Z0-9_]*_(?:TOKEN|SECRET|KEY)\b)"
+)
+_SA002_ACTION_RE = re.compile(r"(?i)\b(?:send|forward|upload|append|post|share|transmit)\b")
+_SA002_SENSITIVE_RE = re.compile(r"(?i)\b(?:private|secret|token|credential|confidential)\b")
+_DESTINATION_RE = re.compile(
+    r"(?i)(?:https?://[^\s'\"<>`]+|\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b)"
+)
+_NEGATION_RE = re.compile(r"(?i)\b(?:do not|don't|never|must not|avoid)\b")
+_SENTENCE_BOUNDARY_RE = re.compile(r"(?:[!?]|(?<=[A-Za-z])\.)(?:\s+|$)")
 
 
 @dataclass(frozen=True)
@@ -115,6 +134,102 @@ def _redacted_text(value: str) -> str:
 
     value = _SECRET_VALUE_RE.sub(r"\g<name>\g<separator>[REDACTED]", value)
     return redact_evidence(value)
+
+
+def _sentence_prefix(value: str, offset: int) -> str:
+    """Return the current sentence prefix without treating file-name dots as boundaries."""
+
+    prefix = value[:offset]
+    boundaries = list(_SENTENCE_BOUNDARY_RE.finditer(prefix))
+    return prefix[boundaries[-1].end() :] if boundaries else prefix
+
+
+def _has_non_negated_action(value: str, pattern: re.Pattern[str]) -> bool:
+    return any(
+        not _NEGATION_RE.search(_sentence_prefix(value, match.start()))
+        for match in pattern.finditer(value)
+    )
+
+
+def _sentences(value: str) -> Iterable[str]:
+    start = 0
+    for boundary in _SENTENCE_BOUNDARY_RE.finditer(value):
+        yield value[start : boundary.start()]
+        start = boundary.end()
+    if start < len(value):
+        yield value[start:]
+
+
+def _semantic_finding_id(rule_id: str, block: SemanticTextBlock, evidence: str) -> str:
+    seed = "|".join(
+        [
+            rule_id,
+            block.file_path,
+            str(block.line_number),
+            str(block.end_line),
+            block.structured_field or "",
+            evidence,
+        ]
+    ).encode("utf-8")
+    return f"{rule_id}-{sha256(seed).hexdigest()[:12]}"
+
+
+def _related_rule_ids(
+    findings: Iterable[Finding], block: SemanticTextBlock, capability: str
+) -> list[str]:
+    return sorted(
+        {
+            finding.rule_id
+            for finding in findings
+            if finding.file_path == block.file_path and finding.capability == capability
+        }
+    )
+
+
+def _make_semantic_finding(
+    *,
+    rule_id: str,
+    title: str,
+    category: str,
+    block: SemanticTextBlock,
+    related_rule_ids: list[str],
+    review_guidance: str,
+) -> SemanticFinding:
+    evidence = _redacted_text(block.text)
+    return SemanticFinding(
+        id=_semantic_finding_id(rule_id, block, evidence),
+        rule_id=rule_id,
+        title=title,
+        potential_impact="high",
+        confidence="high",
+        applicability=block.agent_consumption,
+        file_path=block.file_path,
+        line_number=block.line_number,
+        end_line=block.end_line,
+        evidence=evidence,
+        category=category,
+        source_role=block.source_role,
+        structured_field=block.structured_field,
+        related_rule_ids=related_rule_ids,
+        review_guidance=review_guidance,
+    )
+
+
+def _matches_sa001(block: SemanticTextBlock) -> bool:
+    return any(
+        _has_non_negated_action(sentence, _SA001_ACTION_RE)
+        and _SA001_TARGET_RE.search(sentence) is not None
+        for sentence in _sentences(block.text)
+    )
+
+
+def _matches_sa002(block: SemanticTextBlock) -> bool:
+    return any(
+        _has_non_negated_action(sentence, _SA002_ACTION_RE)
+        and _SA002_SENSITIVE_RE.search(sentence) is not None
+        and _DESTINATION_RE.search(sentence) is not None
+        for sentence in _sentences(block.text)
+    )
 
 
 def _path_is_direct_markdown(path: str) -> bool:
@@ -358,6 +473,115 @@ def semantic_text_inventory(
 
 def semantic_text_inventory_json(inventory: SemanticTextInventory) -> str:
     return stable_json(inventory)
+
+
+def analyze_semantic_inventory(
+    inventory: SemanticTextInventory,
+    static_findings: Iterable[Finding] = (),
+) -> SemanticAnalysis:
+    """Produce narrow advisory findings from direct, source-selected text blocks.
+
+    This separate result family deliberately does not alter ScanReport, policy,
+    baseline, SARIF, or CLI behavior.
+    """
+
+    findings = list(static_findings)
+    semantic_findings: list[SemanticFinding] = []
+    for block in inventory.blocks:
+        if block.agent_consumption != "direct":
+            continue
+        if _matches_sa001(block):
+            semantic_findings.append(
+                _make_semantic_finding(
+                    rule_id="SA001",
+                    title="Agent-directed sensitive-data access instruction",
+                    category="sensitive_data_access",
+                    block=block,
+                    related_rule_ids=_related_rule_ids(findings, block, "secret_access"),
+                    review_guidance=(
+                        "Confirm whether this access is necessary, declared, and bounded "
+                        "for the artifact's purpose."
+                    ),
+                )
+            )
+        if _matches_sa002(block):
+            semantic_findings.append(
+                _make_semantic_finding(
+                    rule_id="SA002",
+                    title="Agent-directed private-data transmission instruction",
+                    category="data_transmission",
+                    block=block,
+                    related_rule_ids=_related_rule_ids(findings, block, "network_egress"),
+                    review_guidance=(
+                        "Confirm that the requested data and named destination are expected, "
+                        "necessary, and approved."
+                    ),
+                )
+            )
+    semantic_findings.sort(
+        key=lambda item: (item.rule_id, item.file_path, item.line_number, item.id)
+    )
+    return SemanticAnalysis(
+        schema_version=SEMANTIC_ANALYSIS_SCHEMA_VERSION,
+        tool_version=__version__,
+        findings=semantic_findings,
+        summary={
+            "findings": len(semantic_findings),
+            "sa001": sum(item.rule_id == "SA001" for item in semantic_findings),
+            "sa002": sum(item.rule_id == "SA002" for item in semantic_findings),
+        },
+    )
+
+
+def analyze_semantic_repository(root: Path) -> SemanticAnalysis:
+    """Analyze a local inventory with related static findings, without a CLI surface."""
+
+    inventory = semantic_text_inventory_repository(root)
+    static_report = scan_repository(root, format_aware=True)
+    return analyze_semantic_inventory(inventory, static_report.findings)
+
+
+def semantic_analysis_json(analysis: SemanticAnalysis) -> str:
+    return stable_json(analysis)
+
+
+def render_semantic_analysis_markdown(analysis: SemanticAnalysis) -> str:
+    """Render an internal, advisory-only Markdown view of semantic findings."""
+
+    lines = [
+        "# SkillGate Semantic Analysis",
+        "",
+        "Advisory only: these findings identify explicit shipped instructions for review.",
+        "They do not prove exploitability or replace runtime trust boundaries.",
+        "",
+        f"- Findings: {analysis.summary['findings']}",
+        f"- SA001 sensitive-data access instructions: {analysis.summary['sa001']}",
+        f"- SA002 private-data transmission instructions: {analysis.summary['sa002']}",
+        "",
+        "## Findings",
+        "",
+    ]
+    if not analysis.findings:
+        lines.append("None.")
+    for finding in analysis.findings:
+        related = ", ".join(finding.related_rule_ids) or "-"
+        lines.extend(
+            [
+                f"### {finding.rule_id}: {finding.title}",
+                "",
+                f"- Source: `{finding.file_path}:{finding.line_number}-{finding.end_line}`",
+                f"- Category: `{finding.category}`",
+                f"- Impact / confidence / applicability: `{finding.potential_impact}` / "
+                f"`{finding.confidence}` / `{finding.applicability}`",
+                f"- Source role: `{finding.source_role}`",
+                f"- Structured field: `{finding.structured_field or '-'}`",
+                f"- Related static rules: `{related}`",
+                f"- Evidence: {finding.evidence}",
+                f"- Review: {finding.review_guidance}",
+                "",
+            ]
+        )
+    return "\n".join(lines) + "\n"
 
 
 def semantic_text_inventory_repository(
