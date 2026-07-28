@@ -138,6 +138,16 @@ def test_semantic_drift_reports_incomplete_coverage_when_files_are_skipped() -> 
     assert "SKILL.md" in semantic_drift_json(report)
 
 
+def test_semantic_drift_distinguishes_unchanged_incomplete_coverage() -> None:
+    skipped = SemanticInventorySkip(file_path="SKILL.md", reason="file_size_limit")
+    baseline = create_semantic_baseline(_inventory(skipped_files=(skipped,)))
+    report = diff_semantic_baseline(baseline, _inventory(skipped_files=(skipped,)))
+
+    assert report.incomplete is True
+    assert report.coverage_changed is False
+    assert report.baseline_skipped_files == report.current_skipped_files == [skipped]
+
+
 def test_semantic_instruction_drift_requires_matching_sides() -> None:
     with pytest.raises(ValueError, match="appropriate before/after block"):
         SemanticInstructionDrift(change_type="added")

@@ -396,11 +396,25 @@ def render_semantic_drift_markdown(report: SemanticDriftReport) -> str:
         "",
     ]
     if report.incomplete:
+        baseline_skips = (
+            ", ".join(
+                f"`{skip.file_path}` ({skip.reason})" for skip in report.baseline_skipped_files
+            )
+            or "none"
+        )
+        current_skips = (
+            ", ".join(
+                f"`{skip.file_path}` ({skip.reason})" for skip in report.current_skipped_files
+            )
+            or "none"
+        )
         lines.extend(
             [
                 "Coverage is incomplete because one or more semantic source files were skipped.",
                 f"Baseline skipped files: {len(report.baseline_skipped_files)}; "
                 f"current skipped files: {len(report.current_skipped_files)}.",
+                f"- Baseline skips: {baseline_skips}",
+                f"- Current skips: {current_skips}",
                 "",
             ]
         )
