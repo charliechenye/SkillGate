@@ -4,41 +4,57 @@ This document records the Stage 0 decisions for semantic artifact linting and
 the boundary of the first implementation slice. It supplements the
 [semantic artifact linting roadmap](roadmaps/semantic-artifact-linting.md).
 
-The initial implementation is a local, deterministic text inventory. It does
-not emit semantic findings, make a safety verdict, execute content, fetch
-remote inputs, or change the existing scanner's file discovery.
+The initial implementation is a local, deterministic text inventory with a
+narrow internal advisory rule pack and semantic-drift baseline. It does not
+make a safety verdict, execute content, fetch remote inputs, or change the
+existing scanner's file discovery.
 
 ## Compatibility decision
 
-The current pre-install review packet remains schema version `2`. The first
-inventory is a library-level building block, so it is not included in review
-packets, scan reports, SARIF, policies, baselines, waivers, or GitHub Actions.
+The current pre-install review packet remains schema version `2`. The inventory
+and its advisory results are library-level building blocks, so they are not
+included in review packets, scan reports, SARIF, policies, existing capability
+baselines, waivers, or GitHub Actions.
 
 `scan`, `check`, `diff`, `review summary`, and `review preinstall` therefore
 retain their current output and exit behavior. In particular:
 
 - `SG007` remains the only rule for its existing explicit prompt-override and
   concealment phrases;
-- no `SA###` IDs exist in this slice;
-- semantic text does not participate in `--fail-on`, policy evaluation,
-  baseline drift, or SARIF; and
-- no semantic CLI or report format is available yet; and
+- the library-only `SA001` and `SA002` result family remains outside existing
+  scan and review outputs;
+- semantic text does not participate in `--fail-on`, policy evaluation, the
+  existing capability-baseline drift, or SARIF; and
+- no semantic CLI or public report format is available yet; and
 - a future review-packet integration must deliberately bump the packet schema,
   publish a matching JSON Schema, update snapshots, and document migration.
+
+The semantic baseline and drift helpers are library-only advisory APIs. They
+keep redacted snapshots and report added, removed, and modified selected text
+blocks without modifying `BaselineLock`, `DiffReport`, CLI output, packet
+schemas, policy, SARIF, or Action behavior.
+
+Semantic baselines also retain skipped-file accounting. A comparison is marked
+incomplete whenever either baseline or current inventory skipped semantic
+source files, and coverage changes are reported separately from instruction
+changes.
 
 ## Existing-rule overlap matrix
 
 | Existing signal | What it reports today | Semantic inventory treatment | Future semantic rule boundary |
 | --- | --- | --- | --- |
-| `SG003` | An observed network endpoint or egress capability | Inventory can preserve an instruction that names an outbound destination | A future `SA###` may report an instruction to transmit specified data; it must not claim that transmission occurred. |
-| `SG005` | A secret reference or secret-bearing path | Inventory redacts assignment values while retaining the secret name | A future `SA###` may report an agent-directed request to access sensitive data; it is distinct from mere reference presence. |
+| `SG003` | An observed network endpoint or egress capability | Inventory can preserve an instruction that names an outbound destination | `SA002` reports an instruction to transmit specified data; it must not claim that transmission occurred. Same-file evidence is linked when present. |
+| `SG005` | A secret reference or secret-bearing path | Inventory redacts assignment values while retaining the secret name | `SA001` reports an agent-directed request to access sensitive data; it is distinct from mere reference presence. Same-file evidence is linked when present. |
 | `SG007` | Narrow explicit override or concealment language | Text remains inventory evidence only | Do not create a duplicate `SA###` for the same explicit phrase. Any later richer context must cross-link `SG007`. |
 | `SG008` | Unicode controls, large Base64-like blobs, or encoded execution | Inventory preserves only source-selected text and never renders or decodes it | Do not treat obfuscation as a semantic instruction finding. |
 
-The first planned semantic categories remain reserved until benchmark gates are
-met: `SA001` for active sensitive-data access instructions and `SA002` for an
-explicit request to transmit specified data to a named destination. SkillGate
-maintainers own both categories and the `SG007` compatibility decision.
+The first semantic categories are `SA001` for direct sensitive-data access
+instructions and `SA002` for direct requests to transmit private data to a
+named destination. The current internal rule pack applies only explicit
+action-plus-target patterns in `direct` inventory blocks, suppresses explicit
+same-sentence negation, and is intentionally not exposed through a CLI or the
+existing report contracts. SkillGate maintainers own both categories and the
+`SG007` compatibility decision.
 
 ## Source-role allowlist
 
@@ -66,9 +82,37 @@ source file when adding any of its blocks would cross a bound. Inventory text
 uses the existing evidence redaction convention, retaining secret names such
 as `SERVICE_TOKEN` while replacing assignment values.
 
+Fingerprinting uses the redacted text by design. A secret-value-only change is
+therefore not reported as semantic drift; this prevents a baseline from
+retaining or comparing secret values. Changes to the surrounding instruction,
+source context, or selected field remain reportable.
+
 Repository inventory reuses normal discovery and adds only the explicit
 `agent*`, `prompts*`, and `mcp*` YAML/TOML filenames in the allowlist above.
 It does not broaden the ordinary scanner's discovery behavior.
+
+Internal callers can create and compare a redacted baseline without enabling a
+CLI surface:
+
+```python
+from pathlib import Path
+
+from skillgate.semantic import (
+    create_semantic_baseline_repository,
+    diff_semantic_repository,
+    load_semantic_baseline,
+    render_semantic_drift_markdown,
+    save_semantic_baseline,
+)
+
+root = Path(".")
+baseline = create_semantic_baseline_repository(root)
+lock = Path("skillgate.semantic.lock")
+save_semantic_baseline(baseline, lock)
+approved = load_semantic_baseline(lock)
+current = diff_semantic_repository(approved, root)
+print(render_semantic_drift_markdown(current))
+```
 
 Archive integrations must pass only files selected by the existing archive
 safety layer. The inventory must not independently walk an extracted archive.
@@ -86,14 +130,17 @@ The committed [`fixtures/semantic-artifacts/`](../fixtures/semantic-artifacts)
 corpus adds 24 repository-owned cases: six `SA001` candidates, six `SA002`
 candidates, six benign controls, four `SG007` compatibility controls, and two
 deferred categories. Its internal test harness validates fixed labels, source
-selection, inventory blocks, and category-isolated future metrics. It does not
-emit semantic findings or calculate detector accuracy yet.
+selection, inventory blocks, actual rule-pack observations, and
+category-isolated metrics. The library-only pack has 100% recall and no false
+positives on this synthetic corpus. That is a regression gate for these
+fixtures, not a real-world precision, recall, or actionability claim.
 
 Existing prompt-override fixtures remain regression inputs for `SG007`; they
-are not semantic-rule positives. Before an `SA###` rule is added, maintainers
-must evaluate the rule pack against the committed corpus and the stated gates.
-Do not add a semantic CLI, including `review preinstall --semantic`, until that
-evaluation produces useful advisory evidence.
+are not semantic-rule positives. The current rule pack deliberately defers role
+hijack, trust-boundary, hidden-text, classifier, and broad prose detection.
+Do not add a semantic CLI, including `review preinstall --semantic`, until
+representative-repository and reviewer-actionability evaluation produces useful
+advisory evidence.
 
 The provisional go/no-go gates are: at least 90% precision on high-confidence
 production-context fixtures, at least 70% reviewer actionability from two
@@ -115,7 +162,12 @@ at least 20 representative repositories or bundles.
 - [x] Add a bounded, deterministic inventory with no findings.
 - [x] Add the synthetic semantic corpus, inventory validation, and future-rule
   metric harness.
-- [ ] Add narrow advisory `SA###` findings only after that benchmark is ready.
-- [ ] Add line-movement-stable semantic drift before review-packet integration.
-- [ ] Add a semantic CLI, version the packet, and add `review preinstall
-  --semantic` only after representative-repository evidence is published.
+- [x] Add narrow, library-only `SA001` and `SA002` advisory findings and
+  validate them against the synthetic corpus.
+- [x] Add line-movement-stable, library-only semantic drift before review-packet
+  integration. It records redacted added, removed, and modified blocks; selected
+  field, source-role, and applicability moves remain visible as removal plus
+  addition rather than inheriting approval by content alone.
+- [ ] Publish `SA###` findings through a semantic CLI, version the packet, and
+  add `review preinstall --semantic` only after representative-repository
+  evidence is published.

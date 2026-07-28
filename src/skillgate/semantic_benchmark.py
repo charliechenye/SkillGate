@@ -10,7 +10,7 @@ from typing import Any
 import yaml
 
 from skillgate.scan import scan_repository
-from skillgate.semantic import semantic_text_inventory_repository
+from skillgate.semantic import analyze_semantic_repository, semantic_text_inventory_repository
 
 SEMANTIC_BENCHMARK_SCHEMA_VERSION = "1"
 SEMANTIC_RULE_IDS = {"SA001", "SA002"}
@@ -205,7 +205,7 @@ def validate_semantic_benchmark_inventory(case: SemanticBenchmarkCase) -> None:
     unexpected_semantic = sorted(rule_id for rule_id in actual_rule_ids if rule_id.startswith("SA"))
     if unexpected_semantic:
         raise SemanticBenchmarkError(
-            f"{case.case_id} emitted semantic rules before the rule pack exists: "
+            f"{case.case_id} emitted semantic rules through the static scanner: "
             f"{', '.join(unexpected_semantic)}"
         )
 
@@ -215,14 +215,27 @@ def validate_semantic_benchmark_corpus(cases: Iterable[SemanticBenchmarkCase]) -
         validate_semantic_benchmark_inventory(case)
 
 
+def semantic_benchmark_observations(
+    cases: Iterable[SemanticBenchmarkCase],
+) -> dict[str, tuple[str, ...]]:
+    """Run the library-only semantic detector over every benchmark artifact."""
+
+    return {
+        case.case_id: tuple(
+            finding.rule_id for finding in analyze_semantic_repository(case.artifact_root).findings
+        )
+        for case in cases
+    }
+
+
 def semantic_category_metrics(
     cases: Iterable[SemanticBenchmarkCase],
     observed_rule_ids: Mapping[str, Iterable[str]],
 ) -> dict[str, dict[str, float | int | None]]:
-    """Calculate future detector quality per reserved semantic rule ID.
+    """Calculate detector quality per reserved semantic rule ID.
 
-    Observations are passed in deliberately: the inventory has no detector yet.
-    This keeps the benchmark reusable when advisory SA rules are introduced.
+    Observations are supplied separately so metric calculation remains
+    independently unit-testable from the rule-pack execution harness.
     """
 
     case_list = list(cases)
@@ -268,4 +281,33 @@ def semantic_category_metrics(
             "recall": recall,
             "f1": f1,
         }
+    return metrics
+
+
+def validate_semantic_rule_pack(
+    cases: Iterable[SemanticBenchmarkCase],
+) -> dict[str, dict[str, float | int | None]]:
+    """Enforce the committed corpus as the narrow SA001/SA002 quality gate."""
+
+    case_list = list(cases)
+    observations = semantic_benchmark_observations(case_list)
+    for case in case_list:
+        expected = set(case.semantic_categories)
+        actual = set(observations[case.case_id])
+        if actual != expected:
+            raise SemanticBenchmarkError(
+                f"{case.case_id} semantic findings did not match its labeled categories"
+            )
+    metrics = semantic_category_metrics(case_list, observations)
+    for rule_id, values in metrics.items():
+        if (
+            values["false_positive"]
+            or values["false_negative"]
+            or values["precision"] != 1.0
+            or values["recall"] != 1.0
+            or values["f1"] != 1.0
+        ):
+            raise SemanticBenchmarkError(
+                f"{rule_id} does not meet the synthetic corpus quality gate"
+            )
     return metrics

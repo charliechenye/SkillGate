@@ -1,8 +1,8 @@
-"""Bounded semantic text inventory for statically shipped agent artifacts.
+"""Bounded semantic inventory and advisory helpers for shipped agent artifacts.
 
-This module deliberately inventories source-selected text only. It does not
-emit findings, infer a source role from suspicious wording, execute content,
-or change the existing scan and review-packet contracts.
+It processes only source-selected text, never executes content, and keeps its
+inventory, analysis, and drift results outside existing scan and review-packet
+contracts.
 """
 
 from __future__ import annotations
@@ -12,22 +12,37 @@ import re
 import tomllib
 from collections.abc import Iterable
 from dataclasses import dataclass
+from datetime import UTC, datetime
+from hashlib import sha256
 from pathlib import Path, PurePosixPath
 from typing import Any
 
 import yaml
+from pydantic import ValidationError
 
 from skillgate import __version__
 from skillgate.discovery import classify_file, discover_semantic_paths, relative_path
+from skillgate.identity import normalized_path
 from skillgate.models import (
+    Finding,
+    SemanticAnalysis,
+    SemanticBaseline,
+    SemanticBlockSnapshot,
+    SemanticDriftReport,
+    SemanticFinding,
+    SemanticInstructionDrift,
     SemanticInventorySkip,
     SemanticTextBlock,
     SemanticTextInventory,
     stable_json,
 )
 from skillgate.rules.base import FileContent, redact_evidence
+from skillgate.scan import scan_repository
 
 SEMANTIC_INVENTORY_SCHEMA_VERSION = "1"
+SEMANTIC_ANALYSIS_SCHEMA_VERSION = "1"
+SEMANTIC_BASELINE_SCHEMA_VERSION = "1"
+SEMANTIC_DRIFT_SCHEMA_VERSION = "1"
 
 _DIRECT_MARKDOWN_NAMES = {
     "AGENTS.md",
@@ -87,6 +102,19 @@ _SECRET_VALUE_RE = re.compile(
     (?P<value>\"(?:\\.|[^\"])*\"|'(?:\\.|[^'])*'|[^\s,;]+)
     """
 )
+_SA001_ACTION_RE = re.compile(r"(?i)\b(?:read|inspect|open|collect|retrieve)\b")
+_SA001_TARGET_RE = re.compile(
+    r"(?i)(?:\.(?:env)(?:\b|/)|\.ssh/|\b(?:private[ -]?key|credential store|"
+    r"access[ -]?token)\b|\b(?:TOKEN|SECRET|API_KEY|ACCESS_KEY)\b|"
+    r"\b(?!PUBLIC_)[A-Z][A-Z0-9_]*_(?:TOKEN|SECRET|KEY)\b)"
+)
+_SA002_ACTION_RE = re.compile(r"(?i)\b(?:send|forward|upload|append|post|share|transmit)\b")
+_SA002_SENSITIVE_RE = re.compile(r"(?i)\b(?:private|secret|token|credential|confidential)\b")
+_DESTINATION_RE = re.compile(
+    r"(?i)(?:https?://[^\s'\"<>`]+|\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b)"
+)
+_NEGATION_RE = re.compile(r"(?i)\b(?:do not|don't|never|must not|avoid)\b")
+_SENTENCE_BOUNDARY_RE = re.compile(r"(?:[!?]|(?<=[A-Za-z])\.)(?:\s+|$)")
 
 
 @dataclass(frozen=True)
@@ -115,6 +143,430 @@ def _redacted_text(value: str) -> str:
 
     value = _SECRET_VALUE_RE.sub(r"\g<name>\g<separator>[REDACTED]", value)
     return redact_evidence(value)
+
+
+def normalized_semantic_text(value: str) -> str:
+    """Normalize layout whitespace in already-redacted instruction text."""
+
+    normalized_lines = _redacted_text(value).replace("\r\n", "\n").replace("\r", "\n")
+    return " ".join(normalized_lines.split())
+
+
+def semantic_block_fingerprint(block: SemanticTextBlock) -> str:
+    """Return a line-movement-stable identity for one source-selected text block."""
+
+    payload = {
+        "agent_consumption": block.agent_consumption,
+        "file_path": normalized_path(block.file_path),
+        "source_role": block.source_role,
+        "structured_field": block.structured_field,
+        "text": normalized_semantic_text(block.text),
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return f"sha256:{sha256(encoded).hexdigest()}"
+
+
+def _semantic_block_snapshot(block: SemanticTextBlock) -> SemanticBlockSnapshot:
+    return SemanticBlockSnapshot(
+        fingerprint=semantic_block_fingerprint(block),
+        file_path=normalized_path(block.file_path),
+        line_number=block.line_number,
+        end_line=block.end_line,
+        text=_redacted_text(block.text),
+        source_role=block.source_role,
+        structured_field=block.structured_field,
+        agent_consumption=block.agent_consumption,
+    )
+
+
+def _snapshot_context(block: SemanticBlockSnapshot) -> tuple[str, str, str, str | None]:
+    """Return the context used to pair changed text after exact matches are removed."""
+
+    return (
+        block.file_path,
+        block.source_role,
+        block.agent_consumption,
+        block.structured_field,
+    )
+
+
+def _context_sort_key(context: tuple[str, str, str, str | None]) -> tuple[str, str, str, str]:
+    return (context[0], context[1], context[2], context[3] or "")
+
+
+def _snapshot_sort_key(block: SemanticBlockSnapshot) -> tuple[str, str, str, str, int, int]:
+    return (
+        block.fingerprint,
+        block.file_path,
+        block.source_role,
+        block.structured_field or "",
+        block.line_number,
+        block.end_line,
+    )
+
+
+def _semantic_skip_sort_key(skip: SemanticInventorySkip) -> tuple[str, str]:
+    return (skip.file_path, skip.reason)
+
+
+def _semantic_drift_sort_key(
+    change: SemanticInstructionDrift,
+) -> tuple[int, str, str, str, str, int, int]:
+    block = change.after or change.before
+    assert block is not None
+    change_order = {"added": 0, "removed": 1, "modified": 2}
+    return (change_order[change.change_type], *_snapshot_sort_key(block))
+
+
+def create_semantic_baseline(inventory: SemanticTextInventory) -> SemanticBaseline:
+    """Create a redacted, internal semantic approval baseline from an inventory."""
+
+    return SemanticBaseline(
+        schema_version=SEMANTIC_BASELINE_SCHEMA_VERSION,
+        tool_version=__version__,
+        created_at=datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+        blocks=sorted(
+            (_semantic_block_snapshot(block) for block in inventory.blocks),
+            key=_snapshot_sort_key,
+        ),
+        skipped_files=sorted(inventory.skipped_files, key=_semantic_skip_sort_key),
+    )
+
+
+def create_semantic_baseline_repository(
+    root: Path,
+    *,
+    limits: SemanticInventoryLimits = DEFAULT_SEMANTIC_INVENTORY_LIMITS,
+) -> SemanticBaseline:
+    """Create an internal semantic baseline from one local repository without a CLI."""
+
+    return create_semantic_baseline(semantic_text_inventory_repository(root, limits=limits))
+
+
+def save_semantic_baseline(baseline: SemanticBaseline, output: Path) -> None:
+    """Persist an internal baseline using the repository's stable JSON convention."""
+
+    output.write_text(stable_json(baseline), encoding="utf-8")
+
+
+def load_semantic_baseline(path: Path) -> SemanticBaseline:
+    """Load a persisted internal semantic baseline without affecting BaselineLock."""
+
+    try:
+        return SemanticBaseline.model_validate_json(path.read_text(encoding="utf-8"))
+    except (OSError, ValidationError) as exc:
+        raise ValueError(f"Unable to load semantic baseline file: {path}") from exc
+
+
+def diff_semantic_baseline(
+    baseline: SemanticBaseline, inventory: SemanticTextInventory
+) -> SemanticDriftReport:
+    """Compare a semantic inventory without treating line movement as drift.
+
+    Exact fingerprints include source role, selected field, applicability, and
+    normalized redacted text. Remaining blocks with the same context are
+    modifications; a context move is intentionally removal plus addition so
+    review does not lose the source-field change.
+    """
+
+    before_by_fingerprint: dict[str, list[SemanticBlockSnapshot]] = {}
+    after_by_fingerprint: dict[str, list[SemanticBlockSnapshot]] = {}
+    for block in baseline.blocks:
+        before_by_fingerprint.setdefault(block.fingerprint, []).append(block)
+    for block in (_semantic_block_snapshot(item) for item in inventory.blocks):
+        after_by_fingerprint.setdefault(block.fingerprint, []).append(block)
+    for blocks in (*before_by_fingerprint.values(), *after_by_fingerprint.values()):
+        blocks.sort(key=_snapshot_sort_key)
+
+    unchanged = 0
+    before_remaining: list[SemanticBlockSnapshot] = []
+    after_remaining: list[SemanticBlockSnapshot] = []
+    for fingerprint in sorted(set(before_by_fingerprint) | set(after_by_fingerprint)):
+        before_blocks = before_by_fingerprint.get(fingerprint, [])
+        after_blocks = after_by_fingerprint.get(fingerprint, [])
+        matched = min(len(before_blocks), len(after_blocks))
+        unchanged += matched
+        before_remaining.extend(before_blocks[matched:])
+        after_remaining.extend(after_blocks[matched:])
+
+    before_by_context: dict[tuple[str, str, str, str | None], list[SemanticBlockSnapshot]] = {}
+    after_by_context: dict[tuple[str, str, str, str | None], list[SemanticBlockSnapshot]] = {}
+    for block in before_remaining:
+        before_by_context.setdefault(_snapshot_context(block), []).append(block)
+    for block in after_remaining:
+        after_by_context.setdefault(_snapshot_context(block), []).append(block)
+
+    changes: list[SemanticInstructionDrift] = []
+    for context in sorted(set(before_by_context) | set(after_by_context), key=_context_sort_key):
+        before_blocks = sorted(before_by_context.get(context, []), key=_snapshot_sort_key)
+        after_blocks = sorted(after_by_context.get(context, []), key=_snapshot_sort_key)
+        paired = min(len(before_blocks), len(after_blocks))
+        changes.extend(
+            SemanticInstructionDrift(
+                change_type="modified",
+                before=before_blocks[index],
+                after=after_blocks[index],
+            )
+            for index in range(paired)
+        )
+        changes.extend(
+            SemanticInstructionDrift(change_type="removed", before=block)
+            for block in before_blocks[paired:]
+        )
+        changes.extend(
+            SemanticInstructionDrift(change_type="added", after=block)
+            for block in after_blocks[paired:]
+        )
+
+    changes.sort(key=_semantic_drift_sort_key)
+    baseline_skipped_files = sorted(baseline.skipped_files, key=_semantic_skip_sort_key)
+    current_skipped_files = sorted(inventory.skipped_files, key=_semantic_skip_sort_key)
+    return SemanticDriftReport(
+        schema_version=SEMANTIC_DRIFT_SCHEMA_VERSION,
+        tool_version=__version__,
+        baseline_created_at=baseline.created_at,
+        baseline_skipped_files=baseline_skipped_files,
+        current_skipped_files=current_skipped_files,
+        coverage_changed=baseline_skipped_files != current_skipped_files,
+        incomplete=bool(baseline_skipped_files or current_skipped_files),
+        changes=changes,
+        summary={
+            "added": sum(change.change_type == "added" for change in changes),
+            "removed": sum(change.change_type == "removed" for change in changes),
+            "modified": sum(change.change_type == "modified" for change in changes),
+            "unchanged": unchanged,
+        },
+    )
+
+
+def diff_semantic_repository(
+    baseline: SemanticBaseline,
+    root: Path,
+    *,
+    limits: SemanticInventoryLimits = DEFAULT_SEMANTIC_INVENTORY_LIMITS,
+) -> SemanticDriftReport:
+    """Compare an internal semantic baseline to one local repository without a CLI."""
+
+    return diff_semantic_baseline(
+        baseline,
+        semantic_text_inventory_repository(root, limits=limits),
+    )
+
+
+def semantic_baseline_json(baseline: SemanticBaseline) -> str:
+    """Serialize an internal semantic baseline using stable JSON."""
+
+    return stable_json(baseline)
+
+
+def semantic_drift_json(report: SemanticDriftReport) -> str:
+    """Serialize an internal semantic drift report using stable JSON."""
+
+    return stable_json(report)
+
+
+def _one_line_semantic_text(value: str) -> str:
+    return normalized_semantic_text(value)
+
+
+def _markdown_code(value: str) -> str:
+    """Wrap untrusted single-line text in a code span without allowing backtick breaks."""
+
+    longest_run = max((len(run) for run in re.findall(r"`+", value)), default=0)
+    fence = "`" * (longest_run + 1)
+    return f"{fence}{value}{fence}"
+
+
+def _render_drift_context(block: SemanticBlockSnapshot) -> list[str]:
+    return [
+        f"- Source: {_markdown_code(f'{block.file_path}:{block.line_number}-{block.end_line}')}",
+        f"- Context: {_markdown_code(block.source_role)} / "
+        f"{_markdown_code(block.structured_field or '-')} / "
+        f"{_markdown_code(block.agent_consumption)}",
+    ]
+
+
+def render_semantic_drift_markdown(report: SemanticDriftReport) -> str:
+    """Render an internal, redacted advisory view of semantic instruction drift."""
+
+    lines = [
+        "# SkillGate Semantic Instruction Drift",
+        "",
+        "Advisory only: this report compares shipped, source-selected text blocks.",
+        "It does not change capability-baseline, policy, SARIF, or review-packet behavior.",
+        "",
+        f"- Added: {report.summary['added']}",
+        f"- Removed: {report.summary['removed']}",
+        f"- Modified: {report.summary['modified']}",
+        f"- Unchanged: {report.summary['unchanged']}",
+        f"- Coverage complete: `{not report.incomplete}`",
+        "",
+        "## Changes",
+        "",
+    ]
+    if report.incomplete:
+        baseline_skips = (
+            ", ".join(
+                f"{_markdown_code(skip.file_path)} ({_markdown_code(skip.reason)})"
+                for skip in report.baseline_skipped_files
+            )
+            or "none"
+        )
+        current_skips = (
+            ", ".join(
+                f"{_markdown_code(skip.file_path)} ({_markdown_code(skip.reason)})"
+                for skip in report.current_skipped_files
+            )
+            or "none"
+        )
+        lines.extend(
+            [
+                "Coverage is incomplete because one or more semantic source files were skipped.",
+                f"Baseline skipped files: {len(report.baseline_skipped_files)}; "
+                f"current skipped files: {len(report.current_skipped_files)}.",
+                f"- Baseline skips: {baseline_skips}",
+                f"- Current skips: {current_skips}",
+                "",
+            ]
+        )
+    if not report.changes:
+        lines.append("None.")
+    for change in report.changes:
+        if change.change_type == "added":
+            assert change.after is not None
+            lines.extend(
+                [
+                    "### Added instruction",
+                    "",
+                    *_render_drift_context(change.after),
+                    f"- Fingerprint: {_markdown_code(change.after.fingerprint)}",
+                    f"- Instruction: {_markdown_code(_one_line_semantic_text(change.after.text))}",
+                    "",
+                ]
+            )
+        elif change.change_type == "removed":
+            assert change.before is not None
+            lines.extend(
+                [
+                    "### Removed instruction",
+                    "",
+                    *_render_drift_context(change.before),
+                    f"- Fingerprint: {_markdown_code(change.before.fingerprint)}",
+                    f"- Instruction: {_markdown_code(_one_line_semantic_text(change.before.text))}",
+                    "",
+                ]
+            )
+        else:
+            assert change.before is not None and change.after is not None
+            lines.extend(
+                [
+                    "### Modified instruction",
+                    "",
+                    *_render_drift_context(change.after),
+                    f"- Before fingerprint: {_markdown_code(change.before.fingerprint)}",
+                    f"- After fingerprint: {_markdown_code(change.after.fingerprint)}",
+                    f"- Before: {_markdown_code(_one_line_semantic_text(change.before.text))}",
+                    f"- After: {_markdown_code(_one_line_semantic_text(change.after.text))}",
+                    "",
+                ]
+            )
+    return "\n".join(lines) + "\n"
+
+
+def _sentence_prefix(value: str, offset: int) -> str:
+    """Return the current sentence prefix without treating file-name dots as boundaries."""
+
+    prefix = value[:offset]
+    boundaries = list(_SENTENCE_BOUNDARY_RE.finditer(prefix))
+    return prefix[boundaries[-1].end() :] if boundaries else prefix
+
+
+def _has_non_negated_action(value: str, pattern: re.Pattern[str]) -> bool:
+    return any(
+        not _NEGATION_RE.search(_sentence_prefix(value, match.start()))
+        for match in pattern.finditer(value)
+    )
+
+
+def _sentences(value: str) -> Iterable[str]:
+    start = 0
+    for boundary in _SENTENCE_BOUNDARY_RE.finditer(value):
+        yield value[start : boundary.start()]
+        start = boundary.end()
+    if start < len(value):
+        yield value[start:]
+
+
+def _semantic_finding_id(rule_id: str, block: SemanticTextBlock, evidence: str) -> str:
+    seed = "|".join(
+        [
+            rule_id,
+            block.file_path,
+            str(block.line_number),
+            str(block.end_line),
+            block.structured_field or "",
+            evidence,
+        ]
+    ).encode("utf-8")
+    return f"{rule_id}-{sha256(seed).hexdigest()[:12]}"
+
+
+def _related_rule_ids(
+    findings: Iterable[Finding], block: SemanticTextBlock, capability: str
+) -> list[str]:
+    return sorted(
+        {
+            finding.rule_id
+            for finding in findings
+            if finding.file_path == block.file_path and finding.capability == capability
+        }
+    )
+
+
+def _make_semantic_finding(
+    *,
+    rule_id: str,
+    title: str,
+    category: str,
+    block: SemanticTextBlock,
+    related_rule_ids: list[str],
+    review_guidance: str,
+) -> SemanticFinding:
+    evidence = _redacted_text(block.text)
+    return SemanticFinding(
+        id=_semantic_finding_id(rule_id, block, evidence),
+        rule_id=rule_id,
+        title=title,
+        potential_impact="high",
+        confidence="high",
+        applicability=block.agent_consumption,
+        file_path=block.file_path,
+        line_number=block.line_number,
+        end_line=block.end_line,
+        evidence=evidence,
+        category=category,
+        source_role=block.source_role,
+        structured_field=block.structured_field,
+        related_rule_ids=related_rule_ids,
+        review_guidance=review_guidance,
+    )
+
+
+def _matches_sa001(block: SemanticTextBlock) -> bool:
+    return any(
+        _has_non_negated_action(sentence, _SA001_ACTION_RE)
+        and _SA001_TARGET_RE.search(sentence) is not None
+        for sentence in _sentences(block.text)
+    )
+
+
+def _matches_sa002(block: SemanticTextBlock) -> bool:
+    return any(
+        _has_non_negated_action(sentence, _SA002_ACTION_RE)
+        and _SA002_SENSITIVE_RE.search(sentence) is not None
+        and _DESTINATION_RE.search(sentence) is not None
+        for sentence in _sentences(block.text)
+    )
 
 
 def _path_is_direct_markdown(path: str) -> bool:
@@ -358,6 +810,115 @@ def semantic_text_inventory(
 
 def semantic_text_inventory_json(inventory: SemanticTextInventory) -> str:
     return stable_json(inventory)
+
+
+def analyze_semantic_inventory(
+    inventory: SemanticTextInventory,
+    static_findings: Iterable[Finding] = (),
+) -> SemanticAnalysis:
+    """Produce narrow advisory findings from direct, source-selected text blocks.
+
+    This separate result family deliberately does not alter ScanReport, policy,
+    baseline, SARIF, or CLI behavior.
+    """
+
+    findings = list(static_findings)
+    semantic_findings: list[SemanticFinding] = []
+    for block in inventory.blocks:
+        if block.agent_consumption != "direct":
+            continue
+        if _matches_sa001(block):
+            semantic_findings.append(
+                _make_semantic_finding(
+                    rule_id="SA001",
+                    title="Agent-directed sensitive-data access instruction",
+                    category="sensitive_data_access",
+                    block=block,
+                    related_rule_ids=_related_rule_ids(findings, block, "secret_access"),
+                    review_guidance=(
+                        "Confirm whether this access is necessary, declared, and bounded "
+                        "for the artifact's purpose."
+                    ),
+                )
+            )
+        if _matches_sa002(block):
+            semantic_findings.append(
+                _make_semantic_finding(
+                    rule_id="SA002",
+                    title="Agent-directed private-data transmission instruction",
+                    category="data_transmission",
+                    block=block,
+                    related_rule_ids=_related_rule_ids(findings, block, "network_egress"),
+                    review_guidance=(
+                        "Confirm that the requested data and named destination are expected, "
+                        "necessary, and approved."
+                    ),
+                )
+            )
+    semantic_findings.sort(
+        key=lambda item: (item.rule_id, item.file_path, item.line_number, item.id)
+    )
+    return SemanticAnalysis(
+        schema_version=SEMANTIC_ANALYSIS_SCHEMA_VERSION,
+        tool_version=__version__,
+        findings=semantic_findings,
+        summary={
+            "findings": len(semantic_findings),
+            "sa001": sum(item.rule_id == "SA001" for item in semantic_findings),
+            "sa002": sum(item.rule_id == "SA002" for item in semantic_findings),
+        },
+    )
+
+
+def analyze_semantic_repository(root: Path) -> SemanticAnalysis:
+    """Analyze a local inventory with related static findings, without a CLI surface."""
+
+    inventory = semantic_text_inventory_repository(root)
+    static_report = scan_repository(root, format_aware=True)
+    return analyze_semantic_inventory(inventory, static_report.findings)
+
+
+def semantic_analysis_json(analysis: SemanticAnalysis) -> str:
+    return stable_json(analysis)
+
+
+def render_semantic_analysis_markdown(analysis: SemanticAnalysis) -> str:
+    """Render an internal, advisory-only Markdown view of semantic findings."""
+
+    lines = [
+        "# SkillGate Semantic Analysis",
+        "",
+        "Advisory only: these findings identify explicit shipped instructions for review.",
+        "They do not prove exploitability or replace runtime trust boundaries.",
+        "",
+        f"- Findings: {analysis.summary['findings']}",
+        f"- SA001 sensitive-data access instructions: {analysis.summary['sa001']}",
+        f"- SA002 private-data transmission instructions: {analysis.summary['sa002']}",
+        "",
+        "## Findings",
+        "",
+    ]
+    if not analysis.findings:
+        lines.append("None.")
+    for finding in analysis.findings:
+        related = ", ".join(finding.related_rule_ids) or "-"
+        lines.extend(
+            [
+                f"### {finding.rule_id}: {finding.title}",
+                "",
+                f"- Source: `{finding.file_path}:{finding.line_number}-{finding.end_line}`",
+                f"- Category: `{finding.category}`",
+                f"- Impact / confidence / applicability: `{finding.potential_impact}` / "
+                f"`{finding.confidence}` / `{finding.applicability}`",
+                f"- Source role: `{finding.source_role}`",
+                f"- Structured field: `{finding.structured_field or '-'}`",
+                f"- Related static rules: `{related}`",
+                f"- Evidence: {finding.evidence}",
+                f"- Review: {finding.review_guidance}",
+                "",
+            ]
+        )
+    return "\n".join(lines) + "\n"
 
 
 def semantic_text_inventory_repository(

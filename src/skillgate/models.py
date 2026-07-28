@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 SCHEMA_VERSION = "1"
 SEVERITY_ORDER = {
@@ -14,6 +14,8 @@ SEVERITY_ORDER = {
     "critical": 4,
 }
 Severity = Literal["informational", "low", "medium", "high", "critical"]
+SemanticImpact = Literal["low", "medium", "high", "critical"]
+SemanticConfidence = Literal["low", "medium", "high"]
 SemanticSourceRole = Literal[
     "agent_instruction",
     "tool_description",
@@ -93,6 +95,93 @@ class SemanticTextInventory(StableModel):
     tool_version: str
     blocks: list[SemanticTextBlock]
     skipped_files: list[SemanticInventorySkip]
+    summary: dict[str, int]
+
+
+class SemanticBlockSnapshot(StableModel):
+    """A redacted semantic block retained in an internal approval baseline."""
+
+    fingerprint: str
+    file_path: str
+    line_number: int
+    end_line: int
+    text: str
+    source_role: SemanticSourceRole
+    structured_field: str | None = None
+    agent_consumption: AgentConsumption
+
+
+class SemanticBaseline(StableModel):
+    """Internal advisory baseline for source-selected semantic text blocks."""
+
+    schema_version: str
+    tool_version: str
+    created_at: str
+    blocks: list[SemanticBlockSnapshot]
+    skipped_files: list[SemanticInventorySkip] = Field(default_factory=list)
+
+
+class SemanticInstructionDrift(StableModel):
+    """One advisory semantic instruction change between an internal baseline and inventory."""
+
+    change_type: Literal["added", "removed", "modified"]
+    before: SemanticBlockSnapshot | None = None
+    after: SemanticBlockSnapshot | None = None
+
+    @model_validator(mode="after")
+    def validate_sides(self) -> SemanticInstructionDrift:
+        valid = {
+            "added": (self.before is None and self.after is not None),
+            "removed": (self.before is not None and self.after is None),
+            "modified": (self.before is not None and self.after is not None),
+        }
+        if not valid[self.change_type]:
+            raise ValueError(
+                f"{self.change_type} semantic drift must contain the appropriate before/after block"
+            )
+        return self
+
+
+class SemanticDriftReport(StableModel):
+    """Separate advisory semantic drift result; it is not a capability DiffReport."""
+
+    schema_version: str
+    tool_version: str
+    baseline_created_at: str
+    baseline_skipped_files: list[SemanticInventorySkip] = Field(default_factory=list)
+    current_skipped_files: list[SemanticInventorySkip] = Field(default_factory=list)
+    coverage_changed: bool = False
+    incomplete: bool = False
+    changes: list[SemanticInstructionDrift]
+    summary: dict[str, int]
+
+
+class SemanticFinding(StableModel):
+    """An advisory finding derived from source-selected agent-facing text."""
+
+    id: str
+    rule_id: str
+    title: str
+    potential_impact: SemanticImpact
+    confidence: SemanticConfidence
+    applicability: AgentConsumption
+    file_path: str
+    line_number: int
+    end_line: int
+    evidence: str
+    category: str
+    source_role: SemanticSourceRole
+    structured_field: str | None = None
+    related_rule_ids: list[str] = Field(default_factory=list)
+    review_guidance: str
+
+
+class SemanticAnalysis(StableModel):
+    """Separate advisory semantic result family; it is not a ScanReport."""
+
+    schema_version: str
+    tool_version: str
+    findings: list[SemanticFinding]
     summary: dict[str, int]
 
 

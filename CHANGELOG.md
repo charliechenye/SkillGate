@@ -7,7 +7,10 @@
 - Added deterministic pre-install packet digests, scanned-file manifests, skipped-file accounting, richer Markdown evidence, and a public review packet JSON Schema.
 - Added `skillgate review schema` for exporting the review packet contract.
 - Added a bounded, source-role-preserving semantic text inventory foundation with no findings or changes to existing review, policy, baseline, SARIF, or scan contracts.
-- Added a 24-case repository-owned semantic-artifact corpus and internal evaluation harness for future `SA001`/`SA002` rules; semantic CLI exposure remains intentionally deferred until rule-pack benchmark evidence exists.
+- Added a 24-case repository-owned semantic-artifact corpus and internal evaluation harness for `SA001`/`SA002`; semantic CLI exposure remains intentionally deferred until representative-evaluation evidence exists.
+- Added internal, deterministic `SA001`/`SA002` advisory analysis for direct agent-facing instructions, with redacted evidence and same-file `SG005`/`SG003` links where applicable. CLI, Review Packet, SARIF, policy, and baseline integration remain intentionally deferred.
+- Added semantic-drift coverage accounting for skipped source files, strict added/removed/modified record validation, and documented the redacted secret-value comparison boundary for internal callers.
+- Added internal semantic baselines and deterministic redacted instruction drift for source-selected text blocks. Line-only and whitespace-only movement remain stable; selected field, role, and applicability changes stay visible as added/removed context moves. Existing baseline, CLI, Review Packet, SARIF, policy, and Action behavior remain unchanged.
 
 ### Changed
 
