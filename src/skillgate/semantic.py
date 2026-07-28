@@ -369,11 +369,20 @@ def _one_line_semantic_text(value: str) -> str:
     return normalized_semantic_text(value)
 
 
+def _markdown_code(value: str) -> str:
+    """Wrap untrusted single-line text in a code span without allowing backtick breaks."""
+
+    longest_run = max((len(run) for run in re.findall(r"`+", value)), default=0)
+    fence = "`" * (longest_run + 1)
+    return f"{fence}{value}{fence}"
+
+
 def _render_drift_context(block: SemanticBlockSnapshot) -> list[str]:
     return [
-        f"- Source: `{block.file_path}:{block.line_number}-{block.end_line}`",
-        f"- Context: `{block.source_role}` / `{block.structured_field or '-'}` / "
-        f"`{block.agent_consumption}`",
+        f"- Source: {_markdown_code(f'{block.file_path}:{block.line_number}-{block.end_line}')}",
+        f"- Context: {_markdown_code(block.source_role)} / "
+        f"{_markdown_code(block.structured_field or '-')} / "
+        f"{_markdown_code(block.agent_consumption)}",
     ]
 
 
@@ -398,13 +407,15 @@ def render_semantic_drift_markdown(report: SemanticDriftReport) -> str:
     if report.incomplete:
         baseline_skips = (
             ", ".join(
-                f"`{skip.file_path}` ({skip.reason})" for skip in report.baseline_skipped_files
+                f"{_markdown_code(skip.file_path)} ({_markdown_code(skip.reason)})"
+                for skip in report.baseline_skipped_files
             )
             or "none"
         )
         current_skips = (
             ", ".join(
-                f"`{skip.file_path}` ({skip.reason})" for skip in report.current_skipped_files
+                f"{_markdown_code(skip.file_path)} ({_markdown_code(skip.reason)})"
+                for skip in report.current_skipped_files
             )
             or "none"
         )
@@ -428,8 +439,8 @@ def render_semantic_drift_markdown(report: SemanticDriftReport) -> str:
                     "### Added instruction",
                     "",
                     *_render_drift_context(change.after),
-                    f"- Fingerprint: `{change.after.fingerprint}`",
-                    f"- Instruction: {_one_line_semantic_text(change.after.text)}",
+                    f"- Fingerprint: {_markdown_code(change.after.fingerprint)}",
+                    f"- Instruction: {_markdown_code(_one_line_semantic_text(change.after.text))}",
                     "",
                 ]
             )
@@ -440,8 +451,8 @@ def render_semantic_drift_markdown(report: SemanticDriftReport) -> str:
                     "### Removed instruction",
                     "",
                     *_render_drift_context(change.before),
-                    f"- Fingerprint: `{change.before.fingerprint}`",
-                    f"- Instruction: {_one_line_semantic_text(change.before.text)}",
+                    f"- Fingerprint: {_markdown_code(change.before.fingerprint)}",
+                    f"- Instruction: {_markdown_code(_one_line_semantic_text(change.before.text))}",
                     "",
                 ]
             )
@@ -452,10 +463,10 @@ def render_semantic_drift_markdown(report: SemanticDriftReport) -> str:
                     "### Modified instruction",
                     "",
                     *_render_drift_context(change.after),
-                    f"- Before fingerprint: `{change.before.fingerprint}`",
-                    f"- After fingerprint: `{change.after.fingerprint}`",
-                    f"- Before: {_one_line_semantic_text(change.before.text)}",
-                    f"- After: {_one_line_semantic_text(change.after.text)}",
+                    f"- Before fingerprint: {_markdown_code(change.before.fingerprint)}",
+                    f"- After fingerprint: {_markdown_code(change.after.fingerprint)}",
+                    f"- Before: {_markdown_code(_one_line_semantic_text(change.before.text))}",
+                    f"- After: {_markdown_code(_one_line_semantic_text(change.after.text))}",
                     "",
                 ]
             )

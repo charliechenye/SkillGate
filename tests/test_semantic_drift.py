@@ -148,6 +148,18 @@ def test_semantic_drift_distinguishes_unchanged_incomplete_coverage() -> None:
     assert report.baseline_skipped_files == report.current_skipped_files == [skipped]
 
 
+def test_semantic_drift_markdown_contains_untrusted_backticks_safely() -> None:
+    before = _inventory(_block("Use the `approved` *workflow* now."))
+    after = _inventory(_block("Use the `changed` *workflow* now."))
+
+    report = diff_semantic_baseline(create_semantic_baseline(before), after)
+    markdown = render_semantic_drift_markdown(report)
+
+    assert "### Modified instruction" in markdown
+    assert "``Use the `approved` *workflow* now.``" in markdown
+    assert "``Use the `changed` *workflow* now.``" in markdown
+
+
 def test_semantic_instruction_drift_requires_matching_sides() -> None:
     with pytest.raises(ValueError, match="appropriate before/after block"):
         SemanticInstructionDrift(change_type="added")
