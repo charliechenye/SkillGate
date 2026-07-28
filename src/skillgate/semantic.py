@@ -205,6 +205,10 @@ def _snapshot_sort_key(block: SemanticBlockSnapshot) -> tuple[str, str, str, str
     )
 
 
+def _semantic_skip_sort_key(skip: SemanticInventorySkip) -> tuple[str, str]:
+    return (skip.file_path, skip.reason)
+
+
 def _semantic_drift_sort_key(
     change: SemanticInstructionDrift,
 ) -> tuple[int, str, str, str, str, int, int]:
@@ -225,6 +229,7 @@ def create_semantic_baseline(inventory: SemanticTextInventory) -> SemanticBaseli
             (_semantic_block_snapshot(block) for block in inventory.blocks),
             key=_snapshot_sort_key,
         ),
+        skipped_files=sorted(inventory.skipped_files, key=_semantic_skip_sort_key),
     )
 
 
@@ -314,10 +319,16 @@ def diff_semantic_baseline(
         )
 
     changes.sort(key=_semantic_drift_sort_key)
+    baseline_skipped_files = sorted(baseline.skipped_files, key=_semantic_skip_sort_key)
+    current_skipped_files = sorted(inventory.skipped_files, key=_semantic_skip_sort_key)
     return SemanticDriftReport(
         schema_version=SEMANTIC_DRIFT_SCHEMA_VERSION,
         tool_version=__version__,
         baseline_created_at=baseline.created_at,
+        baseline_skipped_files=baseline_skipped_files,
+        current_skipped_files=current_skipped_files,
+        coverage_changed=baseline_skipped_files != current_skipped_files,
+        incomplete=bool(baseline_skipped_files or current_skipped_files),
         changes=changes,
         summary={
             "added": sum(change.change_type == "added" for change in changes),
@@ -379,10 +390,20 @@ def render_semantic_drift_markdown(report: SemanticDriftReport) -> str:
         f"- Removed: {report.summary['removed']}",
         f"- Modified: {report.summary['modified']}",
         f"- Unchanged: {report.summary['unchanged']}",
+        f"- Coverage complete: `{not report.incomplete}`",
         "",
         "## Changes",
         "",
     ]
+    if report.incomplete:
+        lines.extend(
+            [
+                "Coverage is incomplete because one or more semantic source files were skipped.",
+                f"Baseline skipped files: {len(report.baseline_skipped_files)}; "
+                f"current skipped files: {len(report.current_skipped_files)}.",
+                "",
+            ]
+        )
     if not report.changes:
         lines.append("None.")
     for change in report.changes:

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 SCHEMA_VERSION = "1"
 SEVERITY_ORDER = {
@@ -118,6 +118,7 @@ class SemanticBaseline(StableModel):
     tool_version: str
     created_at: str
     blocks: list[SemanticBlockSnapshot]
+    skipped_files: list[SemanticInventorySkip] = Field(default_factory=list)
 
 
 class SemanticInstructionDrift(StableModel):
@@ -127,6 +128,19 @@ class SemanticInstructionDrift(StableModel):
     before: SemanticBlockSnapshot | None = None
     after: SemanticBlockSnapshot | None = None
 
+    @model_validator(mode="after")
+    def validate_sides(self) -> SemanticInstructionDrift:
+        valid = {
+            "added": (self.before is None and self.after is not None),
+            "removed": (self.before is not None and self.after is None),
+            "modified": (self.before is not None and self.after is not None),
+        }
+        if not valid[self.change_type]:
+            raise ValueError(
+                f"{self.change_type} semantic drift must contain the appropriate before/after block"
+            )
+        return self
+
 
 class SemanticDriftReport(StableModel):
     """Separate advisory semantic drift result; it is not a capability DiffReport."""
@@ -134,6 +148,10 @@ class SemanticDriftReport(StableModel):
     schema_version: str
     tool_version: str
     baseline_created_at: str
+    baseline_skipped_files: list[SemanticInventorySkip] = Field(default_factory=list)
+    current_skipped_files: list[SemanticInventorySkip] = Field(default_factory=list)
+    coverage_changed: bool = False
+    incomplete: bool = False
     changes: list[SemanticInstructionDrift]
     summary: dict[str, int]
 

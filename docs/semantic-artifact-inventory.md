@@ -34,6 +34,11 @@ keep redacted snapshots and report added, removed, and modified selected text
 blocks without modifying `BaselineLock`, `DiffReport`, CLI output, packet
 schemas, policy, SARIF, or Action behavior.
 
+Semantic baselines also retain skipped-file accounting. A comparison is marked
+incomplete whenever either baseline or current inventory skipped semantic
+source files, and coverage changes are reported separately from instruction
+changes.
+
 ## Existing-rule overlap matrix
 
 | Existing signal | What it reports today | Semantic inventory treatment | Future semantic rule boundary |
@@ -77,9 +82,37 @@ source file when adding any of its blocks would cross a bound. Inventory text
 uses the existing evidence redaction convention, retaining secret names such
 as `SERVICE_TOKEN` while replacing assignment values.
 
+Fingerprinting uses the redacted text by design. A secret-value-only change is
+therefore not reported as semantic drift; this prevents a baseline from
+retaining or comparing secret values. Changes to the surrounding instruction,
+source context, or selected field remain reportable.
+
 Repository inventory reuses normal discovery and adds only the explicit
 `agent*`, `prompts*`, and `mcp*` YAML/TOML filenames in the allowlist above.
 It does not broaden the ordinary scanner's discovery behavior.
+
+Internal callers can create and compare a redacted baseline without enabling a
+CLI surface:
+
+```python
+from pathlib import Path
+
+from skillgate.semantic import (
+    create_semantic_baseline_repository,
+    diff_semantic_repository,
+    load_semantic_baseline,
+    render_semantic_drift_markdown,
+    save_semantic_baseline,
+)
+
+root = Path(".")
+baseline = create_semantic_baseline_repository(root)
+lock = Path("skillgate.semantic.lock")
+save_semantic_baseline(baseline, lock)
+approved = load_semantic_baseline(lock)
+current = diff_semantic_repository(approved, root)
+print(render_semantic_drift_markdown(current))
+```
 
 Archive integrations must pass only files selected by the existing archive
 safety layer. The inventory must not independently walk an extracted archive.

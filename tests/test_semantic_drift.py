@@ -2,8 +2,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from skillgate import __version__
-from skillgate.models import SemanticTextBlock, SemanticTextInventory
+from skillgate.models import (
+    SemanticInstructionDrift,
+    SemanticInventorySkip,
+    SemanticTextBlock,
+    SemanticTextInventory,
+)
 from skillgate.semantic import (
     create_semantic_baseline,
     create_semantic_baseline_repository,
@@ -38,16 +45,19 @@ def _block(
     )
 
 
-def _inventory(*blocks: SemanticTextBlock) -> SemanticTextInventory:
+def _inventory(
+    *blocks: SemanticTextBlock,
+    skipped_files: tuple[SemanticInventorySkip, ...] = (),
+) -> SemanticTextInventory:
     return SemanticTextInventory(
         schema_version="1",
         tool_version=__version__,
         blocks=list(blocks),
-        skipped_files=[],
+        skipped_files=list(skipped_files),
         summary={
             "blocks": len(blocks),
             "source_files": len({block.file_path for block in blocks}),
-            "skipped_files": 0,
+            "skipped_files": len(skipped_files),
             "text_bytes": sum(len(block.text.encode("utf-8")) for block in blocks),
         },
     )
@@ -86,6 +96,51 @@ def test_semantic_drift_reports_redacted_modified_instruction_deterministically(
     assert "old-secret" not in render_semantic_drift_markdown(first)
     assert "new-secret" not in render_semantic_drift_markdown(first)
     assert "SERVICE_TOKEN=<redacted>" in render_semantic_drift_markdown(first)
+
+
+def test_semantic_drift_does_not_compare_redacted_secret_values() -> None:
+    before = _inventory(_block("Read SERVICE_TOKEN=old-secret only after approval."))
+    after = _inventory(_block("Read SERVICE_TOKEN=new-secret only after approval."))
+
+    report = diff_semantic_baseline(create_semantic_baseline(before), after)
+
+    assert report.changes == []
+    assert report.summary == {"added": 0, "removed": 0, "modified": 0, "unchanged": 1}
+
+
+@pytest.mark.parametrize(
+    ("context_change", "value"),
+    [("source_role", "tool_description"), ("agent_consumption", "possible")],
+)
+def test_semantic_drift_treats_role_and_applicability_changes_as_remove_and_add(
+    context_change: str, value: str
+) -> None:
+    before = _inventory(_block("Use the approved workflow."))
+    after = _inventory(_block("Use the approved workflow.", **{context_change: value}))
+
+    report = diff_semantic_baseline(create_semantic_baseline(before), after)
+
+    assert [change.change_type for change in report.changes] == ["added", "removed"]
+    assert report.summary == {"added": 1, "removed": 1, "modified": 0, "unchanged": 0}
+
+
+def test_semantic_drift_reports_incomplete_coverage_when_files_are_skipped() -> None:
+    skipped = SemanticInventorySkip(file_path="SKILL.md", reason="file_size_limit")
+    baseline = create_semantic_baseline(_inventory(skipped_files=(skipped,)))
+    report = diff_semantic_baseline(baseline, _inventory())
+
+    assert report.incomplete is True
+    assert report.coverage_changed is True
+    assert report.baseline_skipped_files == [skipped]
+    assert report.current_skipped_files == []
+    markdown = render_semantic_drift_markdown(report)
+    assert "Coverage is incomplete" in markdown
+    assert "SKILL.md" in semantic_drift_json(report)
+
+
+def test_semantic_instruction_drift_requires_matching_sides() -> None:
+    with pytest.raises(ValueError, match="appropriate before/after block"):
+        SemanticInstructionDrift(change_type="added")
 
 
 def test_semantic_drift_reports_added_and_removed_instructions() -> None:
