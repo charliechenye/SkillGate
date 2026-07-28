@@ -5,14 +5,16 @@ the boundary of the first implementation slice. It supplements the
 [semantic artifact linting roadmap](roadmaps/semantic-artifact-linting.md).
 
 The initial implementation is a local, deterministic text inventory with a
-narrow internal advisory rule pack. It does not make a safety verdict, execute
-content, fetch remote inputs, or change the existing scanner's file discovery.
+narrow internal advisory rule pack and semantic-drift baseline. It does not
+make a safety verdict, execute content, fetch remote inputs, or change the
+existing scanner's file discovery.
 
 ## Compatibility decision
 
-The current pre-install review packet remains schema version `2`. The first
-inventory is a library-level building block, so it is not included in review
-packets, scan reports, SARIF, policies, baselines, waivers, or GitHub Actions.
+The current pre-install review packet remains schema version `2`. The inventory
+and its advisory results are library-level building blocks, so they are not
+included in review packets, scan reports, SARIF, policies, existing capability
+baselines, waivers, or GitHub Actions.
 
 `scan`, `check`, `diff`, `review summary`, and `review preinstall` therefore
 retain their current output and exit behavior. In particular:
@@ -21,11 +23,16 @@ retain their current output and exit behavior. In particular:
   concealment phrases;
 - the library-only `SA001` and `SA002` result family remains outside existing
   scan and review outputs;
-- semantic text does not participate in `--fail-on`, policy evaluation,
-  baseline drift, or SARIF; and
+- semantic text does not participate in `--fail-on`, policy evaluation, the
+  existing capability-baseline drift, or SARIF; and
 - no semantic CLI or public report format is available yet; and
 - a future review-packet integration must deliberately bump the packet schema,
   publish a matching JSON Schema, update snapshots, and document migration.
+
+The semantic baseline and drift helpers are library-only advisory APIs. They
+keep redacted snapshots and report added, removed, and modified selected text
+blocks without modifying `BaselineLock`, `DiffReport`, CLI output, packet
+schemas, policy, SARIF, or Action behavior.
 
 ## Existing-rule overlap matrix
 
@@ -124,7 +131,10 @@ at least 20 representative repositories or bundles.
   metric harness.
 - [x] Add narrow, library-only `SA001` and `SA002` advisory findings and
   validate them against the synthetic corpus.
-- [ ] Add line-movement-stable semantic drift before review-packet integration.
+- [x] Add line-movement-stable, library-only semantic drift before review-packet
+  integration. It records redacted added, removed, and modified blocks; selected
+  field, source-role, and applicability moves remain visible as removal plus
+  addition rather than inheriting approval by content alone.
 - [ ] Publish `SA###` findings through a semantic CLI, version the packet, and
   add `review preinstall --semantic` only after representative-repository
   evidence is published.

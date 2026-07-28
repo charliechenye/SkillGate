@@ -1,8 +1,8 @@
-"""Bounded semantic text inventory for statically shipped agent artifacts.
+"""Bounded semantic inventory and advisory helpers for shipped agent artifacts.
 
-This module deliberately inventories source-selected text only. It does not
-emit findings, infer a source role from suspicious wording, execute content,
-or change the existing scan and review-packet contracts.
+It processes only source-selected text, never executes content, and keeps its
+inventory, analysis, and drift results outside existing scan and review-packet
+contracts.
 """
 
 from __future__ import annotations
@@ -12,18 +12,25 @@ import re
 import tomllib
 from collections.abc import Iterable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path, PurePosixPath
 from typing import Any
 
 import yaml
+from pydantic import ValidationError
 
 from skillgate import __version__
 from skillgate.discovery import classify_file, discover_semantic_paths, relative_path
+from skillgate.identity import normalized_path
 from skillgate.models import (
     Finding,
     SemanticAnalysis,
+    SemanticBaseline,
+    SemanticBlockSnapshot,
+    SemanticDriftReport,
     SemanticFinding,
+    SemanticInstructionDrift,
     SemanticInventorySkip,
     SemanticTextBlock,
     SemanticTextInventory,
@@ -34,6 +41,8 @@ from skillgate.scan import scan_repository
 
 SEMANTIC_INVENTORY_SCHEMA_VERSION = "1"
 SEMANTIC_ANALYSIS_SCHEMA_VERSION = "1"
+SEMANTIC_BASELINE_SCHEMA_VERSION = "1"
+SEMANTIC_DRIFT_SCHEMA_VERSION = "1"
 
 _DIRECT_MARKDOWN_NAMES = {
     "AGENTS.md",
@@ -134,6 +143,288 @@ def _redacted_text(value: str) -> str:
 
     value = _SECRET_VALUE_RE.sub(r"\g<name>\g<separator>[REDACTED]", value)
     return redact_evidence(value)
+
+
+def normalized_semantic_text(value: str) -> str:
+    """Normalize layout whitespace in already-redacted instruction text."""
+
+    normalized_lines = _redacted_text(value).replace("\r\n", "\n").replace("\r", "\n")
+    return " ".join(normalized_lines.split())
+
+
+def semantic_block_fingerprint(block: SemanticTextBlock) -> str:
+    """Return a line-movement-stable identity for one source-selected text block."""
+
+    payload = {
+        "agent_consumption": block.agent_consumption,
+        "file_path": normalized_path(block.file_path),
+        "source_role": block.source_role,
+        "structured_field": block.structured_field,
+        "text": normalized_semantic_text(block.text),
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return f"sha256:{sha256(encoded).hexdigest()}"
+
+
+def _semantic_block_snapshot(block: SemanticTextBlock) -> SemanticBlockSnapshot:
+    return SemanticBlockSnapshot(
+        fingerprint=semantic_block_fingerprint(block),
+        file_path=normalized_path(block.file_path),
+        line_number=block.line_number,
+        end_line=block.end_line,
+        text=_redacted_text(block.text),
+        source_role=block.source_role,
+        structured_field=block.structured_field,
+        agent_consumption=block.agent_consumption,
+    )
+
+
+def _snapshot_context(block: SemanticBlockSnapshot) -> tuple[str, str, str, str | None]:
+    """Return the context used to pair changed text after exact matches are removed."""
+
+    return (
+        block.file_path,
+        block.source_role,
+        block.agent_consumption,
+        block.structured_field,
+    )
+
+
+def _context_sort_key(context: tuple[str, str, str, str | None]) -> tuple[str, str, str, str]:
+    return (context[0], context[1], context[2], context[3] or "")
+
+
+def _snapshot_sort_key(block: SemanticBlockSnapshot) -> tuple[str, str, str, str, int, int]:
+    return (
+        block.fingerprint,
+        block.file_path,
+        block.source_role,
+        block.structured_field or "",
+        block.line_number,
+        block.end_line,
+    )
+
+
+def _semantic_drift_sort_key(
+    change: SemanticInstructionDrift,
+) -> tuple[int, str, str, str, str, int, int]:
+    block = change.after or change.before
+    assert block is not None
+    change_order = {"added": 0, "removed": 1, "modified": 2}
+    return (change_order[change.change_type], *_snapshot_sort_key(block))
+
+
+def create_semantic_baseline(inventory: SemanticTextInventory) -> SemanticBaseline:
+    """Create a redacted, internal semantic approval baseline from an inventory."""
+
+    return SemanticBaseline(
+        schema_version=SEMANTIC_BASELINE_SCHEMA_VERSION,
+        tool_version=__version__,
+        created_at=datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+        blocks=sorted(
+            (_semantic_block_snapshot(block) for block in inventory.blocks),
+            key=_snapshot_sort_key,
+        ),
+    )
+
+
+def create_semantic_baseline_repository(
+    root: Path,
+    *,
+    limits: SemanticInventoryLimits = DEFAULT_SEMANTIC_INVENTORY_LIMITS,
+) -> SemanticBaseline:
+    """Create an internal semantic baseline from one local repository without a CLI."""
+
+    return create_semantic_baseline(semantic_text_inventory_repository(root, limits=limits))
+
+
+def save_semantic_baseline(baseline: SemanticBaseline, output: Path) -> None:
+    """Persist an internal baseline using the repository's stable JSON convention."""
+
+    output.write_text(stable_json(baseline), encoding="utf-8")
+
+
+def load_semantic_baseline(path: Path) -> SemanticBaseline:
+    """Load a persisted internal semantic baseline without affecting BaselineLock."""
+
+    try:
+        return SemanticBaseline.model_validate_json(path.read_text(encoding="utf-8"))
+    except (OSError, ValidationError) as exc:
+        raise ValueError(f"Unable to load semantic baseline file: {path}") from exc
+
+
+def diff_semantic_baseline(
+    baseline: SemanticBaseline, inventory: SemanticTextInventory
+) -> SemanticDriftReport:
+    """Compare a semantic inventory without treating line movement as drift.
+
+    Exact fingerprints include source role, selected field, applicability, and
+    normalized redacted text. Remaining blocks with the same context are
+    modifications; a context move is intentionally removal plus addition so
+    review does not lose the source-field change.
+    """
+
+    before_by_fingerprint: dict[str, list[SemanticBlockSnapshot]] = {}
+    after_by_fingerprint: dict[str, list[SemanticBlockSnapshot]] = {}
+    for block in baseline.blocks:
+        before_by_fingerprint.setdefault(block.fingerprint, []).append(block)
+    for block in (_semantic_block_snapshot(item) for item in inventory.blocks):
+        after_by_fingerprint.setdefault(block.fingerprint, []).append(block)
+    for blocks in (*before_by_fingerprint.values(), *after_by_fingerprint.values()):
+        blocks.sort(key=_snapshot_sort_key)
+
+    unchanged = 0
+    before_remaining: list[SemanticBlockSnapshot] = []
+    after_remaining: list[SemanticBlockSnapshot] = []
+    for fingerprint in sorted(set(before_by_fingerprint) | set(after_by_fingerprint)):
+        before_blocks = before_by_fingerprint.get(fingerprint, [])
+        after_blocks = after_by_fingerprint.get(fingerprint, [])
+        matched = min(len(before_blocks), len(after_blocks))
+        unchanged += matched
+        before_remaining.extend(before_blocks[matched:])
+        after_remaining.extend(after_blocks[matched:])
+
+    before_by_context: dict[tuple[str, str, str, str | None], list[SemanticBlockSnapshot]] = {}
+    after_by_context: dict[tuple[str, str, str, str | None], list[SemanticBlockSnapshot]] = {}
+    for block in before_remaining:
+        before_by_context.setdefault(_snapshot_context(block), []).append(block)
+    for block in after_remaining:
+        after_by_context.setdefault(_snapshot_context(block), []).append(block)
+
+    changes: list[SemanticInstructionDrift] = []
+    for context in sorted(set(before_by_context) | set(after_by_context), key=_context_sort_key):
+        before_blocks = sorted(before_by_context.get(context, []), key=_snapshot_sort_key)
+        after_blocks = sorted(after_by_context.get(context, []), key=_snapshot_sort_key)
+        paired = min(len(before_blocks), len(after_blocks))
+        changes.extend(
+            SemanticInstructionDrift(
+                change_type="modified",
+                before=before_blocks[index],
+                after=after_blocks[index],
+            )
+            for index in range(paired)
+        )
+        changes.extend(
+            SemanticInstructionDrift(change_type="removed", before=block)
+            for block in before_blocks[paired:]
+        )
+        changes.extend(
+            SemanticInstructionDrift(change_type="added", after=block)
+            for block in after_blocks[paired:]
+        )
+
+    changes.sort(key=_semantic_drift_sort_key)
+    return SemanticDriftReport(
+        schema_version=SEMANTIC_DRIFT_SCHEMA_VERSION,
+        tool_version=__version__,
+        baseline_created_at=baseline.created_at,
+        changes=changes,
+        summary={
+            "added": sum(change.change_type == "added" for change in changes),
+            "removed": sum(change.change_type == "removed" for change in changes),
+            "modified": sum(change.change_type == "modified" for change in changes),
+            "unchanged": unchanged,
+        },
+    )
+
+
+def diff_semantic_repository(
+    baseline: SemanticBaseline,
+    root: Path,
+    *,
+    limits: SemanticInventoryLimits = DEFAULT_SEMANTIC_INVENTORY_LIMITS,
+) -> SemanticDriftReport:
+    """Compare an internal semantic baseline to one local repository without a CLI."""
+
+    return diff_semantic_baseline(
+        baseline,
+        semantic_text_inventory_repository(root, limits=limits),
+    )
+
+
+def semantic_baseline_json(baseline: SemanticBaseline) -> str:
+    """Serialize an internal semantic baseline using stable JSON."""
+
+    return stable_json(baseline)
+
+
+def semantic_drift_json(report: SemanticDriftReport) -> str:
+    """Serialize an internal semantic drift report using stable JSON."""
+
+    return stable_json(report)
+
+
+def _one_line_semantic_text(value: str) -> str:
+    return normalized_semantic_text(value)
+
+
+def _render_drift_context(block: SemanticBlockSnapshot) -> list[str]:
+    return [
+        f"- Source: `{block.file_path}:{block.line_number}-{block.end_line}`",
+        f"- Context: `{block.source_role}` / `{block.structured_field or '-'}` / "
+        f"`{block.agent_consumption}`",
+    ]
+
+
+def render_semantic_drift_markdown(report: SemanticDriftReport) -> str:
+    """Render an internal, redacted advisory view of semantic instruction drift."""
+
+    lines = [
+        "# SkillGate Semantic Instruction Drift",
+        "",
+        "Advisory only: this report compares shipped, source-selected text blocks.",
+        "It does not change capability-baseline, policy, SARIF, or review-packet behavior.",
+        "",
+        f"- Added: {report.summary['added']}",
+        f"- Removed: {report.summary['removed']}",
+        f"- Modified: {report.summary['modified']}",
+        f"- Unchanged: {report.summary['unchanged']}",
+        "",
+        "## Changes",
+        "",
+    ]
+    if not report.changes:
+        lines.append("None.")
+    for change in report.changes:
+        if change.change_type == "added":
+            assert change.after is not None
+            lines.extend(
+                [
+                    "### Added instruction",
+                    "",
+                    *_render_drift_context(change.after),
+                    f"- Fingerprint: `{change.after.fingerprint}`",
+                    f"- Instruction: {_one_line_semantic_text(change.after.text)}",
+                    "",
+                ]
+            )
+        elif change.change_type == "removed":
+            assert change.before is not None
+            lines.extend(
+                [
+                    "### Removed instruction",
+                    "",
+                    *_render_drift_context(change.before),
+                    f"- Fingerprint: `{change.before.fingerprint}`",
+                    f"- Instruction: {_one_line_semantic_text(change.before.text)}",
+                    "",
+                ]
+            )
+        else:
+            assert change.before is not None and change.after is not None
+            lines.extend(
+                [
+                    "### Modified instruction",
+                    "",
+                    *_render_drift_context(change.after),
+                    f"- Before fingerprint: `{change.before.fingerprint}`",
+                    f"- After fingerprint: `{change.after.fingerprint}`",
+                    f"- Before: {_one_line_semantic_text(change.before.text)}",
+                    f"- After: {_one_line_semantic_text(change.after.text)}",
+                    "",
+                ]
+            )
+    return "\n".join(lines) + "\n"
 
 
 def _sentence_prefix(value: str, offset: int) -> str:

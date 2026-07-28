@@ -98,6 +98,46 @@ class SemanticTextInventory(StableModel):
     summary: dict[str, int]
 
 
+class SemanticBlockSnapshot(StableModel):
+    """A redacted semantic block retained in an internal approval baseline."""
+
+    fingerprint: str
+    file_path: str
+    line_number: int
+    end_line: int
+    text: str
+    source_role: SemanticSourceRole
+    structured_field: str | None = None
+    agent_consumption: AgentConsumption
+
+
+class SemanticBaseline(StableModel):
+    """Internal advisory baseline for source-selected semantic text blocks."""
+
+    schema_version: str
+    tool_version: str
+    created_at: str
+    blocks: list[SemanticBlockSnapshot]
+
+
+class SemanticInstructionDrift(StableModel):
+    """One advisory semantic instruction change between an internal baseline and inventory."""
+
+    change_type: Literal["added", "removed", "modified"]
+    before: SemanticBlockSnapshot | None = None
+    after: SemanticBlockSnapshot | None = None
+
+
+class SemanticDriftReport(StableModel):
+    """Separate advisory semantic drift result; it is not a capability DiffReport."""
+
+    schema_version: str
+    tool_version: str
+    baseline_created_at: str
+    changes: list[SemanticInstructionDrift]
+    summary: dict[str, int]
+
+
 class SemanticFinding(StableModel):
     """An advisory finding derived from source-selected agent-facing text."""
 

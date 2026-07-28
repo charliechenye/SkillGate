@@ -624,6 +624,17 @@ Goal:
 Show what agent-facing instructions changed since the last approved artifact,
 without treating line movement as semantic drift.
 
+Current status:
+
+The internal advisory baseline and drift helpers are complete. They use
+redacted, whitespace-normalized block fingerprints that include path, source
+role, structured field, and agent consumption; report deterministic added,
+removed, and same-context modified blocks; and keep source-context moves as
+removal plus addition. They are not wired into the existing baseline, CLI,
+Review Packet, SARIF, policy, or Action contracts. Representative-repository
+and reviewer-actionability evidence remains required before public review-flow
+integration.
+
 Deliverables:
 
 - stable normalization and hashing of semantic text blocks;

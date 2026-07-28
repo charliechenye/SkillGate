@@ -150,9 +150,11 @@ blocking-policy commitment.
 The committed synthetic semantic-artifact corpus and its internal evaluation
 harness now validate source selection, labels, actual `SA001`/`SA002` rule-pack
 observations, and category metrics. The library-only pack meets its synthetic
-24-case gate (100% recall, zero false positives), but this remains test tooling
-rather than a public product surface. A semantic CLI, including `review
-preinstall --semantic` or a standalone semantic command, is explicitly delayed
+24-case gate (100% recall, zero false positives). The library-only semantic
+baseline also produces redacted, line-movement-stable instruction drift for
+internal callers. These remain internal tooling rather than public product
+surfaces. A semantic CLI, including `review preinstall --semantic` or a
+standalone semantic command, is explicitly delayed
 until representative-repository and reviewer-actionability evidence justifies
 it.
 
