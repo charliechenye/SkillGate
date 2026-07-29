@@ -363,10 +363,11 @@ def render_preinstall_markdown(packet: dict[str, Any]) -> str:
                 "",
                 *(
                     _table(
-                        ["Protocol version", "Scope", "Source"],
+                        ["Protocol version", "Era", "Scope", "Source"],
                         [
                             [
                                 item.get("version") or "",
+                                item.get("era") or "",
                                 item.get("scope") or "",
                                 _compatibility_source(item),
                             ]

@@ -122,6 +122,8 @@ def test_preinstall_packet_exposes_compatibility_evidence_without_schema_bump() 
     }
     assert evidence["unknown_declarations"]
     assert "## MCP Compatibility" in render_preinstall_markdown(packet)
+    assert "| Protocol version | Era | Scope | Source |" in render_preinstall_markdown(packet)
+    assert "| 2026-07-28 | modern |" in render_preinstall_markdown(packet)
     assert "unknown MCP compatibility declarations" in "\n".join(packet["reviewer"]["next_actions"])
 
 
@@ -131,7 +133,11 @@ def test_compatibility_changes_produce_mcp_baseline_drift() -> None:
 
     finding = next(item for item in diff.findings if item.rule_id == "SG010")
     assert "extensions" in (finding.evidence or "")
-    assert {item.type for item in diff.added_capabilities} >= {"mcp_extension"}
+    assert "protocol_versions" in (finding.evidence or "")
+    assert {item.type for item in diff.added_capabilities} >= {
+        "mcp_extension",
+        "mcp_protocol_version",
+    }
 
 
 def test_registry_comparison_reports_extension_drift_from_local_fixture() -> None:
@@ -142,7 +148,10 @@ def test_registry_comparison_reports_extension_drift_from_local_fixture() -> Non
     )
 
     drift = report.summary["registry_drift"]
-    assert {item["field"] for item in drift} == {"extensions"}
+    assert {item["field"] for item in drift} == {"extensions", "protocol_versions"}
+    protocol_drift = next(item for item in drift if item["field"] == "protocol_versions")
+    assert protocol_drift["local"] == ["2025-11-25"]
+    assert protocol_drift["registry"] == ["2025-11-25", "2026-07-28"]
     assert any(item.rule_id == "SG013" for item in report.findings)
 
 

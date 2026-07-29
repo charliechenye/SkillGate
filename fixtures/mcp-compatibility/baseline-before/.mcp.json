@@ -3,7 +3,7 @@
     "modern": {
       "type": "streamable-http",
       "url": "https://compatibility.example.invalid/mcp",
-      "protocolVersion": "2026-07-28",
+      "protocolVersion": "2025-11-25",
       "capabilities": {
         "extensions": {
           "io.modelcontextprotocol/ui": {
