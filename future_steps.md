@@ -108,6 +108,70 @@ The supported source-checkout example remains:
 npx --yes github:charliechenye/SkillGate#v0 -- scan .
 ```
 
+## MCP 2026-07-28 Compatibility TODO
+
+Treat MCP protocol revision `2026-07-28` as released. This is a compatibility
+and review-surface workstream, not a change to SkillGate's local-first,
+deterministic, no-execution product boundary. The release makes stateless
+requests, extension negotiation, MCP Apps, Tasks, stronger authorization
+guidance, and full JSON Schema 2020-12 part of the ecosystem. SkillGate should
+review what those declarations introduce without implementing an MCP client,
+gateway, renderer, or runtime policy engine.
+
+### Near-term implementation order
+
+1. **Version and extension inventory.** Add a normalized static representation
+   for declared MCP protocol revisions, reverse-DNS extension IDs/versions, and
+   unknown extensions. Include these in capability reports, baselines, registry
+   comparison, and review-packet evidence. Preserve existing output contracts
+   until a deliberate packet-schema version bump is approved.
+
+2. **MCP Apps static adapter.** Recognize `_meta.ui.resourceUri`, `ui://`
+   resources, UI MIME types, referenced origins, CSP declarations, and
+   UI-initiated tool-call metadata. Inventory HTML/JS/CSS and UI resources only
+   through the existing bounded archive/file safety layer; never render, import,
+   or execute them. Report origins, host bridges, and dynamic tool surfaces as
+   reviewable capabilities.
+
+3. **Skills over MCP adapter.** Accept a local materialized snapshot, index, or
+   archive of MCP-delivered skills. Validate `index.json` name/description/URI
+   metadata against `SKILL.md`, verify declared digests, preserve archive
+   provenance, and pass the resulting files through existing Agent Skill,
+   semantic-inventory, and archive-safety checks. Do not require live server
+   introspection or make a remote MCP server part of scanning.
+
+4. **Tasks capability signal.** Detect opt-in Tasks declarations and tools that
+   can create, poll, update, or cancel durable work. Record long-running or
+   deferred execution as a capability requiring review; do not infer runtime
+   behavior or execute a task.
+
+5. **Schema and authorization metadata checks.** Add bounded checks for full
+   JSON Schema constructs, external `$ref` references, unrestricted output
+   schemas, OAuth/OIDC issuer and resource metadata, and declared credential or
+   scope requirements. Never dereference schemas, call authorization endpoints,
+   or retain secret values.
+
+### Policy and evidence follow-up
+
+- Add fixtures for extension drift, MCP Apps UI resources and origins, Skills
+  index/digest mismatch, Tasks, external `$ref`, and OAuth issuer drift.
+- Extend MCP baselines and policy templates only after the normalized capability
+  model is stable. Candidate controls include allowed extension IDs, UI origins,
+  protocol revisions, task capability, and authorization issuers.
+- Publish benchmark and migration notes with the first compatibility release;
+  keep findings advisory until representative-repository review demonstrates
+  reviewer actionability.
+- Keep semantic CLI exposure, blocking semantic policy, and declared-purpose
+  mismatch enforcement behind the existing evidence gates.
+
+### Explicit non-goals
+
+Do not add MCP server startup or introspection, a stateful MCP proxy/gateway,
+browser/UI rendering, task execution, OAuth exchanges, automatic schema
+resolution, telemetry, or a generic extension-specific rule family. Unknown
+extension behavior should remain an explicit review surface rather than an
+invented verdict.
+
 ## Later Work
 
 ### Semantic artifact linting
