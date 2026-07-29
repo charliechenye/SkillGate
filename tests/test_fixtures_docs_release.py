@@ -210,6 +210,7 @@ def test_release_metadata_and_roadmap_are_consistent() -> None:
     skills_docs = ROOT / "docs" / "skills-validation.md"
     sessions_docs = ROOT / "docs" / "sessions" / "README.md"
     release_checklist = (ROOT / "docs" / "release-checklist.md").read_text(encoding="utf-8")
+    release_notes = ROOT / "docs" / "release-notes" / "0.1.3.md"
     assert pyproject["project"]["name"] == "openevalgate-skillgate"
     assert pyproject["project"]["authors"] == [{"name": "Chenye Zhu"}]
     assert pyproject["project"]["version"] == "0.1.3"
@@ -250,11 +251,13 @@ def test_release_metadata_and_roadmap_are_consistent() -> None:
     assert 'SKILLGATE_VERSION="v0.1.3"' in release_checklist
     assert "git tag -f v0 v0.1.3" in release_checklist
     assert "Review Workflow Smoke Tests" in release_checklist
-    assert "Do not publish the root npm package" in release_checklist
-    assert "PyPI publication is an\nexplicit maintainer step" in release_checklist
-    assert "pipx install --force openevalgate-skillgate" in release_checklist
-    assert "uvx openevalgate-skillgate scan" in release_checklist
+    assert "only builder and uploader" in release_checklist
+    assert "assets from a workstation" in release_checklist
+    assert "Do not run this section for `v0.1.3`" in release_checklist
     assert "prefer yanking the affected file or version" in release_checklist
+    assert release_notes.exists()
+    assert "Review evidence foundations" in release_notes.read_text(encoding="utf-8")
+    assert "--notes-file docs\\release-notes\\0.1.3.md" in release_checklist
 
     current_release, released = changelog.split("## 0.1.1", maxsplit=1)
 

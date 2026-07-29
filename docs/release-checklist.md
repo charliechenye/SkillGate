@@ -3,13 +3,13 @@
 Use this checklist to publish and validate `v0.1.3`. Run commands from a clean
 `main` branch unless a step says otherwise.
 
-## What Assistant Cannot Do For You
+## Maintainer Responsibilities
 
-Assistant can prepare files, run local checks, and build artifacts. Pushing tags,
-creating the GitHub Release, moving the stable `v0` tag, and validating GitHub
-Actions require your repository credentials and final maintainer approval.
-Uploading distributions to npm is intentionally deferred. PyPI publication is an
-explicit maintainer step for distribution-ready releases.
+Pushing tags, creating the GitHub Release, moving the stable `v0` tag, and
+validating GitHub Actions require maintainer credentials and approval. GitHub
+Actions is the only builder and uploader of standalone release assets. Do not
+build or upload release assets from a workstation. PyPI and npm publication are
+deferred for `v0.1.3`.
 
 ## 1. Preflight
 
@@ -17,8 +17,9 @@ Confirm the package version and working tree:
 
 ```powershell
 git status --short
-python -c "import tomllib, pathlib; print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])"
-python -c "from skillgate import __version__; print(__version__)"
+uv sync --locked --group dev
+uv run python -c "import tomllib, pathlib; print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])"
+uv run python -c "from skillgate import __version__; print(__version__)"
 ```
 
 For `v0.1.3`, both version commands should print `0.1.3`.
@@ -26,27 +27,30 @@ For `v0.1.3`, both version commands should print `0.1.3`.
 Confirm release notes and release-prep state:
 
 ```powershell
-Select-String -Path CHANGELOG.md -Pattern "## 0.1.3 - Review evidence foundations"
+Select-String -Path CHANGELOG.md -Pattern "## 0.1.3 \(Unreleased\) - Review evidence foundations"
+Test-Path docs\release-notes\0.1.3.md
 Select-String -Path docs\sessions\README.md -Pattern "SkillGate Review Sessions"
 Select-String -Path .github\workflows\release-binaries.yml -Pattern "needs.resolve-tag.outputs.release_tag"
 ```
 
-The `0.1.3` entry should contain the final launch notes before tagging.
+Before tagging, change the `0.1.3` heading from `Unreleased` and add the final
+release date. The curated GitHub notes live in `docs/release-notes/0.1.3.md`.
 
 ## 2. Tests And Static Checks
 
 ```powershell
-python -m pytest
-python -m ruff check .
-python -m ruff format --check .
-python tools\update_snapshots.py --check
-python tools\validate_social_preview.py
+uv run pytest
+uv run ruff check .
+uv run ruff format --check .
+uv run python tools\update_snapshots.py --check
+uv run python tools\validate_social_preview.py
+npm test
 ```
 
 If snapshot output changed intentionally, review the artifacts and then run:
 
 ```powershell
-python tools\update_snapshots.py --accept
+uv run python tools\update_snapshots.py --accept
 ```
 
 Commit accepted snapshot changes before releasing.
@@ -69,63 +73,21 @@ the demos complete without running their reviewed content.
 ## 3. Benchmark Fixture Verification
 
 ```powershell
-skillgate fixtures summary fixtures\benchmark --format text
-skillgate fixtures summary fixtures\benchmark --format json
+uv run skillgate fixtures summary fixtures\benchmark --format text
+uv run skillgate fixtures summary fixtures\benchmark --format json
 ```
 
 Review any mismatches before publishing. Public-pattern fixtures should keep
 their reduced examples and machine-readable attribution metadata.
 
-## 4. Package Build Verification
+## 4. GitHub Package Verification
 
-Install release build tools in the active environment if they are not already
-available:
+Do not build the release package locally. The `package-smoke` GitHub Actions job
+builds the wheel, runs Twine checks, verifies `py.typed`, installs the wheel in
+a clean environment, and exercises the starter review workflow. Confirm that
+job passes for the exact release commit before tagging.
 
-```powershell
-python -m pip install build twine
-```
-
-Remove old local build artifacts if needed, then build the source distribution
-and wheel:
-
-```powershell
-python -m build
-python -m twine check dist\*
-```
-
-Inspect the generated artifacts:
-
-```powershell
-Get-ChildItem dist
-```
-
-The `twine check` command should report that every artifact passed.
-
-## 5. Clean Install Smoke Tests
-
-Create a disposable virtual environment and install the wheel:
-
-```powershell
-python -m venv .venv-release
-.\.venv-release\Scripts\python -m pip install --upgrade pip
-.\.venv-release\Scripts\python -m pip install dist\openevalgate_skillgate-0.1.3-py3-none-any.whl
-.\.venv-release\Scripts\skillgate rules list
-.\.venv-release\Scripts\skillgate scan fixtures\benchmark\01-safe-documentation-skill
-```
-
-Delete `.venv-release` after the smoke test if you do not want to keep it.
-
-Also verify the post-publication user paths from a clean shell after the package
-is published:
-
-```powershell
-pipx run openevalgate-skillgate rules list
-pipx install --force openevalgate-skillgate
-skillgate scan fixtures\benchmark\01-safe-documentation-skill
-uvx openevalgate-skillgate scan fixtures\benchmark\01-safe-documentation-skill
-```
-
-## 6. Create The `v0.1.3` Tag
+## 5. Create The `v0.1.3` Tag
 
 Make sure local `main` has the exact commit you intend to release:
 
@@ -140,25 +102,26 @@ git push origin v0.1.3
 Do not move the stable `v0` tag yet. Move it only after the release and assets
 are validated.
 
-## 7. Create The GitHub Release
+## 6. Create The GitHub Release
 
 Create the release from the pushed `v0.1.3` tag in the GitHub UI, or use the
 GitHub CLI:
 
 ```powershell
-gh release create v0.1.3 --title "SkillGate v0.1.3" --notes-file CHANGELOG.md
+gh release create v0.1.3 --title "SkillGate v0.1.3" --notes-file docs\release-notes\0.1.3.md
 gh run list --workflow release-binaries.yml --limit 5
 ```
 
-The release-published event should trigger the release-binary workflow. If it
-does not, manually dispatch the workflow against the same tag:
+The release-published event triggers the release-binary workflow, which is the
+only builder and uploader of standalone assets. If it does not, manually
+dispatch the workflow against the same tag:
 
 ```powershell
 gh workflow run release-binaries.yml -f tag=v0.1.3
 gh run watch
 ```
 
-## 8. Verify Release Binary Assets
+## 7. Verify Release Binary Assets
 
 The release-binary workflow must build from the same tag that receives the
 assets. Confirm the workflow uses `needs.resolve-tag.outputs.release_tag` for
@@ -186,7 +149,7 @@ The release should include:
 The manifest should record `v0.1.3`, SHA-256 hashes, and positive `size_bytes`
 values for every platform asset.
 
-## 9. Verify GitHub Install Paths
+## 8. Verify GitHub Install Paths
 
 Before moving `v0`, verify tagged GitHub installs through the paths customers
 may use when they require commit or tag pinning:
@@ -201,7 +164,11 @@ $env:SKILLGATE_VERSION="v0.1.3"; npx --yes github:charliechenye/SkillGate#v0.1.3
 GitHub installs require `git` on the customer machine. For teams that require
 immutable installs, replace `v0.1.3` with the full release commit SHA.
 
-## 10. Publish To PyPI
+## 9. Deferred PyPI Publication
+
+Do not run this section for `v0.1.3`. GitHub tag installs and GitHub Release
+assets are the supported distribution paths for this release. Keep these notes
+for a later, explicitly approved PyPI publication.
 
 Use PyPI Trusted Publishing if it is configured for this repository. If Trusted
 Publishing is not configured, use a scoped upload token from a clean maintainer
@@ -230,7 +197,7 @@ on PyPI with a clear reason rather than deleting history. Then publish a fixed
 patch release and update GitHub release notes, README install guidance, and any
 public scan reports that mention the affected version.
 
-## 11. Move And Verify Stable `v0`
+## 10. Move And Verify Stable `v0`
 
 After the `v0.1.3` release assets and install paths are validated, move the
 stable `v0` compatibility tag:
@@ -255,7 +222,7 @@ workflows using `charliechenye/SkillGate@v0`, including:
 - `summary-output`
 - `json-output`
 
-## 12. Deferred npm Publication
+## 11. Deferred npm Publication
 
 Do not publish the root npm package until the package name and distribution
 strategy are intentionally chosen. The root `package.json` is marked
@@ -280,7 +247,7 @@ npx skillgate scan .
 Only then update README and `docs/node-wrapper.md` to promote bare
 `npx skillgate scan .` as a supported install path.
 
-## 13. Post-Release Verification
+## 12. Post-Release Verification
 
 Also verify:
 
