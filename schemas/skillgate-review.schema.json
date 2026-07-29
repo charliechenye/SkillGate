@@ -1,10 +1,150 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "findingList": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "capability": {"type": "string"},
+          "evidence": {"type": ["string", "null"]},
+          "file_path": {"type": ["string", "null"]},
+          "id": {"type": "string"},
+          "line_number": {"type": ["integer", "null"]},
+          "remediation": {"type": ["string", "null"]},
+          "rule_id": {"type": "string"},
+          "severity": {
+            "enum": ["informational", "low", "medium", "high", "critical"],
+            "type": "string"
+          },
+          "title": {"type": "string"}
+        },
+        "required": [
+          "id",
+          "rule_id",
+          "title",
+          "severity",
+          "capability",
+          "file_path",
+          "line_number",
+          "evidence",
+          "remediation"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "severityCounts": {
+      "additionalProperties": {"minimum": 0, "type": "integer"},
+      "type": "object"
+    }
+  },
   "$id": "https://github.com/charliechenye/SkillGate/blob/main/schemas/skillgate-review.schema.json",
-  "title": "SkillGate pre-install review packet",
-  "description": "A redacted, deterministic review record for an AI-agent skill, MCP source, GitHub repository, or MCPB bundle.",
-  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
+  "description": "A redacted, deterministic review record for an AI-agent skill, MCP source, GitHub repository, or MCPB bundle.",
+  "properties": {
+    "capabilities": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "resource": {"type": ["string", "null"]},
+          "source_file": {"type": ["string", "null"]},
+          "source_line": {"type": ["integer", "null"]},
+          "trust_boundary": {"type": "string"},
+          "type": {"type": "string"}
+        },
+        "required": ["type", "resource", "source_file", "source_line", "trust_boundary"],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "findings": {
+      "additionalProperties": false,
+      "properties": {
+        "by_severity": {"$ref": "#/$defs/severityCounts"},
+        "groups": {
+          "additionalProperties": {"$ref": "#/$defs/findingList"},
+          "type": "object"
+        },
+        "total": {"minimum": 0, "type": "integer"}
+      },
+      "required": ["total", "by_severity", "groups"],
+      "type": "object"
+    },
+    "metadata": {"type": "object"},
+    "packet_digest": {"pattern": "^sha256:[0-9a-f]{64}$", "type": "string"},
+    "packet_type": {"const": "preinstall_review"},
+    "reviewer": {
+      "additionalProperties": false,
+      "properties": {
+        "decision": {
+          "enum": ["no_findings", "review_required"],
+          "type": "string"
+        },
+        "limitations": {"items": {"type": "string"}, "type": "array"},
+        "network_access": {"type": "boolean"},
+        "next_actions": {"items": {"type": "string"}, "type": "array"},
+        "no_execution": {"const": true}
+      },
+      "required": ["decision", "next_actions", "limitations", "no_execution", "network_access"],
+      "type": "object"
+    },
+    "schema_version": {"const": "2"},
+    "skills": {
+      "additionalProperties": false,
+      "properties": {
+        "findings": {"$ref": "#/$defs/findingList"},
+        "summary": {"type": "object"},
+        "validated": {"type": "boolean"}
+      },
+      "required": ["validated", "summary", "findings"],
+      "type": "object"
+    },
+    "source": {
+      "additionalProperties": true,
+      "properties": {
+        "digest": {"type": "string"},
+        "kind": {"enum": ["local", "github", "mcpb"], "type": "string"},
+        "metadata": {"type": "object"},
+        "path": {"type": "string"},
+        "reference": {"type": "string"},
+        "revision": {"type": "string"}
+      },
+      "required": ["kind", "reference"],
+      "type": "object"
+    },
+    "source_manifest": {
+      "additionalProperties": false,
+      "properties": {
+        "manifest_sha256": {"pattern": "^sha256:[0-9a-f]{64}$", "type": "string"},
+        "scanned_file_count": {"minimum": 0, "type": "integer"},
+        "scanned_files": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "file_type": {"type": "string"},
+              "path": {"type": "string"},
+              "sha256": {"pattern": "^[0-9a-f]{64}$", "type": "string"},
+              "size_bytes": {"minimum": 0, "type": "integer"}
+            },
+            "required": ["path", "file_type", "sha256", "size_bytes"],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "skipped_file_count": {"minimum": 0, "type": "integer"},
+        "skipped_files": {"items": {}, "type": "array"}
+      },
+      "required": [
+        "scanned_files",
+        "skipped_files",
+        "manifest_sha256",
+        "scanned_file_count",
+        "skipped_file_count"
+      ],
+      "type": "object"
+    },
+    "tool_version": {"type": "string"}
+  },
   "required": [
     "packet_type",
     "schema_version",
@@ -18,53 +158,6 @@
     "skills",
     "reviewer"
   ],
-  "properties": {
-    "packet_type": {"const": "preinstall_review"},
-    "schema_version": {"const": "2"},
-    "tool_version": {"type": "string"},
-    "packet_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
-    "source": {
-      "type": "object",
-      "required": ["kind", "reference"],
-      "additionalProperties": true,
-      "properties": {
-        "kind": {"type": "string", "enum": ["local", "github", "mcpb"]},
-        "reference": {"type": "string"},
-        "path": {"type": "string"},
-        "revision": {"type": "string"},
-        "digest": {"type": "string"},
-        "metadata": {"type": "object"}
-      }
-    },
-    "source_manifest": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["scanned_files", "skipped_files", "manifest_sha256", "scanned_file_count", "skipped_file_count"],
-      "properties": {
-        "scanned_files": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["path", "file_type", "sha256", "size_bytes"],
-            "properties": {
-              "path": {"type": "string"},
-              "file_type": {"type": "string"},
-              "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
-              "size_bytes": {"type": "integer", "minimum": 0}
-            }
-          }
-        },
-        "skipped_files": {"type": "array", "items": {}},
-        "manifest_sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
-        "scanned_file_count": {"type": "integer", "minimum": 0},
-        "skipped_file_count": {"type": "integer", "minimum": 0}
-      }
-    },
-    "metadata": {"type": "object"},
-    "capabilities": {"type": "array"},
-    "findings": {"type": "object"},
-    "skills": {"type": "object"},
-    "reviewer": {"type": "object"}
-  }
+  "title": "SkillGate pre-install review packet",
+  "type": "object"
 }

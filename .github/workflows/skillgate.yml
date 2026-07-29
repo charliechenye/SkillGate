@@ -6,6 +6,10 @@ on:
   push:
     branches: [main]
 
+# Jobs inherit read-only repository access unless their work requires more.
+permissions:
+  contents: read
+
 jobs:
   skillgate:
     runs-on: ubuntu-latest
@@ -19,6 +23,9 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version-file: ".python-version"
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
       - name: Install uv
         uses: astral-sh/setup-uv@v8.3.2
         with:
@@ -44,6 +51,8 @@ jobs:
         run: uv run ruff check .
       - name: Check formatting
         run: uv run ruff format --check .
+      - name: Run Node wrapper tests
+        run: npm test
       - name: Scan repository
         run: uv run skillgate scan . --format text
       - name: Run deterministic demo sessions
@@ -71,3 +80,54 @@ jobs:
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: skillgate.sarif
+
+  python-compatibility:
+    name: Python ${{ matrix.python-version }} compatibility
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.3.2
+        with:
+          enable-cache: true
+      - name: Install SkillGate
+        run: uv sync --locked --group dev
+      - name: Run tests
+        run: uv run pytest
+
+  package-smoke:
+    name: Package smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version-file: ".python-version"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.3.2
+        with:
+          enable-cache: true
+      - name: Install release checks
+        run: uv sync --locked --group dev
+      - name: Build package
+        run: uv build --out-dir test-outputs/dist
+      - name: Check distributions
+        run: uv run twine check test-outputs/dist/*
+      - name: Verify typed package marker
+        run: unzip -l test-outputs/dist/*.whl | grep "skillgate/py.typed"
+      - name: Install wheel in a clean environment
+        run: |
+          python -m venv test-outputs/wheel-smoke
+          uv pip install --python test-outputs/wheel-smoke/bin/python test-outputs/dist/*.whl
+      - name: Run clean-install smoke tests
+        run: |
+          test-outputs/wheel-smoke/bin/skillgate --version
+          test-outputs/wheel-smoke/bin/skillgate review schema --output test-outputs/skillgate-review.schema.json
+          test-outputs/wheel-smoke/bin/skillgate review preinstall examples/preinstall-starter --format json --output test-outputs/starter-review.json

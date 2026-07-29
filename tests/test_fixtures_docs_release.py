@@ -76,7 +76,7 @@ def test_cli_fixtures_summary_json() -> None:
     assert result.exit_code == 0
     data = json.loads(result.output)
     assert data["summary"]["failed"] == 0
-    assert data["summary"]["fixtures"] == 27
+    assert data["summary"]["fixtures"] == 29
     assert all(item["status"] == "pass" for item in data["fixtures"])
 
 
@@ -210,13 +210,17 @@ def test_release_metadata_and_roadmap_are_consistent() -> None:
     skills_docs = ROOT / "docs" / "skills-validation.md"
     sessions_docs = ROOT / "docs" / "sessions" / "README.md"
     release_checklist = (ROOT / "docs" / "release-checklist.md").read_text(encoding="utf-8")
+    release_notes = ROOT / "docs" / "release-notes" / "0.1.3.md"
     assert pyproject["project"]["name"] == "openevalgate-skillgate"
     assert pyproject["project"]["authors"] == [{"name": "Chenye Zhu"}]
-    assert pyproject["project"]["version"] == "0.1.2"
+    assert pyproject["project"]["version"] == "0.1.3"
     assert pyproject["project"]["license"] == "MIT"
     assert pyproject["project"]["license-files"] == ["LICENSE"]
     assert "License :: OSI Approved :: MIT License" not in pyproject["project"]["classifiers"]
-    assert __version__ == "0.1.2"
+    assert __version__ == "0.1.3"
+    assert '"version": "0.1.3"' in (ROOT / "package.json").read_text(encoding="utf-8")
+    assert "## 0.1.3 - Review evidence foundations and MCP compatibility inventory" in changelog
+    assert "Released 2026-07-29." in changelog
     assert "## 0.1.2 - Guided review workflows" in changelog
     assert "Released 2026-07-09." in changelog
     assert "reusable, bounded ZIP inspection foundation" in changelog
@@ -228,6 +232,7 @@ def test_release_metadata_and_roadmap_are_consistent() -> None:
     assert "## 0.1.0 - Initial public release" in changelog
     assert "README SEO" not in changelog
     assert "skillgate diff --fail-on-drift" in changelog
+    assert "MCP protocol-version and extension inventory" in changelog
     assert "Publish the first tagged GitHub release as `v0.1.0`" not in future_steps
     assert "supplied `baseline` plus `fail-on-drift`" in future_steps
     assert "skillgate skills validate" in readme
@@ -236,22 +241,29 @@ def test_release_metadata_and_roadmap_are_consistent() -> None:
     assert "declared-vs-observed" in skills_docs.read_text(encoding="utf-8")
     assert sessions_docs.exists()
     assert "Pre-install review" in sessions_docs.read_text(encoding="utf-8")
-    assert "npx --yes github:charliechenye/SkillGate#v0 -- scan ." in future_steps
-    assert "docs/public-scan-reports/" in future_steps
-    assert "For `v0.1.2`, both version commands should print `0.1.2`." in release_checklist
-    assert 'git tag -a v0.1.2 -m "SkillGate v0.1.2"' in release_checklist
-    assert "gh release create v0.1.2" in release_checklist
-    assert 'SKILLGATE_VERSION="v0.1.2"' in release_checklist
-    assert "git tag -f v0 v0.1.2" in release_checklist
-    assert "Do not publish the root npm package" in release_checklist
-    assert "PyPI publication is an\nexplicit maintainer step" in release_checklist
-    assert "pipx install --force openevalgate-skillgate" in release_checklist
-    assert "uvx openevalgate-skillgate scan" in release_checklist
+    assert "GitHub tags and GitHub Release assets are the" in future_steps
+    assert "docs/mcp-compatibility.md" in future_steps
+    assert "The current stable release is `v0.1.3`." in future_steps
+    assert "For `v0.1.3`, both version commands should print `0.1.3`." in release_checklist
+    assert 'git tag -a v0.1.3 -m "SkillGate v0.1.3"' in release_checklist
+    assert "gh release create v0.1.3" in release_checklist
+    assert 'SKILLGATE_VERSION="v0.1.3"' in release_checklist
+    assert "git tag -f v0 v0.1.3" in release_checklist
+    assert "Review Workflow Smoke Tests" in release_checklist
+    assert "only builder and uploader" in release_checklist
+    assert "assets from a workstation" in release_checklist
+    assert "Do not run this section for `v0.1.3`" in release_checklist
     assert "prefer yanking the affected file or version" in release_checklist
+    assert release_notes.exists()
+    assert "Review evidence foundations" in release_notes.read_text(encoding="utf-8")
+    assert "--notes-file docs\\release-notes\\0.1.3.md" in release_checklist
 
     current_release, released = changelog.split("## 0.1.1", maxsplit=1)
 
     assert "## 0.1.2 - Guided review workflows" in current_release
+    assert (
+        "## 0.1.3 - Review evidence foundations and MCP compatibility inventory" in current_release
+    )
     assert "skillgate demo skill" in current_release
     assert "reusable, bounded ZIP inspection foundation" not in released
 
@@ -368,6 +380,7 @@ def test_docs_are_main_branch_and_discovery_friendly() -> None:
     workflow_steps = {
         step["name"]: step for step in workflow["jobs"]["skillgate"]["steps"] if "name" in step
     }
+    assert workflow_steps["Run Node wrapper tests"]["run"] == "npm test"
     assert workflow_steps["Upload SARIF review artifact"]["uses"] == ("actions/upload-artifact@v7")
     assert workflow_steps["Upload SARIF to GitHub Code Scanning"]["if"] == (
         "github.event_name != 'pull_request' && always()"
@@ -395,7 +408,21 @@ def test_docs_are_main_branch_and_discovery_friendly() -> None:
         item["package-ecosystem"]: item["schedule"]["interval"] for item in dependabot["updates"]
     } == {"github-actions": "weekly", "pip": "weekly"}
     workflow_triggers = workflow.get("on") or workflow.get(True)
+    assert workflow["permissions"] == {"contents": "read"}
     assert workflow_triggers["push"]["branches"] == ["main"]
+    compatibility = workflow["jobs"]["python-compatibility"]
+    assert compatibility["strategy"]["matrix"]["python-version"] == ["3.11", "3.13"]
+    assert compatibility["steps"][-1]["run"] == "uv run pytest"
+    package_steps = {
+        step["name"]: step for step in workflow["jobs"]["package-smoke"]["steps"] if "name" in step
+    }
+    assert package_steps["Build package"]["run"] == "uv build --out-dir test-outputs/dist"
+    assert "twine check test-outputs/dist/*" in package_steps["Check distributions"]["run"]
+    assert "skillgate/py.typed" in package_steps["Verify typed package marker"]["run"]
+    assert (
+        "review preinstall examples/preinstall-starter"
+        in package_steps["Run clean-install smoke tests"]["run"]
+    )
 
 
 def test_contributing_documents_rule_fixture_test_workflow() -> None:

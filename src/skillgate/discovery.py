@@ -101,7 +101,19 @@ def looks_like_mcp_registry(path: Path) -> bool:
     if isinstance(server, dict) and isinstance(server.get("name"), str):
         return True
     return isinstance(data.get("name"), str) and any(
-        key in data for key in ["repository", "remotes", "packages", "tools", "_meta"]
+        key in data
+        for key in [
+            "repository",
+            "remotes",
+            "packages",
+            "tools",
+            "_meta",
+            "capabilities",
+            "extensions",
+            "protocolVersion",
+            "protocolVersions",
+            "supportedVersions",
+        ]
     )
 
 

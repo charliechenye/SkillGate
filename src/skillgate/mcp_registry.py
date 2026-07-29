@@ -12,6 +12,11 @@ from urllib.parse import unquote, urlparse
 
 from skillgate import __version__
 from skillgate.discovery import classify_file, discover_paths, scan_file_metadata
+from skillgate.mcp_compatibility import (
+    compatibility_capabilities,
+    compatibility_details,
+    inventory_mcp_compatibility,
+)
 from skillgate.models import SCHEMA_VERSION, Capability, Finding, ScanReport
 from skillgate.rules.base import FileContent, make_capability, make_finding
 from skillgate.rules.mcp_rules import URL_RE, collect_string_values
@@ -64,7 +69,19 @@ def registry_server_object(value: object) -> dict[str, Any] | None:
     if isinstance(server, dict):
         return server
     if isinstance(value.get("name"), str) and any(
-        key in value for key in ["repository", "remotes", "packages", "tools", "_meta"]
+        key in value
+        for key in [
+            "repository",
+            "remotes",
+            "packages",
+            "tools",
+            "_meta",
+            "capabilities",
+            "extensions",
+            "protocolVersion",
+            "protocolVersions",
+            "supportedVersions",
+        ]
     ):
         return value
     return None
@@ -440,6 +457,11 @@ def transport_findings(server: RegistryServer) -> tuple[list[Finding], list[Capa
 
 
 def registry_server_capability(server: RegistryServer) -> Capability:
+    compatibility = inventory_mcp_compatibility(
+        server.data,
+        declaration_path=server.config_path,
+        scope=f"registry:{server.name}",
+    )
     details = {
         "server": server.name,
         "config_path": server.config_path,
@@ -454,6 +476,7 @@ def registry_server_capability(server: RegistryServer) -> Capability:
         "transport_types": transport_types(server.data),
         "packages": package_identifiers(server.data),
         "secret_headers": secret_header_names(server.data),
+        **compatibility_details(compatibility),
     }
     return make_capability(
         "mcp_registry_server", server.source_file, None, resource=server.name, **details
@@ -472,6 +495,14 @@ def analyze_registry_file(file: FileContent):
     servers = iter_registry_servers(data, file.path)
     for server in servers:
         result.capabilities.append(registry_server_capability(server))
+        compatibility = inventory_mcp_compatibility(
+            server.data,
+            declaration_path=server.config_path,
+            scope=f"registry:{server.name}",
+        )
+        result.capabilities.extend(
+            compatibility_capabilities(compatibility, source_file=server.source_file)
+        )
         findings, capabilities = tool_metadata_findings(server)
         result.findings.extend(findings)
         result.capabilities.extend(capabilities)
@@ -691,6 +722,20 @@ def compare_values(
     local: RegistryServer,
     remote: RegistryServer,
 ) -> list[tuple[str, object, object]]:
+    local_compatibility = compatibility_details(
+        inventory_mcp_compatibility(
+            local.data,
+            declaration_path=local.config_path,
+            scope=f"registry:{local.name}",
+        )
+    )
+    remote_compatibility = compatibility_details(
+        inventory_mcp_compatibility(
+            remote.data,
+            declaration_path=remote.config_path,
+            scope=f"registry:{remote.name}",
+        )
+    )
     fields: list[tuple[str, object, object]] = [
         ("repository", repository_url(local.data), repository_url(remote.data)),
         ("version", local.data.get("version"), remote.data.get("version")),
@@ -698,6 +743,17 @@ def compare_values(
         ("transport_types", transport_types(local.data), transport_types(remote.data)),
         ("packages", package_identifiers(local.data), package_identifiers(remote.data)),
         ("secret_headers", secret_header_names(local.data), secret_header_names(remote.data)),
+        (
+            "protocol_versions",
+            local_compatibility["protocol_versions"],
+            remote_compatibility["protocol_versions"],
+        ),
+        ("extensions", local_compatibility["extensions"], remote_compatibility["extensions"]),
+        (
+            "unknown_declarations",
+            local_compatibility["unknown_declarations"],
+            remote_compatibility["unknown_declarations"],
+        ),
     ]
     return [(field, left, right) for field, left, right in fields if left != right]
 

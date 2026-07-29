@@ -3,7 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from conftest import FIXTURES
+from conftest import FIXTURES, ROOT
+from jsonschema import Draft202012Validator
 
 from skillgate.preinstall import (
     build_preinstall_packet,
@@ -64,6 +65,26 @@ def test_preinstall_schema_matches_packet_contract() -> None:
     assert schema["properties"]["schema_version"] == {"const": "2"}
     assert set(schema["required"]) <= set(packet_data)
     assert packet_data["packet_digest"] == packet_data["packet_digest"].lower()
+
+
+def test_committed_preinstall_schema_matches_export_and_validates_packets() -> None:
+    committed = json.loads(
+        (ROOT / "schemas" / "skillgate-review.schema.json").read_text(encoding="utf-8")
+    )
+    assert committed == PREINSTALL_REVIEW_JSON_SCHEMA
+
+    validator = Draft202012Validator(committed)
+    validator.validate(packet())
+
+    mcp_packet = build_preinstall_packet(
+        {
+            "kind": "local",
+            "reference": str(FIXTURES / "28-mcp-compatibility-inventory"),
+            "path": str(FIXTURES / "28-mcp-compatibility-inventory"),
+        },
+        scan_repository(FIXTURES / "28-mcp-compatibility-inventory"),
+    )
+    validator.validate(mcp_packet)
 
 
 def test_preinstall_packet_snapshots_are_deterministic() -> None:

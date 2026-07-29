@@ -43,6 +43,9 @@ def test_starter_repository_has_clean_unified_review() -> None:
     assert payload["skills"]["validated"] is True
     assert payload["skills"]["summary"]["findings"] == 0
     assert payload["findings"]["by_severity"]["high"] == 0
+    assert payload["schema_version"] == "2"
+    assert payload["packet_digest"].startswith("sha256:")
+    assert payload["reviewer"]["no_execution"] is True
     assert payload["reviewer"]["decision"] in {"no_findings", "review_required"}
 
 

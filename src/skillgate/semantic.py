@@ -24,6 +24,7 @@ from skillgate import __version__
 from skillgate.discovery import classify_file, discover_semantic_paths, relative_path
 from skillgate.identity import normalized_path
 from skillgate.models import (
+    AgentConsumption,
     Finding,
     SemanticAnalysis,
     SemanticBaseline,
@@ -32,6 +33,7 @@ from skillgate.models import (
     SemanticFinding,
     SemanticInstructionDrift,
     SemanticInventorySkip,
+    SemanticSourceRole,
     SemanticTextBlock,
     SemanticTextInventory,
     stable_json,
@@ -44,12 +46,14 @@ SEMANTIC_ANALYSIS_SCHEMA_VERSION = "1"
 SEMANTIC_BASELINE_SCHEMA_VERSION = "1"
 SEMANTIC_DRIFT_SCHEMA_VERSION = "1"
 
-_DIRECT_MARKDOWN_NAMES = {
-    "AGENTS.md",
-    "CLAUDE.md",
-    "GEMINI.md",
-    "SKILL.md",
-}
+_DIRECT_MARKDOWN_NAMES = frozenset(
+    {
+        "AGENTS.md",
+        "CLAUDE.md",
+        "GEMINI.md",
+        "SKILL.md",
+    }
+)
 _DIRECT_MARKDOWN_PREFIXES = (
     ".claude/commands/",
     ".gemini/commands/",
@@ -57,28 +61,31 @@ _DIRECT_MARKDOWN_PREFIXES = (
     "agents/",
     "skills/",
 )
-_STRUCTURED_SEMANTIC_NAMES = {
-    ".agent.yaml",
-    ".agent.yml",
-    "agent-config.toml",
-    "agent-config.yaml",
-    "agent-config.yml",
-    "agent.toml",
-    "agent.yaml",
-    "agent.yml",
-    "agents.toml",
-    "agents.yaml",
-    "agents.yml",
-    "manifest.json",
-    "mcp.toml",
-    "mcp.yaml",
-    "mcp.yml",
-    "prompts.toml",
-    "prompts.yaml",
-    "prompts.yml",
-}
-_MCP_FILE_TYPES = {"mcp_config", "mcp_registry"}
-_TEXT_FIELD_ROLES = {
+_STRUCTURED_SEMANTIC_NAMES = frozenset(
+    {
+        ".agent.yaml",
+        ".agent.yml",
+        "agent-config.toml",
+        "agent-config.yaml",
+        "agent-config.yml",
+        "agent.toml",
+        "agent.yaml",
+        "agent.yml",
+        "agents.toml",
+        "agents.yaml",
+        "agents.yml",
+        "manifest.json",
+        "mcp.toml",
+        "mcp.yaml",
+        "mcp.yml",
+        "prompts.toml",
+        "prompts.yaml",
+        "prompts.yml",
+    }
+)
+_MCP_FILE_TYPES = frozenset({"mcp_config", "mcp_registry"})
+SemanticFieldRole = tuple[SemanticSourceRole, AgentConsumption]
+_TEXT_FIELD_ROLES: dict[str, SemanticFieldRole] = {
     "description": ("tool_description", "direct"),
     "instruction": ("agent_instruction", "direct"),
     "instructions": ("agent_instruction", "direct"),
@@ -86,7 +93,7 @@ _TEXT_FIELD_ROLES = {
     "system_prompt": ("prompt_template", "direct"),
     "template": ("prompt_template", "direct"),
 }
-_MANIFEST_FIELD_ROLES = {
+_MANIFEST_FIELD_ROLES: dict[str, SemanticFieldRole] = {
     "description": ("manifest_metadata", "possible"),
     "instruction": ("agent_instruction", "possible"),
     "instructions": ("agent_instruction", "possible"),
@@ -146,7 +153,7 @@ def _redacted_text(value: str) -> str:
 
 
 def normalized_semantic_text(value: str) -> str:
-    """Normalize layout whitespace in already-redacted instruction text."""
+    """Normalize layout whitespace in already redacted instruction text."""
 
     normalized_lines = _redacted_text(value).replace("\r\n", "\n").replace("\r", "\n")
     return " ".join(normalized_lines.split())

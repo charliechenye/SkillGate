@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "modern": {
+      "type": "streamable-http",
+      "url": "https://compatibility.example.invalid/mcp",
+      "supportedVersions": ["2025-11-25", "2026-07-28"],
+      "capabilities": {
+        "extensions": {
+          "io.modelcontextprotocol/ui": {
+            "version": "2.0.0"
+          },
+          "com.example/tasks": {
+            "version": "1.0.0"
+          }
+        }
+      }
+    }
+  }
+}

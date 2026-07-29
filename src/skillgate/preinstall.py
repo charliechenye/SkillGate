@@ -10,6 +10,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 from skillgate import __version__
 from skillgate.inventory import normalized_resource, trust_boundary_for
+from skillgate.mcp_compatibility import compatibility_evidence
 from skillgate.models import (
     SEVERITY_ORDER,
     Capability,
@@ -194,6 +195,12 @@ def build_preinstall_packet(
     """Build a deterministic review packet from scan and validation results."""
     report_data = model_to_data(scan_report) if scan_report is not None else {}
     root = report_data.get("scan_root") if report_data else source.get("path")
+    packet_metadata = dict(metadata or {})
+    mcp_compatibility = compatibility_evidence(
+        [item for item in report_data.get("capabilities", []) if isinstance(item, dict)]
+    )
+    if mcp_compatibility is not None:
+        packet_metadata["mcp_compatibility"] = mcp_compatibility
     findings = [_finding_record(item, root) for item in report_data.get("findings", [])]
     skill_findings = []
     if skills_payload:
@@ -223,6 +230,11 @@ def build_preinstall_packet(
         next_actions.insert(
             0, "No static findings were produced; continue with normal maintainer review."
         )
+    if mcp_compatibility and mcp_compatibility["unknown_declarations"]:
+        next_actions.insert(
+            1,
+            "Review unknown MCP compatibility declarations before enabling the server or client.",
+        )
     limitations = [
         "This is deterministic static analysis, not a malware verdict or runtime proof.",
         "SkillGate does not execute code, install packages, start servers, or invoke an agent.",
@@ -235,7 +247,7 @@ def build_preinstall_packet(
         "tool_version": __version__,
         "source": _source_record(source, root),
         "source_manifest": _source_manifest(report_data, source, root),
-        "metadata": _redact_mapping(metadata or {}, root),
+        "metadata": _redact_mapping(packet_metadata, root),
         "capabilities": [
             _capability_record(item, root) for item in report_data.get("capabilities", [])
         ],
@@ -276,6 +288,10 @@ def _table(headers: list[str], rows: list[list[Any]]) -> list[str]:
     for row in rows:
         lines.append("| " + " | ".join(str(item or "").replace("|", "\\|") for item in row) + " |")
     return lines
+
+
+def _compatibility_source(item: dict[str, Any]) -> str:
+    return f"{item.get('source_file') or ''}:{item.get('declaration_path') or ''}"
 
 
 def render_preinstall_markdown(packet: dict[str, Any]) -> str:
@@ -339,6 +355,65 @@ def render_preinstall_markdown(packet: dict[str, Any]) -> str:
                     for item in packet["capabilities"]
                 ],
             )
+        ),
+        *(
+            [
+                "",
+                "## MCP Compatibility",
+                "",
+                *(
+                    _table(
+                        ["Protocol version", "Era", "Scope", "Source"],
+                        [
+                            [
+                                item.get("version") or "",
+                                item.get("era") or "",
+                                item.get("scope") or "",
+                                _compatibility_source(item),
+                            ]
+                            for item in packet["metadata"]
+                            .get("mcp_compatibility", {})
+                            .get("protocol_versions", [])
+                        ],
+                    )
+                ),
+                "",
+                *(
+                    _table(
+                        ["Extension", "Version", "Scope", "Source"],
+                        [
+                            [
+                                item.get("id") or "",
+                                item.get("version") or "",
+                                item.get("scope") or "",
+                                _compatibility_source(item),
+                            ]
+                            for item in packet["metadata"]
+                            .get("mcp_compatibility", {})
+                            .get("extensions", [])
+                        ],
+                    )
+                ),
+                "",
+                *(
+                    _table(
+                        ["Unknown declaration", "Reason", "Scope", "Source"],
+                        [
+                            [
+                                item.get("declaration_path") or "",
+                                item.get("reason") or "",
+                                item.get("scope") or "",
+                                item.get("source_file") or "",
+                            ]
+                            for item in packet["metadata"]
+                            .get("mcp_compatibility", {})
+                            .get("unknown_declarations", [])
+                        ],
+                    )
+                ),
+            ]
+            if packet["metadata"].get("mcp_compatibility")
+            else []
         ),
         "",
         "## Findings By Severity",

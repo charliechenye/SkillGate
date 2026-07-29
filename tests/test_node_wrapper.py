@@ -350,6 +350,7 @@ def test_release_manifest_builder_and_workflow_use_stable_assets() -> None:
     workflow = yaml.safe_load(
         (ROOT / ".github" / "workflows" / "release-binaries.yml").read_text(encoding="utf-8")
     )
+    assert workflow["permissions"] == {"contents": "read"}
     assert workflow["env"]["FORCE_JAVASCRIPT_ACTIONS_TO_NODE24"] is True
     assert workflow["jobs"]["resolve-tag"]["outputs"]["release_tag"] == (
         "${{ steps.tag.outputs.value }}"
@@ -359,10 +360,15 @@ def test_release_manifest_builder_and_workflow_use_stable_assets() -> None:
         "${{ needs.resolve-tag.outputs.release_tag }}"
     )
     assert workflow["jobs"]["publish"]["needs"] == ["resolve-tag", "build"]
+    assert workflow["jobs"]["publish"]["permissions"] == {"contents": "write"}
     assert workflow["jobs"]["publish"]["steps"][0]["with"]["ref"] == (
         "${{ needs.resolve-tag.outputs.release_tag }}"
     )
     build_steps = {step.get("name"): step for step in workflow["jobs"]["build"]["steps"]}
+    smoke_step = build_steps["Smoke test standalone binary"]
+    assert "--version" in smoke_step["run"]
+    assert "rules', 'list" in smoke_step["run"]
+    assert "review', 'preinstall" in smoke_step["run"]
     upload_step = build_steps["Upload build artifact"]
     assert upload_step["uses"] == "actions/upload-artifact@v7"
     assert upload_step["with"]["archive"] is True
@@ -392,6 +398,10 @@ def test_release_manifest_builder_and_workflow_use_stable_assets() -> None:
     assert "actions/download-artifact@v4" not in workflow_text
     assert "actions/download-artifact@v7" not in workflow_text
     assert "ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION" not in workflow_text
+    website_step = next(
+        step for step in publish_steps if step.get("name") == "Notify Personal Website of Release"
+    )
+    assert website_step["continue-on-error"] is True
 
 
 def test_package_json_exposes_github_npx_launcher_without_npm_claim() -> None:

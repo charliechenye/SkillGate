@@ -13,10 +13,11 @@ Reports:
 - [Clean documentation skill](clean-documentation-skill.md)
 - [Remote download review item](remote-download-review-item.md)
 - [Reviewable MCPB demo bundle](mcpb-reviewable-node.md)
+- [MCP compatibility inventory](mcp-compatibility-inventory.md)
 
-The reports marked with scanner version `0.1.1` are intentionally preserved as
-historical release evidence. New release documentation and packaged demos use
-`0.1.2`.
+The reports marked with earlier scanner versions are intentionally preserved as
+historical release evidence. The MCP compatibility report records `v0.1.3`
+behavior.
 
 Each report records the exact command, scanner version, source identity,
 capability inventory, findings summary, interpretation, limitations, suggested
