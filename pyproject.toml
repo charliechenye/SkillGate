@@ -104,6 +104,7 @@ quote-style = "double"
 
 [dependency-groups]
 dev = [
+    "jsonschema>=4.23",
     "pytest>=8.0",
     "ruff>=0.5",
     "twine>=6.2.0",
