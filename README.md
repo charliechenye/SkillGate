@@ -533,7 +533,7 @@ SkillGate is a static AI-agent security scanner for skills, MCP configurations, 
 
 ### Is SkillGate an MCP security scanner?
 
-Yes. SkillGate scans MCP config files, MCP registry metadata, MCP tool metadata, MCP transport metadata, and MCP capability drift. It can detect remote endpoints, secret-bearing headers, stdio package transports, localhost bridges, unauthenticated remote transports, and local-vs-registry metadata drift.
+Yes. SkillGate scans MCP config files, MCP registry metadata, MCP tool metadata, MCP transport metadata, protocol/extension declarations, and MCP capability drift. It can detect remote endpoints, secret-bearing headers, stdio package transports, localhost bridges, unauthenticated remote transports, and local-vs-registry metadata drift. See [MCP compatibility review](docs/mcp-compatibility.md) for the advisory protocol and extension inventory boundary.
 
 ### Can SkillGate scan Codex skills?
 
@@ -589,7 +589,7 @@ Yes. SkillGate emits SARIF 2.1.0 with stable alert fingerprints, run categories,
 
 ### Can SkillGate compare local MCP metadata with registry metadata?
 
-Yes. `skillgate mcp registry compare` compares local MCP registry metadata with a registry endpoint or fixture file and reports `SG013` when repository URLs, package identifiers, remote URLs, transport types, versions, or secret/header requirements differ.
+Yes. `skillgate mcp registry compare` compares local MCP registry metadata with a registry endpoint or fixture file and reports `SG013` when repository URLs, package identifiers, remote URLs, transport types, declared protocol versions, extension declarations, versions, or secret/header requirements differ.
 
 ### Where are the machine-readable schemas and docs?
 

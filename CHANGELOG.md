@@ -1,6 +1,6 @@
 # Change Log
 
-## Unreleased - Review evidence foundations
+## 0.1.3 - Review evidence foundations and MCP compatibility inventory
 
 ### Added
 
@@ -11,11 +11,15 @@
 - Added internal, deterministic `SA001`/`SA002` advisory analysis for direct agent-facing instructions, with redacted evidence and same-file `SG005`/`SG003` links where applicable. CLI, Review Packet, SARIF, policy, and baseline integration remain intentionally deferred.
 - Added semantic-drift coverage accounting for skipped source files, strict added/removed/modified record validation, and documented the redacted secret-value comparison boundary for internal callers.
 - Added internal semantic baselines and deterministic redacted instruction drift for source-selected text blocks. Line-only and whitespace-only movement remain stable; selected field, role, and applicability changes stay visible as added/removed context moves. Existing baseline, CLI, Review Packet, SARIF, policy, and Action behavior remain unchanged.
+- Added static MCP protocol-version and extension inventory for explicit declarations, including reverse-DNS extension IDs, declared versions, and malformed declaration review surfaces.
+- Added compatibility evidence to pre-install packets, capability baselines, and MCP registry comparison without starting servers, negotiating extensions, or changing packet schema version.
+- Added deterministic compatibility fixtures for unknown declarations, baseline drift, and registry comparison.
 
 ### Changed
 
 - Fixed GitHub pre-install packets so source identity prefers the resolved immutable commit SHA.
 - Made capability baselines stable across source-line movement and expanded MCP drift evidence to include all changed metadata fields.
+- Bumped Python and private Node wrapper metadata to `0.1.3`; PyPI and npm publication remain deferred.
 
 ## 0.1.2 - Guided review workflows
 

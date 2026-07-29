@@ -32,11 +32,13 @@ The current stable release is `v0.1.2`. The shipped baseline includes:
 These are release history, not future work. Keep detailed records in
 `CHANGELOG.md`.
 
-## 0.1.3 Adoption Priorities
+## 0.1.3 Delivery Status
 
-The original adoption priorities are now implemented on `main` and should be
-released as `0.1.3`. The next implementation batch is the review-evidence and
-capability-contract work below.
+The original adoption priorities, review-evidence foundations, and first MCP
+compatibility inventory are implemented on `main` for the `0.1.3` release
+candidate. Complete the release checklist and user-path smoke tests before
+moving the stable `v0` tag. The next implementation work is the remaining MCP
+compatibility sequence below.
 
 The next minor release is a focused pre-install adoption release. The target is
 one copy-pasteable review flow that produces a decision-ready packet without
@@ -120,11 +122,13 @@ gateway, renderer, or runtime policy engine.
 
 ### Near-term implementation order
 
-1. **Version and extension inventory.** Add a normalized static representation
-   for declared MCP protocol revisions, reverse-DNS extension IDs/versions, and
-   unknown extensions. Include these in capability reports, baselines, registry
-   comparison, and review-packet evidence. Preserve existing output contracts
-   until a deliberate packet-schema version bump is approved.
+1. **Version and extension inventory (implemented).** SkillGate now inventories
+   explicit declared protocol revisions, reverse-DNS extension IDs/versions, and
+   malformed declarations without inferring behavior. The advisory capability
+   data flows through reports, baselines, registry comparison, and optional
+   pre-install packet metadata without a packet-schema bump. See
+   [`docs/mcp-compatibility.md`](docs/mcp-compatibility.md) for the review and
+   migration boundary.
 
 2. **MCP Apps static adapter.** Recognize `_meta.ui.resourceUri`, `ui://`
    resources, UI MIME types, referenced origins, CSP declarations, and
@@ -253,7 +257,7 @@ Do not add telemetry without an explicit privacy design and opt-in decision.
 
 ## Release Checklist References
 
-The release checklist covers the `v0.1.2` launch history and remains the source
-for tag and binary verification details. For the next release, use the same
-checks with `uv sync --locked`, the generated benchmark report, the starter
-repository smoke test, and the final no-execution review.
+The release checklist is prepared for the `v0.1.3` release candidate and remains
+the source for tag and binary verification details. Use it with `uv sync
+--locked`, the generated benchmark report, the starter-repository smoke test,
+and the final no-execution review.

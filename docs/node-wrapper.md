@@ -38,7 +38,7 @@ When `SKILLGATE_VERSION` is set, the wrapper downloads from that release tag
 instead of `latest`:
 
 ```bash
-SKILLGATE_VERSION=v0.1.2 npx --yes github:charliechenye/SkillGate#v0 -- scan .
+SKILLGATE_VERSION=v0.1.3 npx --yes github:charliechenye/SkillGate#v0 -- scan .
 ```
 
 ## Cache And Verification
@@ -70,5 +70,5 @@ Useful environment variables:
 For immutable environments, pin both the wrapper ref and the binary version:
 
 ```bash
-SKILLGATE_VERSION=v0.1.2 npx --yes github:charliechenye/SkillGate#FULL_COMMIT_SHA -- scan .
+SKILLGATE_VERSION=v0.1.3 npx --yes github:charliechenye/SkillGate#FULL_COMMIT_SHA -- scan .
 ```

@@ -16,7 +16,13 @@ TRUST_BOUNDARY_TYPES = {
     "remote_endpoints": {"network_egress"},
     "secrets": {"secret_access"},
     "generated_files": {"filesystem_write"},
-    "mcp_servers": {"mcp_server"},
+    "mcp_servers": {
+        "mcp_server",
+        "mcp_registry_server",
+        "mcp_protocol_version",
+        "mcp_extension",
+        "mcp_unknown_declaration",
+    },
     "prompt_controls": {"prompt_override"},
     "obfuscation": {"obfuscation"},
 }

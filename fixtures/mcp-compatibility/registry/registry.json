@@ -1,0 +1,21 @@
+{
+  "servers": [
+    {
+      "server": {
+        "name": "io.example.compatibility",
+        "version": "0.1.0",
+        "supportedVersions": ["2026-07-28"],
+        "capabilities": {
+          "extensions": {
+            "io.modelcontextprotocol/ui": {
+              "version": "2.0.0"
+            },
+            "com.example/tasks": {
+              "version": "1.0.0"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

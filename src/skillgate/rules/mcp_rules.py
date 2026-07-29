@@ -6,6 +6,11 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlparse
 
+from skillgate.mcp_compatibility import (
+    compatibility_capabilities,
+    compatibility_details,
+    inventory_mcp_compatibility,
+)
 from skillgate.models import Severity
 from skillgate.rules.base import FileContent, RuleResult, make_capability, make_finding
 from skillgate.rules.script_rules import host_from_token
@@ -202,10 +207,23 @@ class McpConfigRule:
             return result
         if not isinstance(data, dict):
             return result
+        root_compatibility = inventory_mcp_compatibility(
+            data,
+            declaration_path="",
+            scope="config",
+        )
+        result.capabilities.extend(
+            compatibility_capabilities(root_compatibility, source_file=file.path)
+        )
         definitions = find_servers(data)
         for definition in definitions:
             name = resource_name(definition)
             server = definition.server
+            compatibility = inventory_mcp_compatibility(
+                server,
+                declaration_path=definition.config_path,
+                scope=f"server:{definition.name}",
+            )
             command = server.get("command")
             args = normalize_args(server.get("args"))
             env = server.get("env") if isinstance(server.get("env"), dict) else {}
@@ -224,6 +242,7 @@ class McpConfigRule:
                 "headers": string_keys(server.get("headers")),
                 "auth": string_keys(server.get("auth")),
                 "secret_names": secrets,
+                **compatibility_details(compatibility),
             }
             result.findings.append(
                 make_finding(
@@ -239,6 +258,9 @@ class McpConfigRule:
             )
             result.capabilities.append(
                 make_capability("mcp_server", file.path, None, resource=name, **details)
+            )
+            result.capabilities.extend(
+                compatibility_capabilities(compatibility, source_file=file.path)
             )
             if isinstance(command, str):
                 result.capabilities.append(

@@ -76,7 +76,7 @@ def test_cli_fixtures_summary_json() -> None:
     assert result.exit_code == 0
     data = json.loads(result.output)
     assert data["summary"]["failed"] == 0
-    assert data["summary"]["fixtures"] == 27
+    assert data["summary"]["fixtures"] == 28
     assert all(item["status"] == "pass" for item in data["fixtures"])
 
 
@@ -212,11 +212,13 @@ def test_release_metadata_and_roadmap_are_consistent() -> None:
     release_checklist = (ROOT / "docs" / "release-checklist.md").read_text(encoding="utf-8")
     assert pyproject["project"]["name"] == "openevalgate-skillgate"
     assert pyproject["project"]["authors"] == [{"name": "Chenye Zhu"}]
-    assert pyproject["project"]["version"] == "0.1.2"
+    assert pyproject["project"]["version"] == "0.1.3"
     assert pyproject["project"]["license"] == "MIT"
     assert pyproject["project"]["license-files"] == ["LICENSE"]
     assert "License :: OSI Approved :: MIT License" not in pyproject["project"]["classifiers"]
-    assert __version__ == "0.1.2"
+    assert __version__ == "0.1.3"
+    assert '"version": "0.1.3"' in (ROOT / "package.json").read_text(encoding="utf-8")
+    assert "## 0.1.3 - Review evidence foundations and MCP compatibility inventory" in changelog
     assert "## 0.1.2 - Guided review workflows" in changelog
     assert "Released 2026-07-09." in changelog
     assert "reusable, bounded ZIP inspection foundation" in changelog
@@ -228,6 +230,7 @@ def test_release_metadata_and_roadmap_are_consistent() -> None:
     assert "## 0.1.0 - Initial public release" in changelog
     assert "README SEO" not in changelog
     assert "skillgate diff --fail-on-drift" in changelog
+    assert "MCP protocol-version and extension inventory" in changelog
     assert "Publish the first tagged GitHub release as `v0.1.0`" not in future_steps
     assert "supplied `baseline` plus `fail-on-drift`" in future_steps
     assert "skillgate skills validate" in readme
@@ -238,11 +241,12 @@ def test_release_metadata_and_roadmap_are_consistent() -> None:
     assert "Pre-install review" in sessions_docs.read_text(encoding="utf-8")
     assert "npx --yes github:charliechenye/SkillGate#v0 -- scan ." in future_steps
     assert "docs/public-scan-reports/" in future_steps
-    assert "For `v0.1.2`, both version commands should print `0.1.2`." in release_checklist
-    assert 'git tag -a v0.1.2 -m "SkillGate v0.1.2"' in release_checklist
-    assert "gh release create v0.1.2" in release_checklist
-    assert 'SKILLGATE_VERSION="v0.1.2"' in release_checklist
-    assert "git tag -f v0 v0.1.2" in release_checklist
+    assert "For `v0.1.3`, both version commands should print `0.1.3`." in release_checklist
+    assert 'git tag -a v0.1.3 -m "SkillGate v0.1.3"' in release_checklist
+    assert "gh release create v0.1.3" in release_checklist
+    assert 'SKILLGATE_VERSION="v0.1.3"' in release_checklist
+    assert "git tag -f v0 v0.1.3" in release_checklist
+    assert "Review Workflow Smoke Tests" in release_checklist
     assert "Do not publish the root npm package" in release_checklist
     assert "PyPI publication is an\nexplicit maintainer step" in release_checklist
     assert "pipx install --force openevalgate-skillgate" in release_checklist
@@ -252,6 +256,9 @@ def test_release_metadata_and_roadmap_are_consistent() -> None:
     current_release, released = changelog.split("## 0.1.1", maxsplit=1)
 
     assert "## 0.1.2 - Guided review workflows" in current_release
+    assert (
+        "## 0.1.3 - Review evidence foundations and MCP compatibility inventory" in current_release
+    )
     assert "skillgate demo skill" in current_release
     assert "reusable, bounded ZIP inspection foundation" not in released
 

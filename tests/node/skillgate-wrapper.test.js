@@ -14,11 +14,11 @@ test("hashes release assets with SHA-256", () => {
 
 test("builds a pinned release URL", () => {
   const previous = process.env.SKILLGATE_VERSION;
-  process.env.SKILLGATE_VERSION = "v0.1.2";
+  process.env.SKILLGATE_VERSION = "v0.1.3";
   try {
     assert.equal(
       wrapper.releaseBaseUrl(),
-      "https://github.com/charliechenye/SkillGate/releases/download/v0.1.2",
+      "https://github.com/charliechenye/SkillGate/releases/download/v0.1.3",
     );
   } finally {
     if (previous === undefined) delete process.env.SKILLGATE_VERSION;

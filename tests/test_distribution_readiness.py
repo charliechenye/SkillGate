@@ -62,13 +62,17 @@ def test_public_scan_reports_document_demo_inputs() -> None:
     clean = (reports / "clean-documentation-skill.md").read_text(encoding="utf-8")
     review = (reports / "remote-download-review-item.md").read_text(encoding="utf-8")
     mcpb = (reports / "mcpb-reviewable-node.md").read_text(encoding="utf-8")
+    compatibility = (reports / "mcp-compatibility-inventory.md").read_text(encoding="utf-8")
 
     assert "Clean documentation skill" in index
     assert "Remote download review item" in index
     assert "Reviewable MCPB demo bundle" in index
+    assert "MCP compatibility inventory" in index
     assert "9456104ea9b33ff96d159de56350e361105561ae4a5c71127dd04252942aef2e" in clean
     assert "SG004" in review
     assert DEMO_MCPB_SHA256 in mcpb
     assert "skillgate demo mcpb --output test-outputs/reviewable-node.mcpb --scan" in mcpb
     assert "Demo Transcript" in mcpb
     assert "What SkillGate Cannot Conclude" in mcpb
+    assert "2026-07-28" in compatibility
+    assert "real-world server" in compatibility

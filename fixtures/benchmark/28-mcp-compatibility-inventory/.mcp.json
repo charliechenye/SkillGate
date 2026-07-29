@@ -1,0 +1,28 @@
+{
+  "extensions": {
+    "com.example/audit": {
+      "version": "1.0.0"
+    },
+    "not-a-reverse-dns-id": {}
+  },
+  "mcpServers": {
+    "modern": {
+      "type": "streamable-http",
+      "url": "https://modern.example.invalid/mcp",
+      "protocolVersion": "2026-07-28",
+      "headers": {
+        "MCP-Protocol-Version": "2026-07-28"
+      },
+      "capabilities": {
+        "extensions": {
+          "io.modelcontextprotocol/ui": {
+            "version": "1.0.0"
+          },
+          "com.example/tasks": {
+            "specVersion": "2026-07-28"
+          }
+        }
+      }
+    }
+  }
+}
