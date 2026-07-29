@@ -22,10 +22,25 @@ _EXTENSION_ID_RE = re.compile(
 )
 _VERSION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$")
 
+# These are compatibility labels, not an allow-list. A declared date-form
+# revision is still retained even when it is newer than this table. The two
+# families deliberately coexist while the ecosystem migrates.
+_LEGACY_PROTOCOL_REVISIONS = frozenset(
+    {
+        "2024-10-07",
+        "2024-11-05",
+        "2025-03-26",
+        "2025-06-18",
+        "2025-11-25",
+    }
+)
+_MODERN_PROTOCOL_REVISIONS = frozenset({"2026-07-28"})
+
 
 @dataclass(frozen=True)
 class McpProtocolDeclaration:
     version: str
+    era: str
     declaration_path: str
     scope: str
 
@@ -68,6 +83,17 @@ def _safe_protocol_versions(value: object) -> tuple[list[str], bool]:
         if isinstance(item, str) and _PROTOCOL_VERSION_RE.fullmatch(item.strip())
     ]
     return sorted(set(valid_values)), len(valid_values) != len(values)
+
+
+def _protocol_era(version: str) -> str:
+    """Classify known MCP wire-era revisions without rejecting other values."""
+    if version in _LEGACY_PROTOCOL_REVISIONS:
+        return "legacy"
+    if version in _MODERN_PROTOCOL_REVISIONS:
+        return "modern"
+    if version.startswith("DRAFT-"):
+        return "draft"
+    return "unclassified"
 
 
 def _extension_version(settings: dict[str, Any]) -> tuple[str | None, bool]:
@@ -162,7 +188,12 @@ def inventory_mcp_compatibility(
     def add_protocols(value: object, path: str) -> None:
         versions, invalid = _safe_protocol_versions(value)
         protocol_versions.extend(
-            McpProtocolDeclaration(version=version, declaration_path=path, scope=scope)
+            McpProtocolDeclaration(
+                version=version,
+                era=_protocol_era(version),
+                declaration_path=path,
+                scope=scope,
+            )
             for version in versions
         )
         if invalid:
@@ -221,7 +252,7 @@ def inventory_mcp_compatibility(
         protocol_versions=tuple(
             sorted(
                 set(protocol_versions),
-                key=lambda item: (item.version, item.declaration_path, item.scope),
+                key=lambda item: (item.version, item.era, item.declaration_path, item.scope),
             )
         ),
         extensions=tuple(
@@ -248,6 +279,12 @@ def compatibility_details(inventory: McpCompatibilityInventory) -> dict[str, obj
     """Return redaction-safe, JSON-stable details for an MCP server capability."""
     return {
         "protocol_versions": sorted({item.version for item in inventory.protocol_versions}),
+        "protocol_version_eras": [
+            {"version": version, "era": era}
+            for version, era in sorted(
+                {(item.version, item.era) for item in inventory.protocol_versions}
+            )
+        ],
         "extensions": [
             {"id": identifier, "version": version}
             for identifier, version in sorted(
@@ -282,6 +319,7 @@ def compatibility_capabilities(
                 resource=item.version,
                 declaration_path=item.declaration_path,
                 scope=item.scope,
+                era=item.era,
             )
         )
     for item in inventory.extensions:
@@ -326,7 +364,13 @@ def compatibility_evidence(capabilities: list[dict[str, Any]]) -> dict[str, obje
             "scope": details.get("scope"),
         }
         if capability.get("type") == "mcp_protocol_version":
-            protocol_versions.append({"version": capability.get("resource"), **record})
+            protocol_versions.append(
+                {
+                    "version": capability.get("resource"),
+                    "era": details.get("era"),
+                    **record,
+                }
+            )
         elif capability.get("type") == "mcp_extension":
             extensions.append(
                 {

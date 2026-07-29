@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "legacy": {
+      "type": "streamable-http",
+      "url": "https://legacy.example.invalid/mcp",
+      "protocolVersion": "2025-11-25"
+    },
+    "transition": {
+      "type": "streamable-http",
+      "url": "https://transition.example.invalid/mcp",
+      "supportedVersions": ["2025-11-25", "2026-07-28"]
+    },
+    "unspecified": {
+      "type": "streamable-http",
+      "url": "https://unspecified.example.invalid/mcp"
+    }
+  }
+}

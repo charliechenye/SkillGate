@@ -12,6 +12,7 @@ from skillgate.preinstall import build_preinstall_packet, render_preinstall_mark
 from skillgate.scan import scan_repository
 
 COMPATIBILITY_FIXTURE = FIXTURES / "28-mcp-compatibility-inventory"
+TRANSITION_FIXTURE = FIXTURES / "29-mcp-protocol-transition"
 MCP_COMPATIBILITY_FIXTURES = ROOT / "fixtures" / "mcp-compatibility"
 
 
@@ -47,6 +48,34 @@ def test_inventory_uses_explicit_declarations_and_redacts_unknown_values() -> No
     assert "literal-secret-value" not in repr(inventory)
 
 
+def test_inventory_keeps_legacy_and_modern_protocol_revisions_together() -> None:
+    inventory = inventory_mcp_compatibility(
+        {
+            "supportedVersions": ["2025-11-25", "2026-07-28"],
+            "protocolVersion": "2024-10-07",
+        }
+    )
+
+    assert [(item.version, item.era) for item in inventory.protocol_versions] == [
+        ("2024-10-07", "legacy"),
+        ("2025-11-25", "legacy"),
+        ("2026-07-28", "modern"),
+    ]
+    assert not inventory.unknown_declarations
+
+
+def test_scan_keeps_transition_versions_advisory_and_leaves_absence_unspecified() -> None:
+    report = scan_repository(TRANSITION_FIXTURE)
+    versions = [item for item in report.capabilities if item.type == "mcp_protocol_version"]
+
+    assert {(item.resource, item.details["era"]) for item in versions} == {
+        ("2025-11-25", "legacy"),
+        ("2026-07-28", "modern"),
+    }
+    assert not [item for item in report.capabilities if item.type == "mcp_unknown_declaration"]
+    assert {finding.rule_id for finding in report.findings} == {"SG003", "SG009"}
+
+
 def test_scan_inventory_is_advisory_and_preserves_mcp_server_drift_details() -> None:
     report = scan_repository(COMPATIBILITY_FIXTURE)
     capabilities = {item.type: [] for item in report.capabilities}
@@ -54,6 +83,7 @@ def test_scan_inventory_is_advisory_and_preserves_mcp_server_drift_details() -> 
         capabilities[capability.type].append(capability)
 
     assert {item.resource for item in capabilities["mcp_protocol_version"]} == {"2026-07-28"}
+    assert {item.details["era"] for item in capabilities["mcp_protocol_version"]} == {"modern"}
     assert {item.resource for item in capabilities["mcp_extension"]} == {
         "com.example/audit",
         "com.example/tasks",
@@ -63,6 +93,7 @@ def test_scan_inventory_is_advisory_and_preserves_mcp_server_drift_details() -> 
     assert {finding.rule_id for finding in report.findings} == {"SG003", "SG009"}
     server = next(item for item in report.capabilities if item.type == "mcp_server")
     assert server.details["protocol_versions"] == ["2026-07-28"]
+    assert server.details["protocol_version_eras"] == [{"version": "2026-07-28", "era": "modern"}]
     assert {item["id"] for item in server.details["extensions"]} == {
         "com.example/tasks",
         "io.modelcontextprotocol/ui",
@@ -83,6 +114,7 @@ def test_preinstall_packet_exposes_compatibility_evidence_without_schema_bump() 
     evidence = packet["metadata"]["mcp_compatibility"]
     assert packet["schema_version"] == "2"
     assert {item["version"] for item in evidence["protocol_versions"]} == {"2026-07-28"}
+    assert {item["era"] for item in evidence["protocol_versions"]} == {"modern"}
     assert {item["id"] for item in evidence["extensions"]} == {
         "com.example/audit",
         "com.example/tasks",

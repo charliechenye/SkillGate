@@ -16,7 +16,9 @@ skillgate review preinstall fixtures/benchmark/28-mcp-compatibility-inventory \
 
 ## What reviewers see
 
-- Declared protocol revision `2026-07-28`.
+- Declared protocol revision `2026-07-28` (the `modern` era). Legacy revisions
+  and mixed legacy/modern declarations are supported in parallel during
+  migration.
 - Declared `com.example/audit`, `com.example/tasks`, and
   `io.modelcontextprotocol/ui` extensions with explicit versions where supplied.
 - A malformed extension identifier retained as an advisory unknown declaration.

@@ -5,6 +5,16 @@ declarations so reviewers can see compatibility surface changes before enabling
 an MCP server or client configuration. It does not contact a server, negotiate
 extensions, resolve schemas, or inspect extension settings.
 
+## Transition support
+
+The inventory supports both protocol eras in parallel. It labels the final
+`2024-10-07` through `2025-11-25` revisions as `legacy`, and `2026-07-28` as
+`modern`. A configuration may advertise both eras during migration; SkillGate
+retains both declarations and does not require a 2026 upgrade. Other valid
+date-form revisions and `DRAFT-*` values remain visible as `unclassified` or
+`draft` evidence rather than becoming security findings. An absent declaration
+means only that no explicit protocol revision was found.
+
 The inventory recognizes declared protocol revisions from `protocolVersion`,
 `protocolVersions`, `supportedVersions`, the 2026 per-request
 `_meta.io.modelcontextprotocol/protocolVersion` value, and an
@@ -22,11 +32,15 @@ skillgate mcp registry compare path/to/registry --server example.server
 changing the Review Packet schema version. The same declarations appear as
 `mcp_protocol_version`, `mcp_extension`, or
 `mcp_unknown_declaration` capabilities in scan output and baselines.
+Protocol capabilities and packet evidence also carry the normalized `era`
+label, while existing `protocol_versions` lists retain the declared strings for
+stable comparisons.
 
 ## Reviewer guidance
 
-- Confirm the declared protocol revisions are expected for the configured
-  client or server.
+- Confirm the declared legacy, modern, or mixed protocol revisions are expected
+  for the configured client or server. Mixed declarations are a migration
+  surface to review, not a failure verdict.
 - Review newly added extension IDs and their declared versions before enabling
   them. Extension settings are intentionally not interpreted by this inventory.
 - Treat malformed IDs, malformed versions, and non-object extension settings as
