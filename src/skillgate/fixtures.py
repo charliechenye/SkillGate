@@ -162,6 +162,7 @@ def fixture_summary_markdown(root: Path, summaries: list[FixtureSummary]) -> str
         "# SkillGate Benchmark Report",
         "",
         f"- Scanner version: `{__version__}`",
+        "- Report status: unreleased release candidate",
         f"- Fixture root: `{root.as_posix()}`",
         f"- Fixtures: {len(summaries)}",
         f"- Passed: {sum(1 for summary in summaries if summary.status == 'pass')}",

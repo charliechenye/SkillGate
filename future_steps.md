@@ -35,10 +35,10 @@ These are release history, not future work. Keep detailed records in
 ## 0.1.3 Delivery Status
 
 The original adoption priorities, review-evidence foundations, and first MCP
-compatibility inventory are implemented on `main` for the `0.1.3` release
-candidate. Complete the release checklist and user-path smoke tests before
-moving the stable `v0` tag. The next implementation work is the remaining MCP
-compatibility sequence below.
+compatibility inventory are implemented on `main` for the unreleased `0.1.3`
+release candidate. Complete the release checklist and user-path smoke tests
+before tagging it or moving the stable `v0` tag. The next implementation work
+is the remaining MCP compatibility sequence below.
 
 The next minor release is a focused pre-install adoption release. The target is
 one copy-pasteable review flow that produces a decision-ready packet without
@@ -112,8 +112,9 @@ npx --yes github:charliechenye/SkillGate#v0 -- scan .
 
 ## MCP 2026-07-28 Compatibility TODO
 
-Treat MCP protocol revision `2026-07-28` as released. This is a compatibility
-and review-surface workstream, not a change to SkillGate's local-first,
+Support the legacy MCP protocol revisions and `2026-07-28` in parallel during
+the ecosystem transition. This is a compatibility and review-surface workstream,
+not a change to SkillGate's local-first,
 deterministic, no-execution product boundary. The release makes stateless
 requests, extension negotiation, MCP Apps, Tasks, stronger authorization
 guidance, and full JSON Schema 2020-12 part of the ecosystem. SkillGate should
@@ -123,10 +124,12 @@ gateway, renderer, or runtime policy engine.
 ### Near-term implementation order
 
 1. **Version and extension inventory (implemented).** SkillGate now inventories
-   explicit declared protocol revisions, reverse-DNS extension IDs/versions, and
-   malformed declarations without inferring behavior. The advisory capability
-   data flows through reports, baselines, registry comparison, and optional
-   pre-install packet metadata without a packet-schema bump. See
+   explicit declared legacy and modern protocol revisions, reverse-DNS extension
+   IDs/versions, and malformed declarations without inferring behavior. A mixed
+   declaration is retained as advisory migration evidence, never an upgrade
+   requirement. The capability data flows through reports, baselines, registry
+   comparison, and optional pre-install packet metadata without a packet-schema
+   bump. See
    [`docs/mcp-compatibility.md`](docs/mcp-compatibility.md) for the review and
    migration boundary.
 

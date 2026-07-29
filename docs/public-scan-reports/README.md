@@ -16,7 +16,8 @@ Reports:
 - [MCP compatibility inventory](mcp-compatibility-inventory.md)
 
 The reports marked with earlier scanner versions are intentionally preserved as
-historical release evidence. New reports use `0.1.3`.
+historical release evidence. The new reports exercise the unreleased `0.1.3`
+release candidate.
 
 Each report records the exact command, scanner version, source identity,
 capability inventory, findings summary, interpretation, limitations, suggested

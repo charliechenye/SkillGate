@@ -76,7 +76,7 @@ def test_cli_fixtures_summary_json() -> None:
     assert result.exit_code == 0
     data = json.loads(result.output)
     assert data["summary"]["failed"] == 0
-    assert data["summary"]["fixtures"] == 28
+    assert data["summary"]["fixtures"] == 29
     assert all(item["status"] == "pass" for item in data["fixtures"])
 
 
@@ -218,7 +218,10 @@ def test_release_metadata_and_roadmap_are_consistent() -> None:
     assert "License :: OSI Approved :: MIT License" not in pyproject["project"]["classifiers"]
     assert __version__ == "0.1.3"
     assert '"version": "0.1.3"' in (ROOT / "package.json").read_text(encoding="utf-8")
-    assert "## 0.1.3 - Review evidence foundations and MCP compatibility inventory" in changelog
+    assert (
+        "## 0.1.3 (Unreleased) - Review evidence foundations and MCP compatibility inventory"
+        in changelog
+    )
     assert "## 0.1.2 - Guided review workflows" in changelog
     assert "Released 2026-07-09." in changelog
     assert "reusable, bounded ZIP inspection foundation" in changelog
@@ -257,7 +260,8 @@ def test_release_metadata_and_roadmap_are_consistent() -> None:
 
     assert "## 0.1.2 - Guided review workflows" in current_release
     assert (
-        "## 0.1.3 - Review evidence foundations and MCP compatibility inventory" in current_release
+        "## 0.1.3 (Unreleased) - Review evidence foundations and MCP compatibility inventory"
+        in current_release
     )
     assert "skillgate demo skill" in current_release
     assert "reusable, bounded ZIP inspection foundation" not in released
