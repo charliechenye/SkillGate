@@ -350,6 +350,7 @@ def test_release_manifest_builder_and_workflow_use_stable_assets() -> None:
     workflow = yaml.safe_load(
         (ROOT / ".github" / "workflows" / "release-binaries.yml").read_text(encoding="utf-8")
     )
+    assert workflow["permissions"] == {"contents": "read"}
     assert workflow["env"]["FORCE_JAVASCRIPT_ACTIONS_TO_NODE24"] is True
     assert workflow["jobs"]["resolve-tag"]["outputs"]["release_tag"] == (
         "${{ steps.tag.outputs.value }}"
@@ -359,6 +360,7 @@ def test_release_manifest_builder_and_workflow_use_stable_assets() -> None:
         "${{ needs.resolve-tag.outputs.release_tag }}"
     )
     assert workflow["jobs"]["publish"]["needs"] == ["resolve-tag", "build"]
+    assert workflow["jobs"]["publish"]["permissions"] == {"contents": "write"}
     assert workflow["jobs"]["publish"]["steps"][0]["with"]["ref"] == (
         "${{ needs.resolve-tag.outputs.release_tag }}"
     )

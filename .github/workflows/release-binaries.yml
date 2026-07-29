@@ -10,7 +10,7 @@ on:
     types: [published]
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -96,6 +96,9 @@ jobs:
     name: Publish release assets
     needs: [resolve-tag, build]
     runs-on: ubuntu-latest
+    # This is the only job that mutates the GitHub release.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v7
         with:

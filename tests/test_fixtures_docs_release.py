@@ -408,6 +408,7 @@ def test_docs_are_main_branch_and_discovery_friendly() -> None:
         item["package-ecosystem"]: item["schedule"]["interval"] for item in dependabot["updates"]
     } == {"github-actions": "weekly", "pip": "weekly"}
     workflow_triggers = workflow.get("on") or workflow.get(True)
+    assert workflow["permissions"] == {"contents": "read"}
     assert workflow_triggers["push"]["branches"] == ["main"]
     compatibility = workflow["jobs"]["python-compatibility"]
     assert compatibility["strategy"]["matrix"]["python-version"] == ["3.11", "3.13"]

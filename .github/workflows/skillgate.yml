@@ -6,6 +6,10 @@ on:
   push:
     branches: [main]
 
+# Jobs inherit read-only repository access unless their work requires more.
+permissions:
+  contents: read
+
 jobs:
   skillgate:
     runs-on: ubuntu-latest
