@@ -69,6 +69,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 skillgate = [
+  "py.typed",
   "demo_assets/mcpb-reviewable-node/README.md",
   "demo_assets/mcpb-reviewable-node/manifest.json",
   "demo_assets/mcpb-reviewable-node/package.json",

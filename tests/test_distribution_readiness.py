@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import tomllib
 
 from conftest import ROOT, clean_test_dir
 
@@ -9,6 +10,14 @@ from skillgate.mcpb.scan import scan_mcpb
 from tools.build_demo_mcpb import DEFAULT_SOURCE, build_demo_mcpb
 
 DEMO_MCPB_SHA256 = "6948b641f88671717de7142ce075f21f9710621392b115a311eee05831fe5a1c"
+
+
+def test_typed_package_marker_is_declared_for_distribution() -> None:
+    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+
+    assert (ROOT / "src" / "skillgate" / "py.typed").is_file()
+    assert "Typing :: Typed" in pyproject["project"]["classifiers"]
+    assert "py.typed" in pyproject["tool"]["setuptools"]["package-data"]["skillgate"]
 
 
 def test_demo_mcpb_builder_is_deterministic_and_reviewable() -> None:
