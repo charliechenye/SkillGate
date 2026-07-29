@@ -367,6 +367,7 @@ def test_release_manifest_builder_and_workflow_use_stable_assets() -> None:
     build_steps = {step.get("name"): step for step in workflow["jobs"]["build"]["steps"]}
     smoke_step = build_steps["Smoke test standalone binary"]
     assert "--version" in smoke_step["run"]
+    assert "Path('test-outputs').mkdir(exist_ok=True)" in smoke_step["run"]
     assert "rules', 'list" in smoke_step["run"]
     assert "review', 'preinstall" in smoke_step["run"]
     upload_step = build_steps["Upload build artifact"]

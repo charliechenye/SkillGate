@@ -74,6 +74,7 @@ jobs:
       - name: Smoke test standalone binary
         run: >
           python -c "from pathlib import Path; import subprocess;
+          Path('test-outputs').mkdir(exist_ok=True);
           binary = (Path('dist') / '${{ matrix.executable }}').resolve();
           subprocess.run([str(binary), '--version'], check=True);
           subprocess.run([str(binary), 'rules', 'list'], check=True);
