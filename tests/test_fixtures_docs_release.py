@@ -379,6 +379,7 @@ def test_docs_are_main_branch_and_discovery_friendly() -> None:
     workflow_steps = {
         step["name"]: step for step in workflow["jobs"]["skillgate"]["steps"] if "name" in step
     }
+    assert workflow_steps["Run Node wrapper tests"]["run"] == "npm test"
     assert workflow_steps["Upload SARIF review artifact"]["uses"] == ("actions/upload-artifact@v7")
     assert workflow_steps["Upload SARIF to GitHub Code Scanning"]["if"] == (
         "github.event_name != 'pull_request' && always()"
@@ -407,6 +408,19 @@ def test_docs_are_main_branch_and_discovery_friendly() -> None:
     } == {"github-actions": "weekly", "pip": "weekly"}
     workflow_triggers = workflow.get("on") or workflow.get(True)
     assert workflow_triggers["push"]["branches"] == ["main"]
+    compatibility = workflow["jobs"]["python-compatibility"]
+    assert compatibility["strategy"]["matrix"]["python-version"] == ["3.11", "3.13"]
+    assert compatibility["steps"][-1]["run"] == "uv run pytest"
+    package_steps = {
+        step["name"]: step for step in workflow["jobs"]["package-smoke"]["steps"] if "name" in step
+    }
+    assert package_steps["Build package"]["run"] == "uv build --out-dir test-outputs/dist"
+    assert "twine check test-outputs/dist/*" in package_steps["Check distributions"]["run"]
+    assert "skillgate/py.typed" in package_steps["Verify typed package marker"]["run"]
+    assert (
+        "review preinstall examples/preinstall-starter"
+        in package_steps["Run clean-install smoke tests"]["run"]
+    )
 
 
 def test_contributing_documents_rule_fixture_test_workflow() -> None:
