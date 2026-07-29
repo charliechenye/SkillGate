@@ -15,7 +15,7 @@ generic agent framework without a deliberate product decision.
 
 ## Current Baseline
 
-The current stable release is `v0.1.2`. The shipped baseline includes:
+The current stable release is `v0.1.3`. The shipped baseline includes:
 
 - local and sparse GitHub static scans;
 - deterministic findings for agent instructions, scripts, MCP metadata, and
@@ -27,88 +27,22 @@ The current stable release is `v0.1.2`. The shipped baseline includes:
   support;
 - a checksummed GitHub-first Node wrapper;
 - `skillgate skills validate` and deterministic Agent Skill/MCPB demos; and
-- guided review sessions for local review, pre-install review, and approval.
+- guided review sessions for local review, pre-install review, and approval;
+- deterministic pre-install packet digests, source manifests, and a public
+  Review Packet JSON Schema; and
+- static MCP protocol-version and extension inventory through scan, baseline,
+  registry comparison, and advisory pre-install evidence.
 
 These are release history, not future work. Keep detailed records in
 `CHANGELOG.md`.
 
-## 0.1.3 Delivery Status
+## 0.1.3 Release Status
 
-The original adoption priorities, review-evidence foundations, and first MCP
-compatibility inventory are implemented on `main` for the unreleased `0.1.3`
-release candidate. Complete the release checklist and user-path smoke tests
-before tagging it or moving the stable `v0` tag. The next implementation work
-is the remaining MCP compatibility sequence below.
-
-The next minor release is a focused pre-install adoption release. The target is
-one copy-pasteable review flow that produces a decision-ready packet without
-executing code or making network requests for local inputs.
-
-### 1. Standardize contributor setup
-
-Use the pinned `.python-version`, committed `uv.lock`, `uv sync --locked`, and
-`uv run` as the canonical development workflow. CI and contributor docs should
-use the same commands.
-
-### 2. Add one unified pre-install review
-
-Provide:
-
-```bash
-skillgate review preinstall SOURCE
-```
-
-The command should accept a local file or directory, a GitHub repository or
-subtree URL, and a local `.mcpb` bundle. It should produce Markdown by default
-and optional stable JSON containing source identity, capabilities, findings,
-Agent Skills validation results, reviewer next actions, limitations, and the
-no-execution guarantee. Results remain advisory unless the caller supplies an
-explicit `--fail-on` threshold.
-
-Existing enforcement remains in `check`, `diff`, and `review summary`; this
-release does not add MCPB policy enforcement or declared-intent diffing.
-
-### 3. Publish reproducible evidence
-
-Add a Markdown benchmark report generated from the committed fixtures. Include
-scanner version, fixture totals, rule coverage, expected-versus-actual results,
-attribution, reproduction commands, and limitations. Do not present fixture
-results as real-world detection accuracy.
-
-Keep public scan reports in `docs/public-scan-reports/` and label findings as
-review items unless there is evidence for a stronger claim.
-
-### 4. Make first adoption copyable
-
-Add a starter repository with a minimal safe Agent Skill and a first-run local
-pre-install review command. An optional GitHub Action may retain Markdown, JSON,
-and SARIF as artifacts. If a repository owner enables that integration,
-main-branch and manual runs may publish SARIF to Code Scanning; pull requests
-should remain reviewable without making intentional fixture findings a blocking
-status.
-
-The documented escalation path is:
-
-```text
-review preinstall → review summary → check with policy → diff with baseline
-```
-
-### 5. Keep distribution decisions explicit
-
-PyPI publication is deferred for `0.1.3`. When publication is revisited, use
-the existing distribution name `openevalgate-skillgate`; the `skillgate` PyPI
-name is already occupied by another project. Do not rename the Python package
-or publish a second distribution as a workaround.
-
-The root npm package remains private and npm publication is also deferred. The
-GitHub-first Node wrapper remains the supported Node entry point until a package
-name, ownership, and publication strategy are intentionally approved.
-
-The supported source-checkout example remains:
-
-```bash
-npx --yes github:charliechenye/SkillGate#v0 -- scan .
-```
+`v0.1.3` was released on 2026-07-29. It delivered the adoption workflow,
+review-evidence foundations, and first MCP compatibility inventory. PyPI and npm
+publication remain deferred; GitHub tags and GitHub Release assets are the
+supported distribution paths. The next implementation work is the MCP
+compatibility sequence below.
 
 ## MCP 2026-07-28 Compatibility TODO
 
@@ -260,7 +194,6 @@ Do not add telemetry without an explicit privacy design and opt-in decision.
 
 ## Release Checklist References
 
-The release checklist is prepared for the `v0.1.3` release candidate and remains
-the source for tag and binary verification details. Use it with `uv sync
---locked`, the generated benchmark report, the starter-repository smoke test,
-and the final no-execution review.
+The release checklist records the `v0.1.3` publication and binary verification
+procedure. Use it with `uv sync --locked`, the generated benchmark report, the
+starter-repository smoke test, and the final no-execution review.

@@ -219,10 +219,8 @@ def test_release_metadata_and_roadmap_are_consistent() -> None:
     assert "License :: OSI Approved :: MIT License" not in pyproject["project"]["classifiers"]
     assert __version__ == "0.1.3"
     assert '"version": "0.1.3"' in (ROOT / "package.json").read_text(encoding="utf-8")
-    assert (
-        "## 0.1.3 (Unreleased) - Review evidence foundations and MCP compatibility inventory"
-        in changelog
-    )
+    assert "## 0.1.3 - Review evidence foundations and MCP compatibility inventory" in changelog
+    assert "Released 2026-07-29." in changelog
     assert "## 0.1.2 - Guided review workflows" in changelog
     assert "Released 2026-07-09." in changelog
     assert "reusable, bounded ZIP inspection foundation" in changelog
@@ -243,8 +241,9 @@ def test_release_metadata_and_roadmap_are_consistent() -> None:
     assert "declared-vs-observed" in skills_docs.read_text(encoding="utf-8")
     assert sessions_docs.exists()
     assert "Pre-install review" in sessions_docs.read_text(encoding="utf-8")
-    assert "npx --yes github:charliechenye/SkillGate#v0 -- scan ." in future_steps
-    assert "docs/public-scan-reports/" in future_steps
+    assert "GitHub tags and GitHub Release assets are the" in future_steps
+    assert "docs/mcp-compatibility.md" in future_steps
+    assert "The current stable release is `v0.1.3`." in future_steps
     assert "For `v0.1.3`, both version commands should print `0.1.3`." in release_checklist
     assert 'git tag -a v0.1.3 -m "SkillGate v0.1.3"' in release_checklist
     assert "gh release create v0.1.3" in release_checklist
@@ -263,8 +262,7 @@ def test_release_metadata_and_roadmap_are_consistent() -> None:
 
     assert "## 0.1.2 - Guided review workflows" in current_release
     assert (
-        "## 0.1.3 (Unreleased) - Review evidence foundations and MCP compatibility inventory"
-        in current_release
+        "## 0.1.3 - Review evidence foundations and MCP compatibility inventory" in current_release
     )
     assert "skillgate demo skill" in current_release
     assert "reusable, bounded ZIP inspection foundation" not in released

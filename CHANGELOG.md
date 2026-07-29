@@ -1,6 +1,8 @@
 # Change Log
 
-## 0.1.3 (Unreleased) - Review evidence foundations and MCP compatibility inventory
+## 0.1.3 - Review evidence foundations and MCP compatibility inventory
+
+Released 2026-07-29.
 
 ### Added
 
