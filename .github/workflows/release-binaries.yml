@@ -121,7 +121,7 @@ jobs:
         run: gh release upload "${{ needs.resolve-tag.outputs.release_tag }}" release-assets/* --clobber
       - name: Notify Personal Website of Release
         continue-on-error: true
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.WEBSITE_DISPATCH_TOKEN }}
           script: |
