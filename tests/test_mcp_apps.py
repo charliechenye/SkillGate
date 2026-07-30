@@ -1,0 +1,237 @@
+from __future__ import annotations
+
+import base64
+
+from skillgate.mcp_apps import (
+    INLINE_RESOURCE_MAX_BYTES,
+    detect_bridge_markers,
+    inventory_mcp_apps,
+)
+
+
+def test_modern_metadata_uses_spec_default_visibility_and_collects_surfaces() -> None:
+    inventory = inventory_mcp_apps(
+        {
+            "resources": [
+                {
+                    "uri": "ui://widget/home.html",
+                    "mimeType": "text/html;profile=mcp-app",
+                    "_meta": {
+                        "ui": {
+                            "resourceUri": "ui://widget/home.html",
+                            "mimeType": "text/html;profile=mcp-app",
+                            "csp": {
+                                "connect_domains": ["https://api.example.com"],
+                                "resource_domains": ["https://cdn.example.com"],
+                                "frame_domains": ["https://frame.example.com"],
+                                "base_uri": ["https://app.example.com"],
+                            },
+                            "permissions": [
+                                "camera",
+                                {"name": "clipboardWrite"},
+                            ],
+                            "capabilities": ["responsive", "darkMode"],
+                            "appCallableTools": [
+                                {"name": "summarize", "appCallable": True},
+                                {"name": "register_later", "dynamic": True},
+                            ],
+                        }
+                    },
+                }
+            ]
+        },
+        scope="registry:example",
+    )
+
+    assert len(inventory.resources) == 1
+    resource = inventory.resources[0]
+    assert resource.resource_uri == "ui://widget/home.html"
+    assert resource.declared_visibility is None
+    assert resource.effective_visibility == ("app", "model")
+    assert resource.visibility_source == "spec_default"
+    assert [(item.kind, item.origin) for item in resource.origins] == [
+        ("base_uri", "https://app.example.com"),
+        ("connect", "https://api.example.com"),
+        ("frame", "https://frame.example.com"),
+        ("resource", "https://cdn.example.com"),
+    ]
+    assert [item.name for item in resource.permissions] == ["camera", "clipboardWrite"]
+    assert resource.app_capabilities == ("darkMode", "responsive")
+    assert [(item.name, item.surface, item.privileged) for item in resource.tool_surfaces] == [
+        ("register_later", "dynamic_tool_surface", True),
+        ("summarize", "app_callable_tool", True),
+    ]
+
+
+def test_legacy_metadata_keeps_omitted_visibility_unknown() -> None:
+    inventory = inventory_mcp_apps(
+        {
+            "contents": [
+                {
+                    "mimeType": "text/html;profile=mcp-app",
+                    "_meta": {"ui/resourceUri": "ui://legacy/widget.html"},
+                }
+            ]
+        }
+    )
+
+    assert len(inventory.resources) == 1
+    resource = inventory.resources[0]
+    assert resource.declared_visibility is None
+    assert resource.effective_visibility == ()
+    assert resource.visibility_source == "unknown"
+
+
+def test_declared_visibility_overrides_modern_default() -> None:
+    inventory = inventory_mcp_apps(
+        {
+            "_meta": {
+                "ui": {
+                    "resourceUri": "ui://widget/panel.html",
+                    "mimeType": "text/html;profile=mcp-app",
+                    "visibility": ["app"],
+                }
+            }
+        }
+    )
+
+    assert inventory.resources[0].declared_visibility == ("app",)
+    assert inventory.resources[0].effective_visibility == ("app",)
+    assert inventory.resources[0].visibility_source == "declared"
+
+
+def test_secret_bearing_and_malformed_values_become_unknown_declarations() -> None:
+    inventory = inventory_mcp_apps(
+        {
+            "_meta": {
+                "ui": {
+                    "resourceUri": "TOKEN=literal-secret",
+                    "mimeType": "text/html;profile=mcp-app",
+                }
+            },
+            "other": {
+                "_meta": {
+                    "ui": {
+                        "resourceUri": "plain-widget-name",
+                        "mimeType": "text/html;profile=mcp-app",
+                    }
+                }
+            },
+        }
+    )
+
+    assert not inventory.resources
+    assert [item.reason for item in inventory.unknown_declarations] == [
+        "invalid_or_redacted_resource_uri",
+        "invalid_or_redacted_resource_uri",
+    ]
+    assert "literal-secret" not in repr(inventory)
+
+
+def test_conflicting_resource_uri_keys_are_retained_as_unknown() -> None:
+    inventory = inventory_mcp_apps(
+        {
+            "_meta": {
+                "ui": {
+                    "resourceUri": "ui://widget/a.html",
+                    "resource_uri": "ui://widget/b.html",
+                    "mimeType": "text/html;profile=mcp-app",
+                }
+            }
+        }
+    )
+
+    assert inventory.resources[0].resource_uri == "ui://widget/a.html"
+    assert [item.reason for item in inventory.unknown_declarations] == [
+        "conflicting_resource_uri_keys"
+    ]
+
+
+def test_inline_text_and_base64_are_bounded_and_hashed() -> None:
+    html = "<script>callServerTool('search')</script>"
+    inventory = inventory_mcp_apps(
+        {
+            "_meta": {
+                "ui": {
+                    "resourceUri": "ui://widget/home.html",
+                    "mimeType": "text/html;profile=mcp-app",
+                    "text": html,
+                    "blob": base64.b64encode(b"registerAppTool('x')").decode(),
+                }
+            }
+        }
+    )
+
+    assert [(item.kind, item.text, item.skipped_reason) for item in inventory.inline_resources] == [
+        ("blob", "registerAppTool('x')", None),
+        ("text", html, None),
+    ]
+    assert all(item.sha256 for item in inventory.inline_resources)
+
+
+def test_invalid_base64_is_unknown_not_exception() -> None:
+    inventory = inventory_mcp_apps(
+        {
+            "_meta": {
+                "ui": {
+                    "resourceUri": "ui://widget/home.html",
+                    "mimeType": "text/html;profile=mcp-app",
+                    "blob": "not valid base64 !!",
+                }
+            }
+        }
+    )
+
+    assert [item.reason for item in inventory.unknown_declarations] == ["invalid_inline_base64"]
+
+
+def test_inline_resource_limits_skip_content_without_dropping_digest() -> None:
+    oversized = "x" * (INLINE_RESOURCE_MAX_BYTES + 1)
+    inventory = inventory_mcp_apps(
+        {
+            "_meta": {
+                "ui": {
+                    "resourceUri": "ui://widget/too-large.html",
+                    "mimeType": "text/html;profile=mcp-app",
+                    "text": oversized,
+                }
+            }
+        }
+    )
+
+    inline = inventory.inline_resources[0]
+    assert inline.text is None
+    assert inline.size_bytes == INLINE_RESOURCE_MAX_BYTES + 1
+    assert inline.sha256
+    assert inline.skipped_reason == "inline_resource_too_large"
+
+
+def test_inline_aggregate_limit_is_deterministic() -> None:
+    exact = "x" * INLINE_RESOURCE_MAX_BYTES
+    records = [
+        {
+            "_meta": {
+                "ui": {
+                    "resourceUri": f"ui://widget/{index}.html",
+                    "mimeType": "text/html;profile=mcp-app",
+                    "text": exact,
+                }
+            }
+        }
+        for index in range(6)
+    ]
+    inventory = inventory_mcp_apps({"resources": records})
+
+    skipped = [item for item in inventory.inline_resources if item.skipped_reason]
+    assert len(inventory.inline_resources) == 6
+    assert [item.resource_uri for item in skipped] == ["ui://widget/5.html"]
+    assert skipped[0].skipped_reason == "inline_resource_total_limit_exceeded"
+
+
+def test_bridge_detection_uses_exact_markers_and_contextual_post_message() -> None:
+    assert detect_bridge_markers("window.callServerTool('x'); tools/call") == (
+        "callServerTool",
+        "tools/call",
+    )
+    assert detect_bridge_markers("window.postMessage({type: 'mcp'});") == ("postMessage",)
+    assert detect_bridge_markers("window.postMessage({type: 'analytics'});") == ()
