@@ -390,8 +390,13 @@ def test_mcpb_app_bundle_retains_large_and_non_text_asset_skips(tmp_path: Path) 
         "app/large.js": "asset_too_large",
         "app/nontext.css": "asset_not_utf8",
     }
-    assert any(asset.sha256 for asset in result.bundle_manifest.mcp_app_assets)
+    assets = {asset.path: asset for asset in result.bundle_manifest.mcp_app_assets}
+    assert assets["app/large.js"].sha256
+    assert assets["app/nontext.css"].sha256
     assert "nested.zip" not in {asset.path for asset in result.bundle_manifest.mcp_app_assets}
+    scanned = {file.path for file in result.scan_report.scanned_files}
+    assert "app/large.js" not in scanned
+    assert "app/nontext.css" not in scanned
 
 
 def test_deduplicates_missing_entry_and_artifacts(tmp_path: Path) -> None:

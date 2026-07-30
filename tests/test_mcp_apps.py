@@ -593,6 +593,147 @@ def test_local_asset_skips_traversal_missing_excluded_and_oversized(
     }
 
 
+def test_local_oversized_assets_are_not_opened_for_content(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / ".mcp.json").write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "example": {
+                        "command": "node",
+                        "_meta": {
+                            "ui": {
+                                "resourceUri": "ui://app/large.js",
+                                "mimeType": "text/html;profile=mcp-app",
+                            }
+                        },
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    app = tmp_path / "app"
+    app.mkdir()
+    large = app / "large.js"
+    large.write_text("x" * (1_048_576 + 1), encoding="utf-8")
+    original_open = Path.open
+
+    def guarded_open(self: Path, *args: object, **kwargs: object):
+        if self == large:
+            raise AssertionError("oversized asset content must not be opened")
+        return original_open(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", guarded_open)
+
+    report = scan_repository(tmp_path)
+
+    skipped = next(
+        capability
+        for capability in report.capabilities
+        if capability.type == "mcp_app_asset" and capability.resource == "app/large.js"
+    )
+    assert skipped.details["skipped_reason"] == "asset_too_large"
+    assert skipped.details.get("sha256") is None
+
+
+def test_local_asset_aggregate_limit_stops_content_analysis(tmp_path: Path) -> None:
+    (tmp_path / ".mcp.json").write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "example": {
+                        "command": "node",
+                        "_meta": {
+                            "ui": {
+                                "resourceUri": "ui://app/index.html",
+                                "mimeType": "text/html;profile=mcp-app",
+                            }
+                        },
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    app = tmp_path / "app"
+    app.mkdir()
+    (app / "index.html").write_text(
+        "\n".join(f'<script src="asset-{index}.js"></script>' for index in range(6)),
+        encoding="utf-8",
+    )
+    for index in range(6):
+        if index == 0:
+            (app / "asset-0.js").write_bytes(b"\xff" * 1_048_576)
+            continue
+        marker = "callServerTool('blocked')" if index == 5 else "const safe = true;"
+        (app / f"asset-{index}.js").write_text(
+            marker + "x" * (1_048_576 - len(marker)), encoding="utf-8"
+        )
+
+    report = scan_repository(tmp_path)
+
+    skipped = next(
+        capability
+        for capability in report.capabilities
+        if capability.type == "mcp_app_asset" and capability.resource == "app/asset-5.js"
+    )
+    assert skipped.details["skipped_reason"] == "asset_total_limit_exceeded"
+    non_utf8 = next(
+        capability
+        for capability in report.capabilities
+        if capability.type == "mcp_app_asset" and capability.resource == "app/asset-0.js"
+    )
+    assert non_utf8.details["skipped_reason"] == "asset_not_utf8"
+    assert not [
+        capability
+        for capability in report.capabilities
+        if capability.type == "mcp_app_host_bridge"
+        and capability.details["path"] == "app/asset-5.js"
+    ]
+    assert "app/asset-5.js" not in {file.path for file in report.scanned_files}
+
+
+def test_local_asset_inventory_caps_emitted_records(tmp_path: Path) -> None:
+    (tmp_path / "server.json").write_text(
+        json.dumps(
+            {
+                "server": {
+                    "name": "io.example.asset-limit",
+                    "_meta": {
+                        "ui": {
+                            "resourceUri": "ui://app/index.html",
+                            "mimeType": "text/html;profile=mcp-app",
+                        }
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    app = tmp_path / "app"
+    app.mkdir()
+    (app / "index.html").write_text(
+        "\n".join(f'<script src="missing-{index}.js"></script>' for index in range(150)),
+        encoding="utf-8",
+    )
+
+    report = scan_repository(tmp_path)
+
+    assets = [
+        capability for capability in report.capabilities if capability.type == "mcp_app_asset"
+    ]
+    unknown = [
+        capability
+        for capability in report.capabilities
+        if capability.type == "mcp_app_unknown_declaration"
+        and capability.details.get("reason") == "asset_count_limit_exceeded"
+    ]
+    assert len(assets) == 100
+    assert len(unknown) == 1
+
+
 def test_local_app_scan_does_not_use_network_browser_or_subprocess(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

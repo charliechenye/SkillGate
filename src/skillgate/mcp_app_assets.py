@@ -60,6 +60,7 @@ class McpAppHostBridgeRecord:
 class McpAppAssetInventory:
     assets: tuple[McpAppAssetRecord, ...]
     bridges: tuple[McpAppHostBridgeRecord, ...]
+    limit_reached: bool = False
 
 
 def _safe_rel(root: Path, candidate: Path) -> str | None:
@@ -132,7 +133,13 @@ def _refs_from_text(path: str, text: str) -> list[str]:
     return sorted(set(refs))
 
 
-def _asset_record(root: Path, path: Path, association: str) -> tuple[McpAppAssetRecord, str | None]:
+def _asset_record(
+    root: Path,
+    path: Path,
+    association: str,
+    *,
+    remaining_bytes: int,
+) -> tuple[McpAppAssetRecord, str | None, int]:
     rel = _safe_rel(root, path)
     if rel is None:
         return (
@@ -145,31 +152,67 @@ def _asset_record(root: Path, path: Path, association: str) -> tuple[McpAppAsset
                 skipped_reason="outside_scan_root",
             ),
             None,
+            0,
         )
     kind = _asset_kind(rel) or "unknown"
     if _is_excluded_rel(rel):
         return (
             McpAppAssetRecord(rel, kind, association, None, None, "excluded_path"),
             None,
+            0,
         )
     try:
-        data = path.read_bytes()
+        size_bytes = path.stat().st_size
     except OSError:
-        return (McpAppAssetRecord(rel, kind, association, None, None, "missing_reference"), None)
-    sha256 = hashlib.sha256(data).hexdigest()
+        return (
+            McpAppAssetRecord(rel, kind, association, None, None, "missing_reference"),
+            None,
+            0,
+        )
+    if size_bytes > MCP_APP_MAX_ASSET_BYTES:
+        return (
+            McpAppAssetRecord(rel, kind, association, size_bytes, None, "asset_too_large"),
+            None,
+            0,
+        )
+    if size_bytes > remaining_bytes:
+        return (
+            McpAppAssetRecord(
+                rel,
+                kind,
+                association,
+                size_bytes,
+                None,
+                "asset_total_limit_exceeded",
+            ),
+            None,
+            0,
+        )
+    try:
+        with path.open("rb") as stream:
+            data = stream.read(MCP_APP_MAX_ASSET_BYTES + 1)
+    except OSError:
+        return (
+            McpAppAssetRecord(rel, kind, association, None, None, "missing_reference"),
+            None,
+            0,
+        )
     if len(data) > MCP_APP_MAX_ASSET_BYTES:
         return (
-            McpAppAssetRecord(rel, kind, association, len(data), sha256, "asset_too_large"),
+            McpAppAssetRecord(rel, kind, association, len(data), None, "asset_too_large"),
             None,
+            0,
         )
+    sha256 = hashlib.sha256(data).hexdigest()
     try:
         text = data.decode("utf-8")
     except UnicodeDecodeError:
         return (
             McpAppAssetRecord(rel, kind, association, len(data), sha256, "asset_not_utf8"),
             None,
+            len(data),
         )
-    return (McpAppAssetRecord(rel, kind, association, len(data), sha256, None), text)
+    return (McpAppAssetRecord(rel, kind, association, len(data), sha256, None), text, len(data))
 
 
 def mcp_app_asset_paths(root: Path, seed_paths: set[Path]) -> list[Path]:
@@ -189,7 +232,34 @@ def inventory_local_mcp_app_assets(root: Path, seed_paths: set[Path]) -> McpAppA
     queue: list[tuple[Path, str]] = []
     records: dict[tuple[str, str], McpAppAssetRecord] = {}
     bridges: dict[tuple[str, tuple[str, ...], str], McpAppHostBridgeRecord] = {}
-    total_bytes = 0
+    reserved_records: set[tuple[str, str]] = set()
+    remaining_bytes = MCP_APP_MAX_TOTAL_ASSET_BYTES
+    limit_reached = False
+
+    def reserve(path: str, association: str) -> bool:
+        nonlocal limit_reached
+        key = (path, association)
+        if key in reserved_records:
+            return False
+        if len(reserved_records) >= MCP_APP_MAX_ASSETS:
+            limit_reached = True
+            return False
+        reserved_records.add(key)
+        return True
+
+    def record_skip(path: str, association: str, kind: str, reason: str) -> None:
+        if reserve(path, association):
+            records[(path, association)] = McpAppAssetRecord(
+                path, kind, association, None, None, reason
+            )
+
+    def enqueue(path: Path, association: str) -> None:
+        rel = _safe_rel(root, path)
+        if rel is None:
+            record_skip("<outside_scan_root>", association, "unknown", "outside_scan_root")
+            return
+        if reserve(rel, association):
+            queue.append((path.resolve(), association))
 
     for seed in sorted(seed_paths, key=lambda item: _safe_rel(root, item) or ""):
         try:
@@ -215,41 +285,23 @@ def inventory_local_mcp_app_assets(root: Path, seed_paths: set[Path]) -> McpAppA
             for candidate in _resource_uri_candidates(root, seed, resource.resource_uri):
                 rel = _safe_rel(root, candidate)
                 if rel is None:
-                    records[("<outside_scan_root>", resource.resource_uri)] = McpAppAssetRecord(
+                    record_skip(
                         "<outside_scan_root>",
-                        "unknown",
                         resource.resource_uri,
-                        None,
-                        None,
+                        "unknown",
                         "outside_scan_root",
                     )
                     continue
                 if _asset_kind(rel) is None:
                     continue
-                queue.append((candidate.resolve(), resource.resource_uri))
+                enqueue(candidate, resource.resource_uri)
 
-    seen: set[tuple[str, str]] = set()
-    while queue and len(records) < MCP_APP_MAX_ASSETS:
+    while queue:
         path, association = queue.pop(0)
-        rel = _safe_rel(root, path)
-        key = (rel or "<outside_scan_root>", association)
-        if key in seen:
-            continue
-        seen.add(key)
-        record, text = _asset_record(root, path, association)
-        if record.skipped_reason is None and record.size_bytes is not None:
-            if total_bytes + record.size_bytes > MCP_APP_MAX_TOTAL_ASSET_BYTES:
-                record = McpAppAssetRecord(
-                    record.path,
-                    record.kind,
-                    record.association,
-                    record.size_bytes,
-                    record.sha256,
-                    "asset_total_limit_exceeded",
-                )
-                text = None
-            else:
-                total_bytes += record.size_bytes
+        record, text, consumed = _asset_record(
+            root, path, association, remaining_bytes=remaining_bytes
+        )
+        remaining_bytes -= consumed
         records[(record.path, record.association)] = record
         if text is None:
             continue
@@ -265,45 +317,30 @@ def inventory_local_mcp_app_assets(root: Path, seed_paths: set[Path]) -> McpAppA
             candidate, skip_reason = _resolve_ref(root, path, raw_ref)
             if candidate is None:
                 skipped_path = _strip_ref_suffix(raw_ref)
-                records[(skipped_path, association)] = McpAppAssetRecord(
+                record_skip(
                     skipped_path,
-                    _asset_kind(skipped_path) or "unknown",
                     association,
-                    None,
-                    None,
+                    _asset_kind(skipped_path) or "unknown",
                     skip_reason or "unsupported_file_type",
                 )
                 continue
             if not candidate.exists():
                 rel_candidate = _safe_rel(root, candidate) or _strip_ref_suffix(raw_ref)
-                records[(rel_candidate, association)] = McpAppAssetRecord(
+                record_skip(
                     rel_candidate,
-                    _asset_kind(rel_candidate) or "unknown",
                     association,
-                    None,
-                    None,
+                    _asset_kind(rel_candidate) or "unknown",
                     "missing_reference",
                 )
                 continue
-            queue.append((candidate, association))
-
-    if queue:
-        for path, association in queue:
-            rel = _safe_rel(root, path) or "<outside_scan_root>"
-            records[(rel, association)] = McpAppAssetRecord(
-                rel,
-                _asset_kind(rel) or "unknown",
-                association,
-                None,
-                None,
-                "asset_count_limit_exceeded",
-            )
+            enqueue(candidate, association)
 
     return McpAppAssetInventory(
         assets=tuple(sorted(records.values(), key=lambda item: (item.path, item.association))),
         bridges=tuple(
             sorted(bridges.values(), key=lambda item: (item.path, item.markers, item.association))
         ),
+        limit_reached=limit_reached,
     )
 
 
@@ -342,4 +379,16 @@ def mcp_app_asset_capabilities(
                     association=bridge.association,
                 )
             )
+    if inventory.limit_reached:
+        capabilities.append(
+            make_capability(
+                "mcp_app_unknown_declaration",
+                source_file or "<mcp-app-assets>",
+                None,
+                resource="<asset-inventory>",
+                declaration_path="<asset-inventory>",
+                reason="asset_count_limit_exceeded",
+                scope="local_assets",
+            )
+        )
     return capabilities

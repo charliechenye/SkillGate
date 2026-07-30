@@ -9,11 +9,11 @@ from skillgate import __version__
 from skillgate.archive import DEFAULT_ARCHIVE_LIMITS, ArchiveMember, inspect_archive
 from skillgate.discovery import discover_paths
 from skillgate.mcp_app_assets import (
+    MCP_APP_MAX_ASSET_BYTES,
     McpAppAssetInventory,
     McpAppAssetRecord,
     McpAppHostBridgeRecord,
     _asset_kind,
-    _asset_record,
     inventory_local_mcp_app_assets,
     mcp_app_asset_capabilities,
 )
@@ -92,17 +92,17 @@ def scan_mcpb(path: Path | str, *, format_aware: bool = False) -> McpbScanResult
         )
         manifest_apps = inventory_mcp_apps(manifest_data, declaration_path="manifest", scope="mcpb")
         positive_app_bundle = not manifest_apps.is_empty
-        if positive_app_bundle:
-            selected = _with_all_mcp_app_web_assets(
-                archive.extraction_root, archive.members, selected, embedded
-            )
-        generic_report = scan_paths(archive.extraction_root, selected, format_aware=format_aware)
         app_asset_inventory = _mcpb_app_asset_inventory(
             archive.extraction_root,
             archive.members,
             manifest_path=archive.extraction_root / "manifest.json",
             positive_app_bundle=positive_app_bundle,
         )
+        if positive_app_bundle:
+            selected = _with_all_mcp_app_web_assets(
+                archive.extraction_root, selected, app_asset_inventory
+            )
+        generic_report = scan_paths(archive.extraction_root, selected, format_aware=format_aware)
         findings = [*generic_report.findings, *_mcpb_findings(archive.members, analysis, embedded)]
         capabilities = [
             *generic_report.capabilities,
@@ -177,18 +177,14 @@ def _selected_source_paths(
 
 def _with_all_mcp_app_web_assets(
     root: Path,
-    members: list[ArchiveMember],
     selected: list[Path],
-    embedded: list[McpbBinaryArtifact],
+    inventory: McpAppAssetInventory,
 ) -> list[Path]:
-    embedded_paths = {item.path for item in embedded}
     selected_set = set(selected)
-    for member in members:
-        if not _member_can_scan(member, embedded_paths):
+    for asset in inventory.assets:
+        if asset.skipped_reason is not None:
             continue
-        if _asset_kind(member.normalized_path) is None:
-            continue
-        selected_set.add((root / member.normalized_path).resolve())
+        selected_set.add((root / asset.path).resolve())
     return sorted(selected_set, key=lambda item: item.relative_to(root.resolve()).as_posix())
 
 
@@ -222,7 +218,7 @@ def _mcpb_app_asset_inventory(
             or _asset_kind(member.normalized_path) is None
         ):
             continue
-        record, text = _asset_record(root, root / member.normalized_path, "mcpb_app_bundle")
+        record, text = _mcpb_asset_record(root, member, "mcpb_app_bundle")
         asset_records[(record.path, record.association)] = record
         if text is None:
             continue
@@ -241,6 +237,89 @@ def _mcpb_app_asset_inventory(
         bridges=tuple(
             sorted(bridges.values(), key=lambda item: (item.path, item.markers, item.association))
         ),
+    )
+
+
+def _mcpb_asset_record(
+    root: Path, member: ArchiveMember, association: str
+) -> tuple[McpAppAssetRecord, str | None]:
+    path = root / member.normalized_path
+    kind = _asset_kind(member.normalized_path) or "unknown"
+    if member.uncompressed_size > MCP_APP_MAX_ASSET_BYTES:
+        return (
+            McpAppAssetRecord(
+                member.normalized_path,
+                kind,
+                association,
+                member.uncompressed_size,
+                member.sha256,
+                "asset_too_large",
+            ),
+            None,
+        )
+    if not member.is_scannable_text:
+        return (
+            McpAppAssetRecord(
+                member.normalized_path,
+                kind,
+                association,
+                member.uncompressed_size,
+                member.sha256,
+                "asset_not_utf8",
+            ),
+            None,
+        )
+    try:
+        with path.open("rb") as stream:
+            data = stream.read(MCP_APP_MAX_ASSET_BYTES + 1)
+    except OSError:
+        return (
+            McpAppAssetRecord(
+                member.normalized_path,
+                kind,
+                association,
+                None,
+                member.sha256,
+                "missing_reference",
+            ),
+            None,
+        )
+    if len(data) > MCP_APP_MAX_ASSET_BYTES:
+        return (
+            McpAppAssetRecord(
+                member.normalized_path,
+                kind,
+                association,
+                len(data),
+                member.sha256,
+                "asset_too_large",
+            ),
+            None,
+        )
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        return (
+            McpAppAssetRecord(
+                member.normalized_path,
+                kind,
+                association,
+                len(data),
+                member.sha256,
+                "asset_not_utf8",
+            ),
+            None,
+        )
+    return (
+        McpAppAssetRecord(
+            member.normalized_path,
+            kind,
+            association,
+            len(data),
+            member.sha256,
+            None,
+        ),
+        text,
     )
 
 
