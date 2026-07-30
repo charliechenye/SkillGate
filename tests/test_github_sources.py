@@ -280,6 +280,168 @@ def test_fetch_github_sparse_fetches_relevant_files_and_references(
     assert not tmp_roots[0].exists()
 
 
+def test_fetch_github_sparse_fetches_mcp_app_assets_without_declared_origins(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tmp_roots: list[Path] = []
+    requested_urls: list[str] = []
+
+    def fake_request_json(
+        url: str, timeout: int = 30, redirect_limit: int = 3
+    ) -> dict[str, object]:
+        requested_urls.append(url)
+        if url.endswith("/repos/phuryn/pm-skills"):
+            return {"default_branch": "main"}
+        if url.endswith("/git/ref/heads/main"):
+            return {"object": {"type": "commit", "sha": FAKE_COMMIT_SHA}}
+        if "/git/trees/" in url:
+            return {
+                "tree": [
+                    {"path": "mcp-registry.json", "type": "blob"},
+                    {"path": "app/index.html", "type": "blob"},
+                    {"path": "app/app.js", "type": "blob"},
+                    {"path": "app/style.css", "type": "blob"},
+                    {"path": "app/theme.css", "type": "blob"},
+                ]
+            }
+        raise AssertionError(f"Unexpected JSON request: {url}")
+
+    def fake_request_text(
+        url: str,
+        timeout: int = 30,
+        redirect_limit: int = 3,
+        max_bytes: int | None = None,
+    ) -> str:
+        requested_urls.append(url)
+        if "api.example.com" in url or "cdn.example.com" in url:
+            raise AssertionError(f"Declared origin must not be fetched: {url}")
+        if url.endswith("/mcp-registry.json"):
+            return json.dumps(
+                {
+                    "server": {
+                        "name": "io.example.app",
+                        "_meta": {
+                            "ui": {
+                                "resourceUri": "ui://app/index.html",
+                                "mimeType": "text/html;profile=mcp-app",
+                                "csp": {
+                                    "connect_domains": ["https://api.example.com"],
+                                    "resource_domains": ["https://cdn.example.com"],
+                                },
+                            }
+                        },
+                    }
+                }
+            )
+        if url.endswith("/app/index.html"):
+            return '<link href="style.css"><script src="app.js"></script>'
+        if url.endswith("/app/style.css"):
+            return "@import 'theme.css';"
+        if url.endswith("/app/theme.css"):
+            return "body { color: black; }"
+        if url.endswith("/app/app.js"):
+            return "callServerTool('search')"
+        raise AssertionError(f"Unexpected text request: {url}")
+
+    def fake_materialize(files: dict[str, str], prefix: str = "skillgate-github-") -> Path:
+        root = clean_test_dir(f"remote-mcp-app-{len(tmp_roots)}")
+        repo = root / "repo"
+        repo.mkdir()
+        for rel_path, content in files.items():
+            target = repo / rel_path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(content, encoding="utf-8")
+        tmp_roots.append(root)
+        return root
+
+    monkeypatch.setattr("skillgate.sources.request_json", fake_request_json)
+    monkeypatch.setattr("skillgate.sources.request_text", fake_request_text)
+    monkeypatch.setattr("skillgate.sources.materialize_sparse_files", fake_materialize)
+
+    sparse = fetch_github_sparse("https://github.com/phuryn/pm-skills")
+    try:
+        assert sparse.fetched_paths == [
+            "app/app.js",
+            "app/index.html",
+            "app/style.css",
+            "app/theme.css",
+            "mcp-registry.json",
+        ]
+        downloaded = {item["remote_path"]: item for item in sparse.manifest["downloaded_files"]}
+        assert downloaded["app/index.html"]["reason"] == "mcp_app_asset"
+        assert downloaded["app/app.js"]["reason"] == "mcp_app_asset"
+        assert all("api.example.com" not in url for url in requested_urls)
+        assert all("cdn.example.com" not in url for url in requested_urls)
+    finally:
+        sparse.cleanup()
+
+
+def test_fetch_github_sparse_mcp_app_assets_enforce_subtree_and_missing_skips(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    requested_urls: list[str] = []
+
+    def fake_request_json(
+        url: str, timeout: int = 30, redirect_limit: int = 3
+    ) -> dict[str, object]:
+        requested_urls.append(url)
+        if url.endswith("/git/ref/heads/main"):
+            return {"object": {"type": "commit", "sha": FAKE_COMMIT_SHA}}
+        if "/git/trees/" in url:
+            return {
+                "tree": [
+                    {"path": "skills/demo/mcp-registry.json", "type": "blob"},
+                    {"path": "skills/demo/app/index.html", "type": "blob"},
+                    {"path": "skills/demo/app/app.js", "type": "blob"},
+                    {"path": "skills/other/app/index.html", "type": "blob"},
+                ]
+            }
+        raise AssertionError(f"Unexpected JSON request: {url}")
+
+    def fake_request_text(
+        url: str,
+        timeout: int = 30,
+        redirect_limit: int = 3,
+        max_bytes: int | None = None,
+    ) -> str:
+        requested_urls.append(url)
+        if url.endswith("/skills/demo/mcp-registry.json"):
+            return json.dumps(
+                {
+                    "server": {
+                        "name": "io.example.app",
+                        "_meta": {
+                            "ui": {
+                                "resourceUri": "ui://app/index.html",
+                                "mimeType": "text/html;profile=mcp-app",
+                            }
+                        },
+                    }
+                }
+            )
+        if url.endswith("/skills/demo/app/index.html"):
+            return '<script src="app.js"></script><script src="../missing.js"></script>'
+        if url.endswith("/skills/demo/app/app.js"):
+            return "ui/initialize"
+        raise AssertionError(f"Unexpected text request: {url}")
+
+    monkeypatch.setattr("skillgate.sources.request_json", fake_request_json)
+    monkeypatch.setattr("skillgate.sources.request_text", fake_request_text)
+
+    sparse = fetch_github_sparse(
+        "https://github.com/phuryn/pm-skills/tree/main/skills/demo"
+    )
+    try:
+        assert sparse.fetched_paths == ["app/app.js", "app/index.html", "mcp-registry.json"]
+        assert {
+            "remote_path": "skills/demo/missing.js",
+            "reason": "missing_mcp_app_asset",
+        } in sparse.manifest["skipped_files"]
+        assert all("skills/other/app/index.html" not in url for url in requested_urls)
+    finally:
+        sparse.cleanup()
+
+
 @pytest.mark.parametrize(
     ("limits", "expected"),
     [
