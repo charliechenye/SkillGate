@@ -775,3 +775,88 @@ def inventory_from_json_text(
     except json.JSONDecodeError:
         return McpAppInventory((), (), ())
     return inventory_mcp_apps(data, declaration_path=declaration_path, scope=scope)
+
+
+def mcp_apps_evidence(capabilities: list[dict[str, Any]]) -> dict[str, object] | None:
+    evidence: dict[str, list[dict[str, object]]] = {
+        "resources": [],
+        "assets": [],
+        "origins": [],
+        "permissions": [],
+        "tools": [],
+        "bridges": [],
+        "unknown_declarations": [],
+    }
+    for capability in capabilities:
+        details = capability.get("details")
+        if not isinstance(details, dict):
+            continue
+        capability_type = capability.get("type")
+        source_file = capability.get("source_file")
+        source_line = capability.get("source_line")
+        resource = capability.get("resource")
+        base = {
+            "resource": resource,
+            "source_file": source_file,
+            "source_line": source_line,
+            "declaration_path": details.get("declaration_path"),
+            "scope": details.get("scope"),
+        }
+        if capability_type == "mcp_app_resource":
+            evidence["resources"].append(
+                {
+                    **base,
+                    "mime_type": details.get("mime_type"),
+                    "declared_visibility": details.get("declared_visibility"),
+                    "effective_visibility": details.get("effective_visibility"),
+                    "visibility_source": details.get("visibility_source"),
+                }
+            )
+        elif capability_type == "mcp_app_asset":
+            evidence["assets"].append(
+                {
+                    **base,
+                    "kind": details.get("kind"),
+                    "association": details.get("association"),
+                    "size_bytes": details.get("size_bytes"),
+                    "sha256": details.get("sha256"),
+                    "skipped_reason": details.get("skipped_reason"),
+                }
+            )
+        elif capability_type == "mcp_app_origin":
+            evidence["origins"].append(
+                {
+                    **base,
+                    "kind": details.get("kind"),
+                    "app_resource": details.get("app_resource"),
+                }
+            )
+        elif capability_type == "mcp_app_permission":
+            evidence["permissions"].append(
+                {**base, "app_resource": details.get("app_resource")}
+            )
+        elif capability_type == "mcp_app_tool_surface":
+            evidence["tools"].append(
+                {
+                    **base,
+                    "surface": details.get("surface"),
+                    "privileged": details.get("privileged"),
+                    "app_resource": details.get("app_resource"),
+                }
+            )
+        elif capability_type == "mcp_app_host_bridge":
+            evidence["bridges"].append(
+                {
+                    **base,
+                    "path": details.get("path"),
+                    "marker": details.get("marker"),
+                    "association": details.get("association"),
+                }
+            )
+        elif capability_type == "mcp_app_unknown_declaration":
+            evidence["unknown_declarations"].append(
+                {**base, "reason": details.get("reason")}
+            )
+    for rows in evidence.values():
+        rows.sort(key=lambda item: json.dumps(item, sort_keys=True))
+    return evidence if any(evidence.values()) else None

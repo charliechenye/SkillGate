@@ -10,6 +10,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 from skillgate import __version__
 from skillgate.inventory import normalized_resource, trust_boundary_for
+from skillgate.mcp_apps import mcp_apps_evidence
 from skillgate.mcp_compatibility import compatibility_evidence
 from skillgate.models import (
     SEVERITY_ORDER,
@@ -201,6 +202,11 @@ def build_preinstall_packet(
     )
     if mcp_compatibility is not None:
         packet_metadata["mcp_compatibility"] = mcp_compatibility
+    apps = mcp_apps_evidence(
+        [item for item in report_data.get("capabilities", []) if isinstance(item, dict)]
+    )
+    if apps is not None:
+        packet_metadata["mcp_apps"] = apps
     findings = [_finding_record(item, root) for item in report_data.get("findings", [])]
     skill_findings = []
     if skills_payload:
@@ -235,6 +241,17 @@ def build_preinstall_packet(
             1,
             "Review unknown MCP compatibility declarations before enabling the server or client.",
         )
+    if apps:
+        if apps["tools"]:
+            next_actions.insert(1, "Review MCP Apps UI-callable tool surfaces before enabling.")
+        if apps["permissions"]:
+            next_actions.insert(1, "Confirm declared MCP Apps browser permissions are expected.")
+        if apps["origins"]:
+            next_actions.insert(1, "Review declared MCP Apps external origins as evidence only.")
+        if apps["unknown_declarations"]:
+            next_actions.insert(1, "Review malformed or redacted MCP Apps declarations.")
+        if any(item.get("skipped_reason") for item in apps["assets"]):
+            next_actions.insert(1, "Review MCP Apps assets whose static content was skipped.")
     limitations = [
         "This is deterministic static analysis, not a malware verdict or runtime proof.",
         "SkillGate does not execute code, install packages, start servers, or invoke an agent.",
@@ -291,6 +308,10 @@ def _table(headers: list[str], rows: list[list[Any]]) -> list[str]:
 
 
 def _compatibility_source(item: dict[str, Any]) -> str:
+    return f"{item.get('source_file') or ''}:{item.get('declaration_path') or ''}"
+
+
+def _mcp_app_source(item: dict[str, Any]) -> str:
     return f"{item.get('source_file') or ''}:{item.get('declaration_path') or ''}"
 
 
@@ -413,6 +434,137 @@ def render_preinstall_markdown(packet: dict[str, Any]) -> str:
                 ),
             ]
             if packet["metadata"].get("mcp_compatibility")
+            else []
+        ),
+        *(
+            [
+                "",
+                "## MCP Apps",
+                "",
+                "### Resources",
+                "",
+                *(
+                    _table(
+                        ["Resource", "MIME", "Effective visibility", "Source"],
+                        [
+                            [
+                                item.get("resource") or "",
+                                item.get("mime_type") or "",
+                                ", ".join(item.get("effective_visibility") or []),
+                                _mcp_app_source(item),
+                            ]
+                            for item in packet["metadata"].get("mcp_apps", {}).get("resources", [])
+                        ],
+                    )
+                ),
+                "",
+                "### Assets",
+                "",
+                *(
+                    _table(
+                        ["Asset", "Kind", "Association", "Skip", "Source"],
+                        [
+                            [
+                                item.get("resource") or "",
+                                item.get("kind") or "",
+                                item.get("association") or "",
+                                item.get("skipped_reason") or "",
+                                item.get("source_file") or "",
+                            ]
+                            for item in packet["metadata"].get("mcp_apps", {}).get("assets", [])
+                        ],
+                    )
+                ),
+                "",
+                "### Origins",
+                "",
+                *(
+                    _table(
+                        ["Origin", "Kind", "App resource", "Source"],
+                        [
+                            [
+                                item.get("resource") or "",
+                                item.get("kind") or "",
+                                item.get("app_resource") or "",
+                                _mcp_app_source(item),
+                            ]
+                            for item in packet["metadata"].get("mcp_apps", {}).get("origins", [])
+                        ],
+                    )
+                ),
+                "",
+                "### Permissions",
+                "",
+                *(
+                    _table(
+                        ["Permission", "App resource", "Source"],
+                        [
+                            [
+                                item.get("resource") or "",
+                                item.get("app_resource") or "",
+                                _mcp_app_source(item),
+                            ]
+                            for item in packet["metadata"]
+                            .get("mcp_apps", {})
+                            .get("permissions", [])
+                        ],
+                    )
+                ),
+                "",
+                "### Tools",
+                "",
+                *(
+                    _table(
+                        ["Tool", "Surface", "Privileged", "App resource", "Source"],
+                        [
+                            [
+                                item.get("resource") or "",
+                                item.get("surface") or "",
+                                item.get("privileged"),
+                                item.get("app_resource") or "",
+                                _mcp_app_source(item),
+                            ]
+                            for item in packet["metadata"].get("mcp_apps", {}).get("tools", [])
+                        ],
+                    )
+                ),
+                "",
+                "### Bridges",
+                "",
+                *(
+                    _table(
+                        ["Bridge", "Marker", "Association", "Source"],
+                        [
+                            [
+                                item.get("path") or "",
+                                item.get("marker") or "",
+                                item.get("association") or "",
+                                item.get("source_file") or "",
+                            ]
+                            for item in packet["metadata"].get("mcp_apps", {}).get("bridges", [])
+                        ],
+                    )
+                ),
+                "",
+                "### Unknown Declarations",
+                "",
+                *(
+                    _table(
+                        ["Declaration", "Reason", "Source"],
+                        [
+                            [
+                                item.get("declaration_path") or "",
+                                item.get("reason") or "",
+                                item.get("source_file") or "",
+                            ]
+                            for item in packet["metadata"]
+                            .get("mcp_apps", {})
+                            .get("unknown_declarations", [])
+                        ],
+                    )
+                ),
+            ]
+            if packet["metadata"].get("mcp_apps")
             else []
         ),
         "",
