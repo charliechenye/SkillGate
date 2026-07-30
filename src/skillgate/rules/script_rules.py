@@ -5,6 +5,7 @@ from pathlib import PurePosixPath
 from urllib.parse import urlparse
 
 from skillgate.logical import LogicalSpan, iter_logical_spans
+from skillgate.mcp_apps import inventory_from_json_text
 from skillgate.models import Severity
 from skillgate.rules.base import FileContent, RuleResult, make_capability, make_finding
 
@@ -296,8 +297,9 @@ class NetworkEgressRule:
     default_severity: Severity = "medium"
 
     def analyze(self, file: FileContent) -> RuleResult:
+        text = _network_scan_text(file)
         result = RuleResult()
-        for number, line, _match in line_matches(file.text, NETWORK_RE):
+        for number, line, _match in line_matches(text, NETWORK_RE):
             host = extract_host(line)
             evidence = f"Host: {host}" if host else line
             result.findings.append(
@@ -318,7 +320,13 @@ class NetworkEgressRule:
                     "network_egress", file.path, number, resource=host, command=line.strip()
                 )
             )
-        for span, _match in logical_matches(file, NETWORK_RE):
+        logical_file = FileContent(
+            path=file.path,
+            file_type=file.file_type,
+            text=text,
+            format_aware=file.format_aware,
+        )
+        for span, _match in logical_matches(logical_file, NETWORK_RE):
             host = extract_host(span.text)
             evidence = f"Host: {host}" if host else span.evidence
             result.findings.append(
@@ -344,6 +352,17 @@ class NetworkEgressRule:
                 )
             )
         return result
+
+
+def _network_scan_text(file: FileContent) -> str:
+    if file.file_type not in {"mcp_config", "mcp_registry", "json_config"}:
+        return file.text
+    inventory = inventory_from_json_text(file.text)
+    text = file.text
+    for resource in inventory.resources:
+        for origin in resource.origins:
+            text = text.replace(origin.origin, "")
+    return text
 
 
 class RemoteDownloadExecutionRule:

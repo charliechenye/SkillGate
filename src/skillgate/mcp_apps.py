@@ -16,6 +16,8 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
+from skillgate.models import Capability, Finding
+
 INLINE_RESOURCE_MAX_BYTES = 1_048_576
 INLINE_RESOURCE_TOTAL_MAX_BYTES = 5_242_880
 MCP_APP_CAPABILITY_TYPES = (
@@ -28,7 +30,7 @@ MCP_APP_CAPABILITY_TYPES = (
     "mcp_app_unknown_declaration",
 )
 MCP_APP_PERMISSION_NAMES = frozenset(
-    {"camera", "microphone", "geolocation", "clipboardWrite"}
+    {"camera", "mic", "microphone", "geolocation", "clipboardWrite"}
 )
 MCP_APP_UI_MIME_PREFIX = "text/html;profile=mcp-app"
 MCP_APP_UI_MIME_VALUES = frozenset({MCP_APP_UI_MIME_PREFIX, "text/html+skybridge"})
@@ -620,6 +622,146 @@ def mcp_apps_details(inventory: McpAppInventory) -> dict[str, object]:
             for item in inventory.unknown_declarations
         ],
     }
+
+
+def mcp_apps_summary(inventory: McpAppInventory) -> dict[str, object]:
+    if inventory.is_empty:
+        return {}
+    return {"mcp_apps": mcp_apps_details(inventory)}
+
+
+def mcp_apps_capabilities(
+    inventory: McpAppInventory,
+    *,
+    source_file: str,
+) -> list[Capability]:
+    from skillgate.rules.base import make_capability
+
+    capabilities: list[Capability] = []
+    for resource in inventory.resources:
+        resource_details = {
+            "mime_type": resource.mime_type,
+            "declared_visibility": list(resource.declared_visibility)
+            if resource.declared_visibility is not None
+            else None,
+            "effective_visibility": list(resource.effective_visibility),
+            "visibility_source": resource.visibility_source,
+            "declaration_path": resource.declaration_path,
+            "scope": resource.scope,
+            "app_capabilities": list(resource.app_capabilities),
+        }
+        capabilities.append(
+            make_capability(
+                "mcp_app_resource",
+                source_file,
+                None,
+                resource=resource.resource_uri,
+                **resource_details,
+            )
+        )
+        for origin in resource.origins:
+            capabilities.append(
+                make_capability(
+                    "mcp_app_origin",
+                    source_file,
+                    None,
+                    resource=origin.origin,
+                    kind=origin.kind,
+                    declaration_path=origin.declaration_path,
+                    scope=origin.scope,
+                    app_resource=resource.resource_uri,
+                )
+            )
+        for permission in resource.permissions:
+            capabilities.append(
+                make_capability(
+                    "mcp_app_permission",
+                    source_file,
+                    None,
+                    resource=permission.name,
+                    declaration_path=permission.declaration_path,
+                    scope=permission.scope,
+                    app_resource=resource.resource_uri,
+                )
+            )
+        for tool in resource.tool_surfaces:
+            capabilities.append(
+                make_capability(
+                    "mcp_app_tool_surface",
+                    source_file,
+                    None,
+                    resource=tool.name,
+                    surface=tool.surface,
+                    privileged=tool.privileged,
+                    declaration_path=tool.declaration_path,
+                    scope=tool.scope,
+                    app_resource=resource.resource_uri,
+                )
+            )
+    for item in inventory.unknown_declarations:
+        capabilities.append(
+            make_capability(
+                "mcp_app_unknown_declaration",
+                source_file,
+                None,
+                resource=item.declaration_path or "<root>",
+                declaration_path=item.declaration_path,
+                reason=item.reason,
+                scope=item.scope,
+            )
+        )
+    return capabilities
+
+
+def mcp_apps_findings(
+    inventory: McpAppInventory,
+    *,
+    source_file: str,
+) -> list[Finding]:
+    from skillgate.rules.base import make_finding
+
+    findings: list[Finding] = []
+    for resource in inventory.resources:
+        for tool in resource.tool_surfaces:
+            if not tool.privileged:
+                continue
+            evidence = f"{resource.resource_uri}: {tool.surface} {tool.name}"
+            findings.append(
+                make_finding(
+                    rule_id="SG011",
+                    title="MCP app tool surface metadata detected",
+                    description=(
+                        "Declared MCP Apps metadata exposes UI-initiated or dynamic tool "
+                        "surfaces that need review."
+                    ),
+                    severity="medium",
+                    capability="mcp_app_tool_surface",
+                    file_path=source_file,
+                    line_number=None,
+                    evidence=evidence,
+                    remediation="Review app-callable tools before enabling the MCP app.",
+                )
+            )
+        for permission in resource.permissions:
+            if permission.name not in MCP_APP_PERMISSION_NAMES:
+                continue
+            findings.append(
+                make_finding(
+                    rule_id="SG011",
+                    title="MCP app browser permission declared",
+                    description=(
+                        "Declared MCP Apps metadata requests browser-mediated permissions "
+                        "that need review."
+                    ),
+                    severity="medium",
+                    capability="mcp_app_permission",
+                    file_path=source_file,
+                    line_number=None,
+                    evidence=f"{resource.resource_uri}: permission {permission.name}",
+                    remediation="Confirm the browser permission is expected for the app UI.",
+                )
+            )
+    return findings
 
 
 def inventory_from_json_text(

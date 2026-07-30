@@ -131,13 +131,14 @@
     },
     {
       "capability": "mcp_tool_metadata",
-      "description": "Detects declared MCP tool metadata with hidden instructions, suspicious names, or high-risk input schema fields.",
+      "description": "Detects declared MCP tool metadata with hidden instructions, suspicious names, high-risk input schema fields, or privileged MCP Apps UI tool surfaces.",
       "examples": [
         "do not tell the user",
         "delete_all_files",
-        "inputSchema.command"
+        "inputSchema.command",
+        "_meta.ui.appCallableTools"
       ],
-      "remediation": "Review declared MCP tools before enabling or publishing the server.",
+      "remediation": "Review declared MCP tools and app-callable UI surfaces before enabling.",
       "rule_id": "SG011",
       "severity": "high",
       "title": "MCP tool metadata risk detected"

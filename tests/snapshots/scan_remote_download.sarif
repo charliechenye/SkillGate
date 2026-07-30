@@ -429,7 +429,7 @@
             },
             {
               "fullDescription": {
-                "text": "Detects declared MCP tool metadata with hidden instructions, suspicious names, or high-risk input schema fields."
+                "text": "Detects declared MCP tool metadata with hidden instructions, suspicious names, high-risk input schema fields, or privileged MCP Apps UI tool surfaces."
               },
               "id": "SG011",
               "name": "SG011",

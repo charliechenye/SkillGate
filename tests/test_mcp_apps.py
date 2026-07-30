@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import base64
+import json
+from pathlib import Path
 
 from skillgate.mcp_apps import (
     INLINE_RESOURCE_MAX_BYTES,
     detect_bridge_markers,
     inventory_mcp_apps,
 )
+from skillgate.mcp_registry import compare_registry_metadata
+from skillgate.scan import scan_repository
 
 
 def test_modern_metadata_uses_spec_default_visibility_and_collects_surfaces() -> None:
@@ -235,3 +239,130 @@ def test_bridge_detection_uses_exact_markers_and_contextual_post_message() -> No
     )
     assert detect_bridge_markers("window.postMessage({type: 'mcp'});") == ("postMessage",)
     assert detect_bridge_markers("window.postMessage({type: 'analytics'});") == ()
+
+
+def test_mcp_config_exposes_declarative_app_capabilities_without_sg003(
+    tmp_path: Path,
+) -> None:
+    config = {
+        "mcpServers": {
+            "example": {
+                "command": "node",
+                "_meta": {
+                    "ui": {
+                        "resourceUri": "ui://widget/home.html",
+                        "mimeType": "text/html;profile=mcp-app",
+                        "csp": {"connect_domains": ["https://api.example.com"]},
+                        "permissions": ["camera"],
+                        "appCallableTools": [{"name": "search", "appCallable": True}],
+                    }
+                },
+            }
+        }
+    }
+    (tmp_path / ".mcp.json").write_text(json.dumps(config), encoding="utf-8")
+
+    report = scan_repository(tmp_path)
+
+    types = {capability.type for capability in report.capabilities}
+    assert {
+        "mcp_app_resource",
+        "mcp_app_origin",
+        "mcp_app_permission",
+        "mcp_app_tool_surface",
+    } <= types
+    assert [finding.rule_id for finding in report.findings] == ["SG009", "SG011", "SG011"]
+    assert {finding.capability for finding in report.findings if finding.rule_id == "SG011"} == {
+        "mcp_app_permission",
+        "mcp_app_tool_surface",
+    }
+    assert not [finding for finding in report.findings if finding.rule_id == "SG003"]
+    server = next(
+        capability for capability in report.capabilities if capability.type == "mcp_server"
+    )
+    assert server.details["mcp_apps"]["resources"][0]["resource_uri"] == "ui://widget/home.html"
+
+
+def test_legacy_registry_app_metadata_is_capability_only_without_privileged_surface(
+    tmp_path: Path,
+) -> None:
+    registry = {
+        "server": {
+            "name": "io.example.legacy-app",
+            "version": "1.0.0",
+            "resources": [
+                {
+                    "mimeType": "text/html;profile=mcp-app",
+                    "_meta": {"ui/resourceUri": "ui://legacy/index.html"},
+                }
+            ],
+        }
+    }
+    (tmp_path / "server.json").write_text(json.dumps(registry), encoding="utf-8")
+
+    report = scan_repository(tmp_path)
+
+    assert any(capability.type == "mcp_app_resource" for capability in report.capabilities)
+    assert not [finding for finding in report.findings if finding.rule_id == "SG011"]
+    registry_server = next(
+        capability for capability in report.capabilities if capability.type == "mcp_registry_server"
+    )
+    assert registry_server.details["mcp_apps"]["resources"][0]["visibility_source"] == "unknown"
+
+
+def test_malformed_app_metadata_produces_unknown_capability_not_finding(tmp_path: Path) -> None:
+    (tmp_path / "server.json").write_text(
+        json.dumps(
+            {
+                "server": {
+                    "name": "io.example.bad-app",
+                    "version": "1.0.0",
+                    "_meta": {
+                        "ui": {
+                            "resourceUri": "TOKEN=literal-secret",
+                            "mimeType": "text/html;profile=mcp-app",
+                        }
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    report = scan_repository(tmp_path)
+
+    unknown = [
+        capability
+        for capability in report.capabilities
+        if capability.type == "mcp_app_unknown_declaration"
+    ]
+    assert unknown
+    assert not [finding for finding in report.findings if finding.rule_id == "SG011"]
+    assert "literal-secret" not in repr(report)
+
+
+def test_registry_comparison_includes_normalized_app_surface_drift(tmp_path: Path) -> None:
+    local = {
+        "server": {
+            "name": "io.example.app-drift",
+            "version": "1.0.0",
+            "_meta": {
+                "ui": {
+                    "resourceUri": "ui://widget/home.html",
+                    "mimeType": "text/html;profile=mcp-app",
+                }
+            },
+        }
+    }
+    remote = json.loads(json.dumps(local))
+    remote["server"]["_meta"]["ui"]["permissions"] = ["camera"]
+    local_dir = tmp_path / "local"
+    local_dir.mkdir()
+    (local_dir / "server.json").write_text(json.dumps(local), encoding="utf-8")
+    registry_path = tmp_path / "registry.json"
+    registry_path.write_text(json.dumps({"servers": [remote]}), encoding="utf-8")
+
+    report = compare_registry_metadata(local_dir, "io.example.app-drift", str(registry_path))
+
+    assert "mcp_apps" in {item["field"] for item in report.summary["registry_drift"]}
+    assert any("mcp_apps" in (finding.evidence or "") for finding in report.findings)

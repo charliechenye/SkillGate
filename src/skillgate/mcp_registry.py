@@ -12,6 +12,12 @@ from urllib.parse import unquote, urlparse
 
 from skillgate import __version__
 from skillgate.discovery import classify_file, discover_paths, scan_file_metadata
+from skillgate.mcp_apps import (
+    inventory_mcp_apps,
+    mcp_apps_capabilities,
+    mcp_apps_findings,
+    mcp_apps_summary,
+)
 from skillgate.mcp_compatibility import (
     compatibility_capabilities,
     compatibility_details,
@@ -462,6 +468,11 @@ def registry_server_capability(server: RegistryServer) -> Capability:
         declaration_path=server.config_path,
         scope=f"registry:{server.name}",
     )
+    apps = inventory_mcp_apps(
+        server.data,
+        declaration_path=server.config_path,
+        scope=f"registry:{server.name}",
+    )
     details = {
         "server": server.name,
         "config_path": server.config_path,
@@ -477,6 +488,7 @@ def registry_server_capability(server: RegistryServer) -> Capability:
         "packages": package_identifiers(server.data),
         "secret_headers": secret_header_names(server.data),
         **compatibility_details(compatibility),
+        **mcp_apps_summary(apps),
     }
     return make_capability(
         "mcp_registry_server", server.source_file, None, resource=server.name, **details
@@ -503,6 +515,15 @@ def analyze_registry_file(file: FileContent):
         result.capabilities.extend(
             compatibility_capabilities(compatibility, source_file=server.source_file)
         )
+        apps = inventory_mcp_apps(
+            server.data,
+            declaration_path=server.config_path,
+            scope=f"registry:{server.name}",
+        )
+        result.capabilities.extend(
+            mcp_apps_capabilities(apps, source_file=server.source_file)
+        )
+        result.findings.extend(mcp_apps_findings(apps, source_file=server.source_file))
         findings, capabilities = tool_metadata_findings(server)
         result.findings.extend(findings)
         result.capabilities.extend(capabilities)
@@ -736,6 +757,8 @@ def compare_values(
             scope=f"registry:{remote.name}",
         )
     )
+    local_apps = mcp_apps_details_for_compare(local)
+    remote_apps = mcp_apps_details_for_compare(remote)
     fields: list[tuple[str, object, object]] = [
         ("repository", repository_url(local.data), repository_url(remote.data)),
         ("version", local.data.get("version"), remote.data.get("version")),
@@ -754,8 +777,20 @@ def compare_values(
             local_compatibility["unknown_declarations"],
             remote_compatibility["unknown_declarations"],
         ),
+        ("mcp_apps", local_apps, remote_apps),
     ]
     return [(field, left, right) for field, left, right in fields if left != right]
+
+
+def mcp_apps_details_for_compare(server: RegistryServer) -> dict[str, object]:
+    details = mcp_apps_summary(
+        inventory_mcp_apps(
+            server.data,
+            declaration_path=server.config_path,
+            scope=f"registry:{server.name}",
+        )
+    )
+    return details.get("mcp_apps", {}) if details else {}
 
 
 def compare_registry_metadata(

@@ -23,6 +23,15 @@ TRUST_BOUNDARY_TYPES = {
         "mcp_extension",
         "mcp_unknown_declaration",
     },
+    "mcp_apps": {
+        "mcp_app_resource",
+        "mcp_app_asset",
+        "mcp_app_origin",
+        "mcp_app_permission",
+        "mcp_app_tool_surface",
+        "mcp_app_host_bridge",
+        "mcp_app_unknown_declaration",
+    },
     "prompt_controls": {"prompt_override"},
     "obfuscation": {"obfuscation"},
 }

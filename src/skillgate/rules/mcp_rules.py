@@ -6,6 +6,12 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlparse
 
+from skillgate.mcp_apps import (
+    inventory_mcp_apps,
+    mcp_apps_capabilities,
+    mcp_apps_findings,
+    mcp_apps_summary,
+)
 from skillgate.mcp_compatibility import (
     compatibility_capabilities,
     compatibility_details,
@@ -215,11 +221,19 @@ class McpConfigRule:
         result.capabilities.extend(
             compatibility_capabilities(root_compatibility, source_file=file.path)
         )
+        root_apps = inventory_mcp_apps(data, declaration_path="", scope="config")
+        result.capabilities.extend(mcp_apps_capabilities(root_apps, source_file=file.path))
+        result.findings.extend(mcp_apps_findings(root_apps, source_file=file.path))
         definitions = find_servers(data)
         for definition in definitions:
             name = resource_name(definition)
             server = definition.server
             compatibility = inventory_mcp_compatibility(
+                server,
+                declaration_path=definition.config_path,
+                scope=f"server:{definition.name}",
+            )
+            apps = inventory_mcp_apps(
                 server,
                 declaration_path=definition.config_path,
                 scope=f"server:{definition.name}",
@@ -243,6 +257,7 @@ class McpConfigRule:
                 "auth": string_keys(server.get("auth")),
                 "secret_names": secrets,
                 **compatibility_details(compatibility),
+                **mcp_apps_summary(apps),
             }
             result.findings.append(
                 make_finding(
@@ -262,6 +277,8 @@ class McpConfigRule:
             result.capabilities.extend(
                 compatibility_capabilities(compatibility, source_file=file.path)
             )
+            result.capabilities.extend(mcp_apps_capabilities(apps, source_file=file.path))
+            result.findings.extend(mcp_apps_findings(apps, source_file=file.path))
             if isinstance(command, str):
                 result.capabilities.append(
                     make_capability("shell_execution", file.path, None, resource=command, **details)
