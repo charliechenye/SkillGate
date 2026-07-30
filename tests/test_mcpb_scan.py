@@ -318,6 +318,82 @@ def test_file_selection_excludes_dependencies_and_includes_runtime_files(tmp_pat
     assert "SG001" not in rule_ids(result)
 
 
+def test_mcpb_app_bundle_inventories_all_safe_web_assets(tmp_path: Path) -> None:
+    data = manifest(
+        _meta={
+            "ui": {
+                "resourceUri": "ui://app/index.html",
+                "mimeType": "text/html;profile=mcp-app",
+            }
+        }
+    )
+    result = scan_mcpb(
+        bundle(
+            tmp_path / "app-assets.mcpb",
+            data,
+            [
+                ("app/index.html", b"<script src='app.js'></script>"),
+                ("app/app.js", b"callServerTool('search')\n"),
+                ("app/style.css", b"body { color: black; }\n"),
+                ("app/extra.js", b"console.log('extra')\n"),
+            ],
+        )
+    )
+
+    assets = result.bundle_manifest.mcp_app_assets
+    assert [(asset.path, asset.kind, asset.skipped_reason) for asset in assets] == [
+        ("app/app.js", "javascript", None),
+        ("app/extra.js", "javascript", None),
+        ("app/index.html", "html", None),
+        ("app/style.css", "css", None),
+        ("server/index.js", "javascript", None),
+    ]
+    scanned = {file.path for file in result.scan_report.scanned_files}
+    assert {"app/index.html", "app/app.js", "app/style.css", "app/extra.js"} <= scanned
+    assert any(
+        capability.type == "mcp_app_host_bridge"
+        and capability.details["path"] == "app/app.js"
+        and capability.details["marker"] == "callServerTool"
+        for capability in result.scan_report.capabilities
+    )
+    assert mcpb_scan_json(result) == mcpb_scan_json(scan_mcpb(tmp_path / "app-assets.mcpb"))
+
+
+def test_mcpb_app_bundle_retains_large_and_non_text_asset_skips(tmp_path: Path) -> None:
+    data = manifest(
+        _meta={
+            "ui": {
+                "resourceUri": "ui://app/index.html",
+                "mimeType": "text/html;profile=mcp-app",
+            }
+        }
+    )
+    result = scan_mcpb(
+        bundle(
+            tmp_path / "app-skips.mcpb",
+            data,
+            [
+                ("app/index.html", b"ok"),
+                ("app/large.js", b"x" * (1_048_576 + 1)),
+                ("app/nontext.css", b"\xff\xfe\x00\x00"),
+                ("nested.zip", b"PK\x03\x04nested"),
+            ],
+        )
+    )
+
+    skips = {
+        asset.path: asset.skipped_reason
+        for asset in result.bundle_manifest.mcp_app_assets
+        if asset.skipped_reason
+    }
+    assert skips == {
+        "app/large.js": "asset_too_large",
+        "app/nontext.css": "asset_not_utf8",
+    }
+    assert any(asset.sha256 for asset in result.bundle_manifest.mcp_app_assets)
+    assert "nested.zip" not in {asset.path for asset in result.bundle_manifest.mcp_app_assets}
+
+
 def test_deduplicates_missing_entry_and_artifacts(tmp_path: Path) -> None:
     data = manifest(
         server={

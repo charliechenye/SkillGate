@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pydantic import Field
+
 from skillgate.models import ScanReport, StableModel, model_to_data
 
 
@@ -54,6 +56,15 @@ class McpbBinaryArtifact(StableModel):
     is_entry_point: bool
 
 
+class McpbAppAsset(StableModel):
+    path: str
+    kind: str
+    association: str
+    size_bytes: int | None
+    sha256: str | None
+    skipped_reason: str | None
+
+
 class McpbBundleManifest(StableModel):
     schema_version: str
     tool_version: str
@@ -62,6 +73,7 @@ class McpbBundleManifest(StableModel):
     members: list[McpbMemberState]
     embedded_binaries: list[McpbBinaryArtifact]
     nested_archives: list[str]
+    mcp_app_assets: list[McpbAppAsset] = Field(default_factory=list)
 
 
 class McpbScanResult(StableModel):

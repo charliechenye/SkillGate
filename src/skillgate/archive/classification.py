@@ -21,6 +21,8 @@ TEXT_NAMES = {
 TEXT_EXTENSIONS = {
     ".bash",
     ".cjs",
+    ".css",
+    ".html",
     ".js",
     ".json",
     ".md",
