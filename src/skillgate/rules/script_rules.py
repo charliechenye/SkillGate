@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections import Counter
 from pathlib import PurePosixPath
 from urllib.parse import urlparse
 
@@ -359,9 +360,12 @@ def _network_scan_text(file: FileContent) -> str:
         return file.text
     inventory = inventory_from_json_text(file.text)
     text = file.text
-    for resource in inventory.resources:
-        for origin in resource.origins:
-            text = text.replace(origin.origin, "")
+    declared_origins = Counter(
+        origin.origin for resource in inventory.resources for origin in resource.origins
+    )
+    for origin, declaration_count in sorted(declared_origins.items()):
+        if text.count(origin) == declaration_count:
+            text = text.replace(origin, "")
     return text
 
 

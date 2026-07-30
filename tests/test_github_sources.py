@@ -376,6 +376,52 @@ def test_fetch_github_sparse_fetches_mcp_app_assets_without_declared_origins(
         sparse.cleanup()
 
 
+def test_fetch_github_sparse_does_not_follow_ordinary_web_references(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    requested_urls: list[str] = []
+
+    def fake_request_json(
+        url: str, timeout: int = 30, redirect_limit: int = 3
+    ) -> dict[str, object]:
+        requested_urls.append(url)
+        if url.endswith("/repos/phuryn/pm-skills"):
+            return {"default_branch": "main"}
+        if url.endswith("/git/ref/heads/main"):
+            return {"object": {"type": "commit", "sha": FAKE_COMMIT_SHA}}
+        if "/git/trees/" in url:
+            return {
+                "tree": [
+                    {"path": "hooks/main.js", "type": "blob"},
+                    {"path": "web/theme.css", "type": "blob"},
+                ]
+            }
+        raise AssertionError(f"Unexpected JSON request: {url}")
+
+    def fake_request_text(
+        url: str,
+        timeout: int = 30,
+        redirect_limit: int = 3,
+        max_bytes: int | None = None,
+    ) -> str:
+        requested_urls.append(url)
+        if url.endswith("/hooks/main.js"):
+            return "const theme = new URL('../web/theme.css', import.meta.url);"
+        if url.endswith("/web/theme.css"):
+            raise AssertionError("ordinary web asset must not be fetched")
+        raise AssertionError(f"Unexpected text request: {url}")
+
+    monkeypatch.setattr("skillgate.sources.request_json", fake_request_json)
+    monkeypatch.setattr("skillgate.sources.request_text", fake_request_text)
+
+    sparse = fetch_github_sparse("https://github.com/phuryn/pm-skills")
+    try:
+        assert sparse.fetched_paths == ["hooks/main.js"]
+        assert not [url for url in requested_urls if url.endswith("/web/theme.css")]
+    finally:
+        sparse.cleanup()
+
+
 def test_fetch_github_sparse_mcp_app_assets_enforce_subtree_and_missing_skips(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

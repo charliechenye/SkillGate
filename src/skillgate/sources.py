@@ -394,28 +394,44 @@ def _remote_resource_uri_candidates(source_path: str, uri: str, subpath: str | N
     return sorted(set(candidates))
 
 
-def referenced_mcp_app_asset_candidates(
+def mcp_app_asset_seed_associations(
     fetched_remote: dict[str, str],
     *,
     subpath: str | None,
-) -> list[str]:
-    candidates: set[str] = set()
+) -> tuple[dict[str, set[str]], set[str]]:
+    associations: dict[str, set[str]] = {}
+    unsupported: set[str] = set()
     for source_path, content in sorted(fetched_remote.items()):
         app_inventory = inventory_from_json_text(content)
         for resource in app_inventory.resources:
-            for candidate in _remote_resource_uri_candidates(
+            candidates = _remote_resource_uri_candidates(
                 source_path, resource.resource_uri, subpath
-            ):
-                if _asset_kind(candidate):
-                    candidates.add(candidate)
-        if _asset_kind(source_path):
-            for raw_ref in _refs_from_text(source_path, content):
-                if "://" in raw_ref or raw_ref.startswith("ui://"):
-                    continue
-                candidate = _normalize_remote_ref(source_path, raw_ref)
-                if _asset_kind(candidate):
-                    candidates.add(candidate)
-    return sorted(candidates)
+            )
+            eligible = [candidate for candidate in candidates if _asset_kind(candidate)]
+            if not eligible:
+                unsupported.add(resource.resource_uri)
+                continue
+            for candidate in eligible:
+                associations.setdefault(candidate, set()).add(resource.resource_uri)
+    return associations, unsupported
+
+
+def referenced_mcp_app_asset_candidates(
+    fetched_remote: dict[str, str],
+    associations: dict[str, set[str]],
+) -> dict[str, set[str]]:
+    candidates: dict[str, set[str]] = {}
+    for source_path in sorted(associations):
+        content = fetched_remote.get(source_path)
+        if content is None or _asset_kind(source_path) is None:
+            continue
+        for raw_ref in _refs_from_text(source_path, content):
+            if "://" in raw_ref or raw_ref.startswith("ui://"):
+                continue
+            candidate = _normalize_remote_ref(source_path, raw_ref)
+            if _asset_kind(candidate):
+                candidates.setdefault(candidate, set()).update(associations[source_path])
+    return candidates
 
 
 def raw_url(repo: GitHubRepo, ref: str, path: str) -> str:
@@ -635,26 +651,22 @@ def fetch_github_sparse(
                 reason="referenced_script",
             )
 
-    unsupported_app_assets = set()
-    for path, content in fetched_remote.items():
-        app_inventory = inventory_from_json_text(content)
-        for resource in app_inventory.resources:
-            candidates = _remote_resource_uri_candidates(path, resource.resource_uri, repo.subpath)
-            if not candidates or not any(_asset_kind(candidate) for candidate in candidates):
-                unsupported_app_assets.add(resource.resource_uri)
+    app_asset_associations, unsupported_app_assets = mcp_app_asset_seed_associations(
+        fetched_remote, subpath=repo.subpath
+    )
     for resource_uri in sorted(unsupported_app_assets):
         add_skipped(manifest, resource_uri, "unsupported_mcp_app_asset")
 
     fetched_assets: set[str] = set()
     while True:
-        next_assets = [
+        candidate_associations = referenced_mcp_app_asset_candidates(
+            fetched_remote, app_asset_associations
+        )
+        next_assets = sorted(
             path
-            for path in referenced_mcp_app_asset_candidates(
-                fetched_remote,
-                subpath=repo.subpath,
-            )
+            for path in app_asset_associations | candidate_associations
             if path not in fetched_remote and path not in fetched_assets
-        ]
+        )
         if not next_assets:
             break
         for path in next_assets:
@@ -670,6 +682,9 @@ def fetch_github_sparse(
                 continue
             content = fetch_text_with_limits(repo, resolved.commit_sha, path, manifest, limits)
             fetched_remote[path] = content
+            app_asset_associations.setdefault(path, set()).update(
+                app_asset_associations.get(path, set()) or candidate_associations.get(path, set())
+            )
             add_downloaded(
                 manifest,
                 remote_path=path,

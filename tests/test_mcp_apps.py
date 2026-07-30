@@ -342,6 +342,61 @@ def test_mcp_config_exposes_declarative_app_capabilities_without_sg003(
     assert server.details["mcp_apps"]["resources"][0]["resource_uri"] == "ui://widget/home.html"
 
 
+def test_csp_only_repeated_origins_do_not_produce_sg003(tmp_path: Path) -> None:
+    origin = "https://api.example.com"
+    (tmp_path / ".mcp.json").write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "example": {
+                        "command": "node",
+                        "_meta": {
+                            "ui": {
+                                "resourceUri": "ui://widget/home.html",
+                                "mimeType": "text/html;profile=mcp-app",
+                                "csp": {"connect_domains": [origin, origin]},
+                            }
+                        },
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    report = scan_repository(tmp_path)
+
+    assert not [finding for finding in report.findings if finding.rule_id == "SG003"]
+
+
+def test_runtime_use_of_declared_origin_retains_sg003(tmp_path: Path) -> None:
+    origin = "https://api.example.com"
+    (tmp_path / ".mcp.json").write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "example": {
+                        "command": "node",
+                        "_meta": {
+                            "ui": {
+                                "resourceUri": "ui://widget/home.html",
+                                "mimeType": "text/html;profile=mcp-app",
+                                "csp": {"connect_domains": [origin]},
+                            }
+                        },
+                    }
+                },
+                "download": origin,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    report = scan_repository(tmp_path)
+
+    assert any(finding.rule_id == "SG003" for finding in report.findings)
+
+
 def test_mcp_config_inventories_root_and_server_app_metadata_once(tmp_path: Path) -> None:
     config = {
         "_meta": {
