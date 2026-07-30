@@ -428,9 +428,7 @@ def test_fetch_github_sparse_mcp_app_assets_enforce_subtree_and_missing_skips(
     monkeypatch.setattr("skillgate.sources.request_json", fake_request_json)
     monkeypatch.setattr("skillgate.sources.request_text", fake_request_text)
 
-    sparse = fetch_github_sparse(
-        "https://github.com/phuryn/pm-skills/tree/main/skills/demo"
-    )
+    sparse = fetch_github_sparse("https://github.com/phuryn/pm-skills/tree/main/skills/demo")
     try:
         assert sparse.fetched_paths == ["app/app.js", "app/index.html", "mcp-registry.json"]
         assert {

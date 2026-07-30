@@ -159,9 +159,7 @@ def _asset_record(root: Path, path: Path, association: str) -> tuple[McpAppAsset
     sha256 = hashlib.sha256(data).hexdigest()
     if len(data) > MCP_APP_MAX_ASSET_BYTES:
         return (
-            McpAppAssetRecord(
-                rel, kind, association, len(data), sha256, "asset_too_large"
-            ),
+            McpAppAssetRecord(rel, kind, association, len(data), sha256, "asset_too_large"),
             None,
         )
     try:

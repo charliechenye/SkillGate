@@ -520,9 +520,7 @@ def analyze_registry_file(file: FileContent):
             declaration_path=server.config_path,
             scope=f"registry:{server.name}",
         )
-        result.capabilities.extend(
-            mcp_apps_capabilities(apps, source_file=server.source_file)
-        )
+        result.capabilities.extend(mcp_apps_capabilities(apps, source_file=server.source_file))
         result.findings.extend(mcp_apps_findings(apps, source_file=server.source_file))
         findings, capabilities = tool_metadata_findings(server)
         result.findings.extend(findings)

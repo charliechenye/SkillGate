@@ -252,15 +252,7 @@ def _string_list(value: object) -> tuple[str, ...]:
         safe = _safe_string(value)
         return (safe,) if safe is not None else ()
     if isinstance(value, list):
-        return tuple(
-            sorted(
-                {
-                    safe
-                    for item in value
-                    if (safe := _safe_string(item)) is not None
-                }
-            )
-        )
+        return tuple(sorted({safe for item in value if (safe := _safe_string(item)) is not None}))
     return ()
 
 
@@ -832,9 +824,7 @@ def mcp_apps_evidence(capabilities: list[dict[str, Any]]) -> dict[str, object] |
                 }
             )
         elif capability_type == "mcp_app_permission":
-            evidence["permissions"].append(
-                {**base, "app_resource": details.get("app_resource")}
-            )
+            evidence["permissions"].append({**base, "app_resource": details.get("app_resource")})
         elif capability_type == "mcp_app_tool_surface":
             evidence["tools"].append(
                 {
@@ -854,9 +844,7 @@ def mcp_apps_evidence(capabilities: list[dict[str, Any]]) -> dict[str, object] |
                 }
             )
         elif capability_type == "mcp_app_unknown_declaration":
-            evidence["unknown_declarations"].append(
-                {**base, "reason": details.get("reason")}
-            )
+            evidence["unknown_declarations"].append({**base, "reason": details.get("reason")})
     for rows in evidence.values():
         rows.sort(key=lambda item: json.dumps(item, sort_keys=True))
     return evidence if any(evidence.values()) else None

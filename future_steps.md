@@ -67,14 +67,14 @@ gateway, renderer, or runtime policy engine.
    [`docs/mcp-compatibility.md`](docs/mcp-compatibility.md) for the review and
    migration boundary.
 
-2. **MCP Apps static adapter.** Recognize `_meta.ui.resourceUri`, `ui://`
-   resources, UI MIME types, referenced origins, CSP declarations, and
-   UI-initiated tool-call metadata. Inventory HTML/JS/CSS and UI resources only
-   through the existing bounded archive/file safety layer; never render, import,
-   or execute them. Report origins, host bridges, and dynamic tool surfaces as
-   reviewable capabilities.
+2. **MCP Apps static adapter (implemented).** SkillGate now recognizes modern
+   and legacy MCP Apps resource declarations, UI MIME types, CSP origins,
+   browser permissions, app-callable tools, host bridge markers, local/GitHub
+   referenced HTML/CSS/JS assets, and bounded MCPB web assets without rendering,
+   importing, executing, or dereferencing declared URLs. See
+   [`docs/mcp-apps-static-review.md`](docs/mcp-apps-static-review.md).
 
-3. **Skills over MCP adapter.** Accept a local materialized snapshot, index, or
+3. **Skills over MCP adapter (next).** Accept a local materialized snapshot, index, or
    archive of MCP-delivered skills. Validate `index.json` name/description/URI
    metadata against `SKILL.md`, verify declared digests, preserve archive
    provenance, and pass the resulting files through existing Agent Skill,
@@ -94,8 +94,8 @@ gateway, renderer, or runtime policy engine.
 
 ### Policy and evidence follow-up
 
-- Add fixtures for extension drift, MCP Apps UI resources and origins, Skills
-  index/digest mismatch, Tasks, external `$ref`, and OAuth issuer drift.
+- Add fixtures for Skills index/digest mismatch, Tasks, external `$ref`, and
+  OAuth issuer drift.
 - Extend MCP baselines and policy templates only after the normalized capability
   model is stable. Candidate controls include allowed extension IDs, UI origins,
   protocol revisions, task capability, and authorization issuers.

@@ -36,6 +36,12 @@ Protocol capabilities and packet evidence also carry the normalized `era`
 label, while existing `protocol_versions` lists retain the declared strings for
 stable comparisons.
 
+MCP Apps are inventoried separately through the static adapter described in
+[`docs/mcp-apps-static-review.md`](mcp-apps-static-review.md). App resources,
+assets, origins, permissions, tool surfaces, host bridges, and unknown
+declarations appear under the `mcp_apps` trust boundary and optional
+`metadata.mcp_apps` review packet evidence.
+
 ## Reviewer guidance
 
 - Confirm the declared legacy, modern, or mixed protocol revisions are expected
@@ -53,8 +59,8 @@ stable comparisons.
 SkillGate does not infer a protocol revision from a software `version`, a
 transport type, or package metadata. It does not start MCP servers, negotiate
 extensions, render MCP Apps, execute Tasks, perform OAuth exchanges, or resolve
-external references. MCP Apps, Skills over MCP, Tasks, and authorization/schema
-analysis remain separate follow-up work.
+external references. Skills over MCP, Tasks, and authorization/schema analysis
+remain separate follow-up work.
 
 The field locations follow the MCP 2026-07-28 extension and per-request
 metadata model described in the [MCP extensions overview](https://modelcontextprotocol.io/extensions/overview)

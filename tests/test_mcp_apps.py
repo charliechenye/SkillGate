@@ -424,9 +424,7 @@ def test_local_app_assets_are_discovered_and_bridges_are_capabilities(tmp_path: 
         "app/theme.css",
     }
     bridges = [
-        capability
-        for capability in report.capabilities
-        if capability.type == "mcp_app_host_bridge"
+        capability for capability in report.capabilities if capability.type == "mcp_app_host_bridge"
     ]
     assert [(item.details["path"], item.details["marker"]) for item in bridges] == [
         ("app/app.js", "callServerTool")
