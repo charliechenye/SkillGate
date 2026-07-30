@@ -213,6 +213,7 @@ class McpConfigRule:
             return result
         if not isinstance(data, dict):
             return result
+        definitions = find_servers(data)
         root_compatibility = inventory_mcp_compatibility(
             data,
             declaration_path="",
@@ -221,10 +222,14 @@ class McpConfigRule:
         result.capabilities.extend(
             compatibility_capabilities(root_compatibility, source_file=file.path)
         )
-        root_apps = inventory_mcp_apps(data, declaration_path="", scope="config")
+        root_apps = inventory_mcp_apps(
+            data,
+            declaration_path="",
+            scope="config",
+            excluded_declaration_paths=tuple(definition.config_path for definition in definitions),
+        )
         result.capabilities.extend(mcp_apps_capabilities(root_apps, source_file=file.path))
         result.findings.extend(mcp_apps_findings(root_apps, source_file=file.path))
-        definitions = find_servers(data)
         for definition in definitions:
             name = resource_name(definition)
             server = definition.server

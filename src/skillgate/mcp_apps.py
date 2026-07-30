@@ -120,16 +120,20 @@ def _path(parent: str, child: str) -> str:
     return f"{parent}.{child}" if parent else child
 
 
-def _redact_url(value: str) -> str:
+def _redact_url(value: str) -> str | None:
     try:
         parsed = urlsplit(value)
+        username = parsed.username
+        password = parsed.password
+        host = parsed.hostname
+        port = parsed.port
     except ValueError:
+        return None
+    if not username and not password:
         return value
-    if not parsed.username and not parsed.password:
-        return value
-    host = parsed.hostname or ""
-    if parsed.port:
-        host = f"{host}:{parsed.port}"
+    host = host or ""
+    if port:
+        host = f"{host}:{port}"
     return urlunsplit(
         (parsed.scheme, "[REDACTED]@" + host, parsed.path, parsed.query, parsed.fragment)
     )
@@ -164,48 +168,64 @@ def _resource_uri(value: object) -> str | None:
     return None
 
 
+def _unknown(declaration_path: str, reason: str, scope: str) -> McpAppUnknownDeclaration:
+    return McpAppUnknownDeclaration(
+        declaration_path=declaration_path,
+        reason=reason,
+        scope=scope,
+    )
+
+
 def _visibility(
-    value: object, *, modern: bool
-) -> tuple[tuple[str, ...] | None, tuple[str, ...], str]:
+    value: object, *, modern: bool, present: bool
+) -> tuple[tuple[str, ...] | None, tuple[str, ...], str, bool]:
+    if not present:
+        if modern:
+            return None, ("app", "model"), "spec_default", True
+        return None, (), "unknown", True
     if isinstance(value, list) and all(isinstance(item, str) and item for item in value):
         declared = tuple(sorted(set(value)))
-        return declared, declared, "declared"
+        return declared, declared, "declared", True
     if isinstance(value, str) and value:
         declared = (value,)
-        return declared, declared, "declared"
-    if modern:
-        return None, ("app", "model"), "spec_default"
-    return None, (), "unknown"
+        return declared, declared, "declared", True
+    return None, (), "unknown", False
 
 
 def _origin_values(
     value: object, kind: str, declaration_path: str, scope: str
-) -> list[McpAppOriginDeclaration]:
+) -> tuple[list[McpAppOriginDeclaration], list[McpAppUnknownDeclaration]]:
     if isinstance(value, str):
-        values = [value]
+        values = [(value, declaration_path)]
     elif isinstance(value, list):
-        values = [item for item in value if isinstance(item, str)]
+        values = [(item, _path(declaration_path, str(index))) for index, item in enumerate(value)]
     else:
-        values = []
-    origins = []
-    for item in values:
+        return [], [_unknown(declaration_path, "invalid_csp_origin", scope)]
+    origins: list[McpAppOriginDeclaration] = []
+    unknown: list[McpAppUnknownDeclaration] = []
+    for item, item_path in values:
         safe = _safe_string(item)
         if safe is not None:
             origins.append(
                 McpAppOriginDeclaration(
                     origin=safe,
                     kind=kind,
-                    declaration_path=declaration_path,
+                    declaration_path=item_path,
                     scope=scope,
                 )
             )
-    return origins
+        else:
+            unknown.append(_unknown(item_path, "invalid_or_redacted_csp_origin", scope))
+    return origins, unknown
 
 
-def _csp_origins(value: object, declaration_path: str, scope: str) -> list[McpAppOriginDeclaration]:
+def _csp_origins(
+    value: object, declaration_path: str, scope: str
+) -> tuple[list[McpAppOriginDeclaration], list[McpAppUnknownDeclaration]]:
     origins: list[McpAppOriginDeclaration] = []
+    unknown: list[McpAppUnknownDeclaration] = []
     if not isinstance(value, dict):
-        return origins
+        return origins, [_unknown(declaration_path, "invalid_csp", scope)]
     key_kinds = {
         "connect": "connect",
         "connect_domains": "connect",
@@ -224,40 +244,71 @@ def _csp_origins(value: object, declaration_path: str, scope: str) -> list[McpAp
     }
     for key, kind in sorted(key_kinds.items()):
         if key in value:
-            origins.extend(_origin_values(value[key], kind, _path(declaration_path, key), scope))
-    return origins
+            field_origins, field_unknown = _origin_values(
+                value[key], kind, _path(declaration_path, key), scope
+            )
+            origins.extend(field_origins)
+            unknown.extend(field_unknown)
+    return origins, unknown
 
 
 def _permission_values(
     value: object, declaration_path: str, scope: str
-) -> list[McpAppPermissionDeclaration]:
+) -> tuple[list[McpAppPermissionDeclaration], list[McpAppUnknownDeclaration]]:
     raw = value if isinstance(value, list) else [value]
-    permissions = []
-    for item in raw:
+    permissions: list[McpAppPermissionDeclaration] = []
+    unknown: list[McpAppUnknownDeclaration] = []
+    for index, item in enumerate(raw):
+        item_path = (
+            _path(declaration_path, str(index)) if isinstance(value, list) else declaration_path
+        )
         name = item.get("name") if isinstance(item, dict) else item
         safe = _safe_string(name)
         if safe is not None:
             permissions.append(
                 McpAppPermissionDeclaration(
                     name=safe,
-                    declaration_path=declaration_path,
+                    declaration_path=item_path,
                     scope=scope,
                 )
             )
-    return permissions
+        else:
+            unknown.append(_unknown(item_path, "invalid_or_redacted_permission", scope))
+    return permissions, unknown
 
 
-def _string_list(value: object) -> tuple[str, ...]:
+def _string_list(
+    value: object, declaration_path: str, scope: str
+) -> tuple[tuple[str, ...], list[McpAppUnknownDeclaration]]:
     if isinstance(value, str):
         safe = _safe_string(value)
-        return (safe,) if safe is not None else ()
+        if safe is not None:
+            return (safe,), []
+        return (), [_unknown(declaration_path, "invalid_or_redacted_app_capability", scope)]
     if isinstance(value, list):
-        return tuple(sorted({safe for item in value if (safe := _safe_string(item)) is not None}))
-    return ()
+        values = []
+        unknown = []
+        for index, item in enumerate(value):
+            safe = _safe_string(item)
+            if safe is not None:
+                values.append(safe)
+            else:
+                unknown.append(
+                    _unknown(
+                        _path(declaration_path, str(index)),
+                        "invalid_or_redacted_app_capability",
+                        scope,
+                    )
+                )
+        return tuple(sorted(set(values))), unknown
+    return (), [_unknown(declaration_path, "invalid_app_capabilities", scope)]
 
 
-def _tool_surfaces(value: object, declaration_path: str, scope: str) -> list[McpAppToolSurface]:
+def _tool_surfaces(
+    value: object, declaration_path: str, scope: str
+) -> tuple[list[McpAppToolSurface], list[McpAppUnknownDeclaration]]:
     surfaces: list[McpAppToolSurface] = []
+    unknown: list[McpAppUnknownDeclaration] = []
     if isinstance(value, str):
         safe = _safe_string(value)
         if safe is not None:
@@ -270,9 +321,11 @@ def _tool_surfaces(value: object, declaration_path: str, scope: str) -> list[Mcp
                     privileged=True,
                 )
             )
-        return surfaces
+        else:
+            unknown.append(_unknown(declaration_path, "invalid_or_redacted_tool_surface", scope))
+        return surfaces, unknown
     if not isinstance(value, list):
-        return surfaces
+        return surfaces, [_unknown(declaration_path, "invalid_tool_surfaces", scope)]
     for index, item in enumerate(value):
         item_path = _path(declaration_path, str(index))
         if isinstance(item, str):
@@ -287,11 +340,21 @@ def _tool_surfaces(value: object, declaration_path: str, scope: str) -> list[Mcp
                         privileged=True,
                     )
                 )
+            else:
+                unknown.append(_unknown(item_path, "invalid_or_redacted_tool_surface", scope))
             continue
         if not isinstance(item, dict):
+            unknown.append(_unknown(item_path, "invalid_tool_surface", scope))
             continue
         name = _safe_string(item.get("name") or item.get("id") or item.get("tool"))
         if name is None:
+            unknown.append(_unknown(item_path, "invalid_or_redacted_tool_surface", scope))
+            continue
+        if any(
+            key in item and not isinstance(item[key], bool)
+            for key in ("appCallable", "app_callable", "dynamic", "registersTools")
+        ):
+            unknown.append(_unknown(item_path, "invalid_tool_surface_flags", scope))
             continue
         app_callable = item.get("appCallable") is True or item.get("app_callable") is True
         dynamic = item.get("dynamic") is True or item.get("registersTools") is True
@@ -305,7 +368,7 @@ def _tool_surfaces(value: object, declaration_path: str, scope: str) -> list[Mcp
                 privileged=app_callable or dynamic,
             )
         )
-    return surfaces
+    return surfaces, unknown
 
 
 def _decode_inline(
@@ -388,10 +451,15 @@ def _decode_inline(
     )
 
 
-def _metadata_candidates(data: object) -> list[tuple[dict[str, Any], str, bool]]:
+def _metadata_candidates(
+    data: object, *, excluded_declaration_paths: tuple[str, ...] = ()
+) -> list[tuple[dict[str, Any], str, bool]]:
     candidates: list[tuple[dict[str, Any], str, bool]] = []
+    excluded_paths = set(excluded_declaration_paths)
 
     def walk(value: object, path: str) -> None:
+        if path in excluded_paths:
+            return
         if isinstance(value, dict):
             metadata = value.get("_meta")
             if isinstance(metadata, dict):
@@ -400,16 +468,15 @@ def _metadata_candidates(data: object) -> list[tuple[dict[str, Any], str, bool]]
                     candidates.append((ui, _path(path, "_meta.ui"), True))
                 legacy = metadata.get("ui/resourceUri")
                 if legacy is not None:
+                    legacy_candidate: dict[str, Any] = {"resourceUri": legacy}
+                    if "mimeType" in value:
+                        legacy_candidate["mimeType"] = value["mimeType"]
+                    elif "mimeType" in metadata:
+                        legacy_candidate["mimeType"] = metadata["mimeType"]
+                    if "ui/visibility" in metadata:
+                        legacy_candidate["visibility"] = metadata["ui/visibility"]
                     candidates.append(
-                        (
-                            {
-                                "resourceUri": legacy,
-                                "mimeType": value.get("mimeType") or metadata.get("mimeType"),
-                                "visibility": metadata.get("ui/visibility"),
-                            },
-                            _path(path, "_meta.ui/resourceUri"),
-                            False,
-                        )
+                        (legacy_candidate, _path(path, "_meta.ui/resourceUri"), False)
                     )
             for key, child in value.items():
                 walk(child, _path(path, str(key)))
@@ -426,6 +493,7 @@ def inventory_mcp_apps(
     *,
     declaration_path: str = "",
     scope: str = "mcp",
+    excluded_declaration_paths: tuple[str, ...] = (),
 ) -> McpAppInventory:
     """Return a stable MCP Apps inventory from explicit declarations."""
     resources: list[McpAppResourceDeclaration] = []
@@ -433,41 +501,62 @@ def inventory_mcp_apps(
     unknown: list[McpAppUnknownDeclaration] = []
     remaining_inline_bytes = INLINE_RESOURCE_TOTAL_MAX_BYTES
 
-    for candidate, candidate_path, modern in _metadata_candidates(data):
+    for candidate, candidate_path, modern in _metadata_candidates(
+        data, excluded_declaration_paths=excluded_declaration_paths
+    ):
         path = _path(declaration_path, candidate_path)
         uri_value = candidate.get("resourceUri") or candidate.get("resource_uri")
-        mime_type = _safe_string(candidate.get("mimeType") or candidate.get("mime_type"))
+        mime_value = candidate.get("mimeType") or candidate.get("mime_type")
+        mime_type = _safe_string(mime_value)
+        if mime_value is not None and mime_type is None:
+            unknown.append(
+                _unknown(_path(path, "mimeType"), "invalid_or_redacted_mime_type", scope)
+            )
         uri = _resource_uri(uri_value)
         if uri is None:
             if uri_value is not None or _mime_is_mcp_app(mime_type):
                 unknown.append(
-                    McpAppUnknownDeclaration(
-                        declaration_path=_path(path, "resourceUri"),
-                        reason="invalid_or_redacted_resource_uri",
-                        scope=scope,
-                    )
+                    _unknown(_path(path, "resourceUri"), "invalid_or_redacted_resource_uri", scope)
                 )
             continue
         if not (uri.startswith("ui://") or _mime_is_mcp_app(mime_type)):
             continue
-        declared_visibility, effective_visibility, visibility_source = _visibility(
-            candidate.get("visibility"), modern=modern
+        (
+            declared_visibility,
+            effective_visibility,
+            visibility_source,
+            visibility_valid,
+        ) = _visibility(
+            candidate.get("visibility"), modern=modern, present="visibility" in candidate
         )
-        origins = [
-            *_csp_origins(candidate.get("csp"), _path(path, "csp"), scope),
-            *_csp_origins(candidate.get("CSP"), _path(path, "CSP"), scope),
-        ]
-        permissions = _permission_values(
-            candidate.get("permissions"), _path(path, "permissions"), scope
-        )
-        app_capabilities = _string_list(candidate.get("capabilities"))
-        tool_surfaces = [
-            *_tool_surfaces(candidate.get("tools"), _path(path, "tools"), scope),
-            *_tool_surfaces(candidate.get("toolSurfaces"), _path(path, "toolSurfaces"), scope),
-            *_tool_surfaces(
-                candidate.get("appCallableTools"), _path(path, "appCallableTools"), scope
-            ),
-        ]
+        if not visibility_valid:
+            unknown.append(_unknown(_path(path, "visibility"), "invalid_visibility", scope))
+        origins: list[McpAppOriginDeclaration] = []
+        permissions: list[McpAppPermissionDeclaration] = []
+        app_capabilities: tuple[str, ...] = ()
+        tool_surfaces: list[McpAppToolSurface] = []
+        for key in ("csp", "CSP"):
+            if key not in candidate:
+                continue
+            field_origins, field_unknown = _csp_origins(candidate[key], _path(path, key), scope)
+            origins.extend(field_origins)
+            unknown.extend(field_unknown)
+        if "permissions" in candidate:
+            permissions, field_unknown = _permission_values(
+                candidate["permissions"], _path(path, "permissions"), scope
+            )
+            unknown.extend(field_unknown)
+        if "capabilities" in candidate:
+            app_capabilities, field_unknown = _string_list(
+                candidate["capabilities"], _path(path, "capabilities"), scope
+            )
+            unknown.extend(field_unknown)
+        for key in ("tools", "toolSurfaces", "appCallableTools"):
+            if key not in candidate:
+                continue
+            field_surfaces, field_unknown = _tool_surfaces(candidate[key], _path(path, key), scope)
+            tool_surfaces.extend(field_surfaces)
+            unknown.extend(field_unknown)
         if candidate.get("resource_uri") and candidate.get("resourceUri"):
             unknown.append(
                 McpAppUnknownDeclaration(

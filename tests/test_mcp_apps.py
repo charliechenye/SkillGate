@@ -138,6 +138,59 @@ def test_secret_bearing_and_malformed_values_become_unknown_declarations() -> No
     assert "literal-secret" not in repr(inventory)
 
 
+def test_malformed_url_components_are_unknown_without_crashing() -> None:
+    inventory = inventory_mcp_apps(
+        {
+            "_meta": {
+                "ui": {
+                    "resourceUri": "ui://widget/home.html",
+                    "mimeType": "text/html;profile=mcp-app",
+                    "csp": {"connect_domains": ["https://u:p@example.com:bad/path"]},
+                }
+            }
+        }
+    )
+
+    assert inventory.resources[0].origins == ()
+    assert [(item.declaration_path, item.reason) for item in inventory.unknown_declarations] == [
+        ("_meta.ui.csp.connect_domains.0", "invalid_or_redacted_csp_origin")
+    ]
+
+
+def test_malformed_app_subdeclarations_become_unknown_evidence() -> None:
+    inventory = inventory_mcp_apps(
+        {
+            "_meta": {
+                "ui": {
+                    "resourceUri": "ui://widget/home.html",
+                    "mimeType": "token=literal-secret",
+                    "visibility": ["app", 1],
+                    "csp": ["https://not-an-object.example"],
+                    "CSP": {"connect_domains": ["https://api.example?token=secret"]},
+                    "permissions": [1],
+                    "capabilities": [1],
+                    "appCallableTools": [1],
+                }
+            }
+        }
+    )
+
+    resource = inventory.resources[0]
+    assert resource.mime_type is None
+    assert resource.effective_visibility == ()
+    assert resource.visibility_source == "unknown"
+    assert {(item.declaration_path, item.reason) for item in inventory.unknown_declarations} == {
+        ("_meta.ui.CSP.connect_domains.0", "invalid_or_redacted_csp_origin"),
+        ("_meta.ui.appCallableTools.0", "invalid_tool_surface"),
+        ("_meta.ui.capabilities.0", "invalid_or_redacted_app_capability"),
+        ("_meta.ui.csp", "invalid_csp"),
+        ("_meta.ui.mimeType", "invalid_or_redacted_mime_type"),
+        ("_meta.ui.permissions.0", "invalid_or_redacted_permission"),
+        ("_meta.ui.visibility", "invalid_visibility"),
+    }
+    assert "literal-secret" not in repr(inventory)
+
+
 def test_conflicting_resource_uri_keys_are_retained_as_unknown() -> None:
     inventory = inventory_mcp_apps(
         {
@@ -287,6 +340,48 @@ def test_mcp_config_exposes_declarative_app_capabilities_without_sg003(
         capability for capability in report.capabilities if capability.type == "mcp_server"
     )
     assert server.details["mcp_apps"]["resources"][0]["resource_uri"] == "ui://widget/home.html"
+
+
+def test_mcp_config_inventories_root_and_server_app_metadata_once(tmp_path: Path) -> None:
+    config = {
+        "_meta": {
+            "ui": {
+                "resourceUri": "ui://root/index.html",
+                "mimeType": "text/html;profile=mcp-app",
+            }
+        },
+        "mcpServers": {
+            "example": {
+                "command": "node",
+                "_meta": {
+                    "ui": {
+                        "resourceUri": "ui://server/index.html",
+                        "mimeType": "text/html;profile=mcp-app",
+                        "permissions": ["camera"],
+                    }
+                },
+            }
+        },
+    }
+    (tmp_path / ".mcp.json").write_text(json.dumps(config), encoding="utf-8")
+
+    report = scan_repository(tmp_path)
+
+    resources = [
+        (capability.resource, capability.details["scope"])
+        for capability in report.capabilities
+        if capability.type == "mcp_app_resource"
+    ]
+    permissions = [
+        capability for capability in report.capabilities if capability.type == "mcp_app_permission"
+    ]
+    assert resources == [
+        ("ui://root/index.html", "config"),
+        ("ui://server/index.html", "server:example"),
+    ]
+    assert len(permissions) == 1
+    assert permissions[0].details["scope"] == "server:example"
+    assert len([finding for finding in report.findings if finding.rule_id == "SG011"]) == 1
 
 
 def test_legacy_registry_app_metadata_is_capability_only_without_privileged_surface(
