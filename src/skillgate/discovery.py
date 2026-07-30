@@ -132,6 +132,10 @@ def classify_file(path: Path) -> str:
         return "markdown"
     if suffix in SCRIPT_EXTENSIONS:
         return "script"
+    if suffix == ".html":
+        return "html"
+    if suffix == ".css":
+        return "css"
     if suffix == ".json":
         return "json_config"
     return "agent_file"
@@ -199,6 +203,12 @@ def discover_paths(root: Path) -> list[Path]:
                 if script not in discovered:
                     discovered.add(script)
                     changed = True
+    try:
+        from skillgate.mcp_app_assets import mcp_app_asset_paths
+
+        discovered.update(mcp_app_asset_paths(root, discovered))
+    except OSError:
+        pass
     return sorted(discovered, key=lambda item: relative_path(root, item))
 
 

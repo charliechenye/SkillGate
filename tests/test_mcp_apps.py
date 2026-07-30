@@ -2,7 +2,13 @@ from __future__ import annotations
 
 import base64
 import json
+import socket
+import subprocess
+import urllib.request
+import webbrowser
 from pathlib import Path
+
+import pytest
 
 from skillgate.mcp_apps import (
     INLINE_RESOURCE_MAX_BYTES,
@@ -366,3 +372,170 @@ def test_registry_comparison_includes_normalized_app_surface_drift(tmp_path: Pat
 
     assert "mcp_apps" in {item["field"] for item in report.summary["registry_drift"]}
     assert any("mcp_apps" in (finding.evidence or "") for finding in report.findings)
+
+
+def test_local_app_assets_are_discovered_and_bridges_are_capabilities(tmp_path: Path) -> None:
+    (tmp_path / ".mcp.json").write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "example": {
+                        "command": "node",
+                        "_meta": {
+                            "ui": {
+                                "resourceUri": "ui://app/index.html",
+                                "mimeType": "text/html;profile=mcp-app",
+                            }
+                        },
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    app = tmp_path / "app"
+    app.mkdir()
+    (app / "index.html").write_text(
+        '<link rel="stylesheet" href="style.css"><script src="app.js"></script>',
+        encoding="utf-8",
+    )
+    (app / "style.css").write_text("@import 'theme.css';", encoding="utf-8")
+    (app / "theme.css").write_text("body { color: black; }", encoding="utf-8")
+    (app / "app.js").write_text("window.callServerTool('search');", encoding="utf-8")
+
+    report = scan_repository(tmp_path)
+
+    assert [file.path for file in report.scanned_files] == [
+        ".mcp.json",
+        "app/app.js",
+        "app/index.html",
+        "app/style.css",
+        "app/theme.css",
+    ]
+    asset_paths = {
+        capability.resource
+        for capability in report.capabilities
+        if capability.type == "mcp_app_asset" and not capability.details.get("skipped_reason")
+    }
+    assert asset_paths == {
+        "app/app.js",
+        "app/index.html",
+        "app/style.css",
+        "app/theme.css",
+    }
+    bridges = [
+        capability
+        for capability in report.capabilities
+        if capability.type == "mcp_app_host_bridge"
+    ]
+    assert [(item.details["path"], item.details["marker"]) for item in bridges] == [
+        ("app/app.js", "callServerTool")
+    ]
+
+
+def test_generic_web_project_does_not_enter_mcp_apps_adapter(tmp_path: Path) -> None:
+    (tmp_path / "index.html").write_text(
+        "<script src='app.js'></script><script>callServerTool('x')</script>",
+        encoding="utf-8",
+    )
+    (tmp_path / "app.js").write_text("registerAppTool('x')", encoding="utf-8")
+
+    report = scan_repository(tmp_path)
+
+    assert report.scanned_files == []
+    assert not [
+        capability for capability in report.capabilities if capability.type.startswith("mcp_app")
+    ]
+
+
+def test_local_asset_skips_traversal_missing_excluded_and_oversized(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / ".mcp.json").write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "example": {
+                        "command": "node",
+                        "_meta": {
+                            "ui": {
+                                "resourceUri": "ui://app/index.html",
+                                "mimeType": "text/html;profile=mcp-app",
+                            }
+                        },
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    app = tmp_path / "app"
+    app.mkdir()
+    (tmp_path / "node_modules").mkdir()
+    (app / "index.html").write_text(
+        "\n".join(
+            [
+                '<script src="missing.js"></script>',
+                '<script src="../../outside.js"></script>',
+                '<script src="../node_modules/excluded.js"></script>',
+                '<script src="large.js"></script>',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (app / "large.js").write_text("x" * (1_048_576 + 1), encoding="utf-8")
+
+    report = scan_repository(tmp_path)
+    skipped = {
+        capability.resource: capability.details["skipped_reason"]
+        for capability in report.capabilities
+        if capability.type == "mcp_app_asset" and capability.details.get("skipped_reason")
+    }
+
+    assert skipped == {
+        "../../outside.js": "outside_scan_root",
+        "../node_modules/excluded.js": "excluded_path",
+        "app/large.js": "asset_too_large",
+        "app/missing.js": "missing_reference",
+    }
+
+
+def test_local_app_scan_does_not_use_network_browser_or_subprocess(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / ".mcp.json").write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "example": {
+                        "command": "node",
+                        "_meta": {
+                            "ui": {
+                                "resourceUri": "ui://app/index.html",
+                                "mimeType": "text/html;profile=mcp-app",
+                                "csp": {"connect_domains": ["https://api.example.com"]},
+                            }
+                        },
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    app = tmp_path / "app"
+    app.mkdir()
+    (app / "index.html").write_text("ui/initialize", encoding="utf-8")
+
+    def fail(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("local MCP Apps scan must not call external entry points")
+
+    monkeypatch.setattr(urllib.request, "urlopen", fail)
+    monkeypatch.setattr(socket, "socket", fail)
+    monkeypatch.setattr(subprocess, "Popen", fail)
+    monkeypatch.setattr(webbrowser, "open", fail)
+
+    report = scan_repository(tmp_path)
+
+    assert any(capability.type == "mcp_app_asset" for capability in report.capabilities)
+    assert any(capability.type == "mcp_app_host_bridge" for capability in report.capabilities)
