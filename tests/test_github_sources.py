@@ -5,6 +5,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 import pytest
 from conftest import FAKE_COMMIT_SHA, FIXTURES, ROOT, clean_test_dir, runner
@@ -313,7 +314,7 @@ def test_fetch_github_sparse_fetches_mcp_app_assets_without_declared_origins(
         max_bytes: int | None = None,
     ) -> str:
         requested_urls.append(url)
-        if "api.example.com" in url or "cdn.example.com" in url:
+        if urlparse(url).hostname in {"api.example.com", "cdn.example.com"}:
             raise AssertionError(f"Declared origin must not be fetched: {url}")
         if url.endswith("/mcp-registry.json"):
             return json.dumps(
