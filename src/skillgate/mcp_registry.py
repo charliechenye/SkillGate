@@ -15,6 +15,7 @@ from skillgate.discovery import classify_file, discover_paths, scan_file_metadat
 from skillgate.mcp_apps import (
     inventory_mcp_apps,
     mcp_apps_capabilities,
+    mcp_apps_compare_surface,
     mcp_apps_findings,
     mcp_apps_summary,
 )
@@ -781,14 +782,12 @@ def compare_values(
 
 
 def mcp_apps_details_for_compare(server: RegistryServer) -> dict[str, object]:
-    details = mcp_apps_summary(
-        inventory_mcp_apps(
-            server.data,
-            declaration_path=server.config_path,
-            scope=f"registry:{server.name}",
-        )
+    inventory = inventory_mcp_apps(
+        server.data,
+        declaration_path=server.config_path,
+        scope=f"registry:{server.name}",
     )
-    return details.get("mcp_apps", {}) if details else {}
+    return mcp_apps_compare_surface(inventory, declaration_path_prefix=server.config_path)
 
 
 def compare_registry_metadata(

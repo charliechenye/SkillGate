@@ -711,6 +711,60 @@ def mcp_apps_summary(inventory: McpAppInventory) -> dict[str, object]:
     return {"mcp_apps": mcp_apps_details(inventory)}
 
 
+def mcp_apps_compare_surface(
+    inventory: McpAppInventory, *, declaration_path_prefix: str
+) -> dict[str, object]:
+    """Return MCP Apps semantics without source-wrapper-specific locations."""
+
+    def relative_path(path: str) -> str:
+        return path.removeprefix(declaration_path_prefix).lstrip(".")
+
+    return {
+        "resources": [
+            {
+                "resource_uri": resource.resource_uri,
+                "mime_type": resource.mime_type,
+                "declared_visibility": list(resource.declared_visibility)
+                if resource.declared_visibility is not None
+                else None,
+                "effective_visibility": list(resource.effective_visibility),
+                "visibility_source": resource.visibility_source,
+                "app_capabilities": list(resource.app_capabilities),
+                "origins": [
+                    {"origin": origin.origin, "kind": origin.kind} for origin in resource.origins
+                ],
+                "permissions": [{"name": permission.name} for permission in resource.permissions],
+                "tools": [
+                    {
+                        "name": tool.name,
+                        "surface": tool.surface,
+                        "privileged": tool.privileged,
+                    }
+                    for tool in resource.tool_surfaces
+                ],
+            }
+            for resource in inventory.resources
+        ],
+        "inline_resources": [
+            {
+                "resource_uri": item.resource_uri,
+                "kind": item.kind,
+                "sha256": item.sha256,
+                "size_bytes": item.size_bytes,
+                "skipped_reason": item.skipped_reason,
+            }
+            for item in inventory.inline_resources
+        ],
+        "unknown_declarations": [
+            {
+                "declaration_path": relative_path(item.declaration_path),
+                "reason": item.reason,
+            }
+            for item in inventory.unknown_declarations
+        ],
+    }
+
+
 def mcp_apps_capabilities(
     inventory: McpAppInventory,
     *,

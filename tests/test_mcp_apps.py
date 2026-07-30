@@ -524,6 +524,101 @@ def test_registry_comparison_includes_normalized_app_surface_drift(tmp_path: Pat
     assert any("mcp_apps" in (finding.evidence or "") for finding in report.findings)
 
 
+def test_registry_comparison_ignores_server_wrapper_paths_for_equal_apps(tmp_path: Path) -> None:
+    server = {
+        "name": "io.example.equal-app",
+        "version": "1.0.0",
+        "_meta": {
+            "ui": {
+                "resourceUri": "ui://widget/home.html",
+                "mimeType": "text/html;profile=mcp-app",
+                "permissions": ["camera"],
+                "appCallableTools": [{"name": "search", "appCallable": True}],
+                "toolSurfaces": [1],
+            }
+        },
+    }
+    local_dir = tmp_path / "local"
+    local_dir.mkdir()
+    (local_dir / "server.json").write_text(json.dumps({"server": server}), encoding="utf-8")
+    registry_path = tmp_path / "registry.json"
+    registry_path.write_text(json.dumps({"servers": [server]}), encoding="utf-8")
+
+    report = compare_registry_metadata(local_dir, "io.example.equal-app", str(registry_path))
+
+    assert not report.summary["registry_drift"]
+    assert not [finding for finding in report.findings if finding.rule_id == "SG013"]
+
+
+@pytest.mark.parametrize(
+    "remote_change",
+    [
+        {"permissions": ["camera"]},
+        {"appCallableTools": [{"name": "run", "appCallable": True}]},
+        {"text": "changed inline app asset"},
+    ],
+)
+def test_registry_comparison_detects_semantic_app_surface_changes(
+    tmp_path: Path, remote_change: dict[str, object]
+) -> None:
+    local = {
+        "server": {
+            "name": "io.example.app-surface-change",
+            "version": "1.0.0",
+            "_meta": {
+                "ui": {
+                    "resourceUri": "ui://widget/home.html",
+                    "mimeType": "text/html;profile=mcp-app",
+                    "text": "original inline app asset",
+                }
+            },
+        }
+    }
+    remote = json.loads(json.dumps(local["server"]))
+    remote["_meta"]["ui"].update(remote_change)
+    local_dir = tmp_path / "local"
+    local_dir.mkdir()
+    (local_dir / "server.json").write_text(json.dumps(local), encoding="utf-8")
+    registry_path = tmp_path / "registry.json"
+    registry_path.write_text(json.dumps({"servers": [remote]}), encoding="utf-8")
+
+    report = compare_registry_metadata(
+        local_dir, "io.example.app-surface-change", str(registry_path)
+    )
+
+    assert "mcp_apps" in {item["field"] for item in report.summary["registry_drift"]}
+    assert any(finding.rule_id == "SG013" for finding in report.findings)
+
+
+def test_registry_comparison_detects_removed_app_surface(tmp_path: Path) -> None:
+    local = {
+        "server": {
+            "name": "io.example.removed-app",
+            "version": "1.0.0",
+            "_meta": {
+                "ui": {
+                    "resourceUri": "ui://widget/home.html",
+                    "mimeType": "text/html;profile=mcp-app",
+                }
+            },
+        }
+    }
+    local_dir = tmp_path / "local"
+    local_dir.mkdir()
+    (local_dir / "server.json").write_text(json.dumps(local), encoding="utf-8")
+    registry_path = tmp_path / "registry.json"
+    registry_path.write_text(
+        json.dumps(
+            {"servers": [{"name": "io.example.removed-app", "version": "1.0.0", "tools": []}]}
+        ),
+        encoding="utf-8",
+    )
+
+    report = compare_registry_metadata(local_dir, "io.example.removed-app", str(registry_path))
+
+    assert "mcp_apps" in {item["field"] for item in report.summary["registry_drift"]}
+
+
 def test_local_app_assets_are_discovered_and_bridges_are_capabilities(tmp_path: Path) -> None:
     (tmp_path / ".mcp.json").write_text(
         json.dumps(
