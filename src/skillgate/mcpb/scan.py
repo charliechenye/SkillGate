@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import replace
 from pathlib import Path, PurePosixPath
@@ -7,12 +8,23 @@ from pathlib import Path, PurePosixPath
 from skillgate import __version__
 from skillgate.archive import DEFAULT_ARCHIVE_LIMITS, ArchiveMember, inspect_archive
 from skillgate.discovery import discover_paths
+from skillgate.mcp_app_assets import (
+    MCP_APP_MAX_ASSET_BYTES,
+    McpAppAssetInventory,
+    McpAppAssetRecord,
+    McpAppHostBridgeRecord,
+    _asset_kind,
+    inventory_local_mcp_app_assets,
+    mcp_app_asset_capabilities,
+)
+from skillgate.mcp_apps import detect_bridge_markers, inventory_mcp_apps
 from skillgate.models import SCHEMA_VERSION, Capability, Finding
 from skillgate.rules.base import make_capability, make_finding
 from skillgate.scan import findings_summary, scan_paths, unique_capabilities, unique_findings
 
 from .manifest import ManifestAnalysis, parse_manifest
 from .models import (
+    McpbAppAsset,
     McpbArchiveSummary,
     McpbBinaryArtifact,
     McpbBundleManifest,
@@ -73,11 +85,29 @@ def scan_mcpb(path: Path | str, *, format_aware: bool = False) -> McpbScanResult
         selected = _selected_source_paths(
             archive.extraction_root, archive.members, analysis, embedded
         )
+        manifest_data = json.loads(
+            (archive.extraction_root / "manifest.json").read_text(
+                encoding="utf-8", errors="replace"
+            )
+        )
+        manifest_apps = inventory_mcp_apps(manifest_data, declaration_path="manifest", scope="mcpb")
+        positive_app_bundle = not manifest_apps.is_empty
+        app_asset_inventory = _mcpb_app_asset_inventory(
+            archive.extraction_root,
+            archive.members,
+            manifest_path=archive.extraction_root / "manifest.json",
+            positive_app_bundle=positive_app_bundle,
+        )
+        if positive_app_bundle:
+            selected = _with_all_mcp_app_web_assets(
+                archive.extraction_root, selected, app_asset_inventory
+            )
         generic_report = scan_paths(archive.extraction_root, selected, format_aware=format_aware)
         findings = [*generic_report.findings, *_mcpb_findings(archive.members, analysis, embedded)]
         capabilities = [
             *generic_report.capabilities,
             *_mcpb_capabilities(analysis, embedded, archive.members),
+            *mcp_app_asset_capabilities(app_asset_inventory),
         ]
         findings = unique_findings(findings)
         capabilities = unique_capabilities(capabilities)
@@ -93,7 +123,9 @@ def scan_mcpb(path: Path | str, *, format_aware: bool = False) -> McpbScanResult
             }
         )
         scanned_paths = {file.path for file in generic_report.scanned_files}
-        bundle_manifest = _bundle_manifest(archive, analysis, embedded, scanned_paths)
+        bundle_manifest = _bundle_manifest(
+            archive, analysis, embedded, scanned_paths, app_asset_inventory
+        )
         return McpbScanResult(
             schema_version=SCHEMA_VERSION,
             tool_version=__version__,
@@ -143,6 +175,19 @@ def _selected_source_paths(
     return sorted(selected, key=lambda item: item.relative_to(root.resolve()).as_posix())
 
 
+def _with_all_mcp_app_web_assets(
+    root: Path,
+    selected: list[Path],
+    inventory: McpAppAssetInventory,
+) -> list[Path]:
+    selected_set = set(selected)
+    for asset in inventory.assets:
+        if asset.skipped_reason is not None:
+            continue
+        selected_set.add((root / asset.path).resolve())
+    return sorted(selected_set, key=lambda item: item.relative_to(root.resolve()).as_posix())
+
+
 def _member_can_scan(member: ArchiveMember, embedded_paths: set[str]) -> bool:
     return (
         member.member_type == "file"
@@ -151,6 +196,130 @@ def _member_can_scan(member: ArchiveMember, embedded_paths: set[str]) -> bool:
         and member.is_scannable_text
         and member.normalized_path not in embedded_paths
         and not _is_excluded(member.normalized_path)
+    )
+
+
+def _mcpb_app_asset_inventory(
+    root: Path,
+    members: list[ArchiveMember],
+    *,
+    manifest_path: Path,
+    positive_app_bundle: bool,
+) -> McpAppAssetInventory:
+    if not positive_app_bundle:
+        return inventory_local_mcp_app_assets(root, {manifest_path})
+    asset_records: dict[tuple[str, str], McpAppAssetRecord] = {}
+    bridges: dict[tuple[str, tuple[str, ...], str], McpAppHostBridgeRecord] = {}
+    for member in members:
+        if (
+            member.member_type != "file"
+            or member.is_nested_archive
+            or _is_excluded(member.normalized_path)
+            or _asset_kind(member.normalized_path) is None
+        ):
+            continue
+        record, text = _mcpb_asset_record(root, member, "mcpb_app_bundle")
+        asset_records[(record.path, record.association)] = record
+        if text is None:
+            continue
+        markers = detect_bridge_markers(text)
+        if markers:
+            bridge = McpAppHostBridgeRecord(
+                path=record.path,
+                markers=markers,
+                association=record.association,
+            )
+            bridges[(bridge.path, bridge.markers, bridge.association)] = bridge
+    return McpAppAssetInventory(
+        assets=tuple(
+            sorted(asset_records.values(), key=lambda item: (item.path, item.association))
+        ),
+        bridges=tuple(
+            sorted(bridges.values(), key=lambda item: (item.path, item.markers, item.association))
+        ),
+    )
+
+
+def _mcpb_asset_record(
+    root: Path, member: ArchiveMember, association: str
+) -> tuple[McpAppAssetRecord, str | None]:
+    path = root / member.normalized_path
+    kind = _asset_kind(member.normalized_path) or "unknown"
+    if member.uncompressed_size > MCP_APP_MAX_ASSET_BYTES:
+        return (
+            McpAppAssetRecord(
+                member.normalized_path,
+                kind,
+                association,
+                member.uncompressed_size,
+                member.sha256,
+                "asset_too_large",
+            ),
+            None,
+        )
+    if not member.is_scannable_text:
+        return (
+            McpAppAssetRecord(
+                member.normalized_path,
+                kind,
+                association,
+                member.uncompressed_size,
+                member.sha256,
+                "asset_not_utf8",
+            ),
+            None,
+        )
+    try:
+        with path.open("rb") as stream:
+            data = stream.read(MCP_APP_MAX_ASSET_BYTES + 1)
+    except OSError:
+        return (
+            McpAppAssetRecord(
+                member.normalized_path,
+                kind,
+                association,
+                None,
+                member.sha256,
+                "missing_reference",
+            ),
+            None,
+        )
+    if len(data) > MCP_APP_MAX_ASSET_BYTES:
+        return (
+            McpAppAssetRecord(
+                member.normalized_path,
+                kind,
+                association,
+                len(data),
+                member.sha256,
+                "asset_too_large",
+            ),
+            None,
+        )
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        return (
+            McpAppAssetRecord(
+                member.normalized_path,
+                kind,
+                association,
+                len(data),
+                member.sha256,
+                "asset_not_utf8",
+            ),
+            None,
+        )
+    return (
+        McpAppAssetRecord(
+            member.normalized_path,
+            kind,
+            association,
+            len(data),
+            member.sha256,
+            None,
+        ),
+        text,
     )
 
 
@@ -445,7 +614,11 @@ def _command_basename(command: str) -> str:
 
 
 def _bundle_manifest(
-    archive, analysis: ManifestAnalysis, embedded: list[McpbBinaryArtifact], scanned_paths: set[str]
+    archive,
+    analysis: ManifestAnalysis,
+    embedded: list[McpbBinaryArtifact],
+    scanned_paths: set[str],
+    app_asset_inventory: McpAppAssetInventory,
 ) -> McpbBundleManifest:
     embedded_paths = {item.path for item in embedded}
     members = [
@@ -470,6 +643,17 @@ def _bundle_manifest(
         members=sorted(members, key=lambda item: item.path),
         embedded_binaries=embedded,
         nested_archives=nested,
+        mcp_app_assets=[
+            McpbAppAsset(
+                path=asset.path,
+                kind=asset.kind,
+                association=asset.association,
+                size_bytes=asset.size_bytes,
+                sha256=asset.sha256,
+                skipped_reason=asset.skipped_reason,
+            )
+            for asset in app_asset_inventory.assets
+        ],
     )
 
 

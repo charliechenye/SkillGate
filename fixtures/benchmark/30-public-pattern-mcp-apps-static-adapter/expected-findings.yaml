@@ -1,0 +1,10 @@
+findings:
+  - SG011
+attribution:
+  sources:
+    - name: MCP Apps extension overview
+      url: https://modelcontextprotocol.io/extensions/apps/overview
+    - name: MCP Apps extension specification
+      url: https://github.com/modelcontextprotocol/ext-apps/blob/main/specification/2026-01-26/apps.mdx
+  reduction: Synthetic minimal fixture with UI resource metadata, CSP origins, a permission, local web assets, and an app-callable tool.
+  retrieved_on: "2026-06-11"

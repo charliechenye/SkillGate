@@ -1,0 +1,21 @@
+{
+  "server": {
+    "name": "io.example.mcp-apps-static",
+    "description": "Reduced MCP Apps metadata with a UI resource, CSP origins, permission, and app-callable tool.",
+    "version": "0.1.0",
+    "_meta": {
+      "ui": {
+        "resourceUri": "ui://app/index.html",
+        "mimeType": "text/html;profile=mcp-app",
+        "csp": {
+          "connect_domains": ["https://api.example.invalid"],
+          "resource_domains": ["https://cdn.example.invalid"]
+        },
+        "permissions": ["camera"],
+        "appCallableTools": [
+          {"name": "summarize_app", "appCallable": true}
+        ]
+      }
+    }
+  }
+}

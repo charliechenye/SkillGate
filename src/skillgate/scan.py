@@ -6,6 +6,7 @@ from pathlib import Path
 
 from skillgate import __version__
 from skillgate.discovery import discover_paths, scan_file_metadata
+from skillgate.mcp_app_assets import inventory_local_mcp_app_assets, mcp_app_asset_capabilities
 from skillgate.models import (
     SCHEMA_VERSION,
     SEVERITY_ORDER,
@@ -104,6 +105,8 @@ def scan_paths(root: Path, paths: Iterable[Path], *, format_aware: bool = False)
             result = rule.analyze(file)
             findings.extend(result.findings)
             capabilities.extend(result.capabilities)
+    asset_inventory = inventory_local_mcp_app_assets(root, set(paths))
+    capabilities.extend(mcp_app_asset_capabilities(asset_inventory))
     findings = unique_findings(findings)
     capabilities = unique_capabilities(capabilities)
     summary = findings_summary(findings, len(scanned_files), len(capabilities))

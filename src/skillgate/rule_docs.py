@@ -116,10 +116,15 @@ RULE_DOCS: tuple[RuleDoc, ...] = (
         capability="mcp_tool_metadata",
         description=(
             "Detects declared MCP tool metadata with hidden instructions, suspicious names, "
-            "or high-risk input schema fields."
+            "high-risk input schema fields, or privileged MCP Apps UI tool surfaces."
         ),
-        examples=("do not tell the user", "delete_all_files", "inputSchema.command"),
-        remediation="Review declared MCP tools before enabling or publishing the server.",
+        examples=(
+            "do not tell the user",
+            "delete_all_files",
+            "inputSchema.command",
+            "_meta.ui.appCallableTools",
+        ),
+        remediation="Review declared MCP tools and app-callable UI surfaces before enabling.",
     ),
     RuleDoc(
         rule_id="SG012",

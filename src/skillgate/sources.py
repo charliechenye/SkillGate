@@ -16,6 +16,8 @@ from urllib.parse import quote, urlparse
 
 from skillgate import __version__
 from skillgate.discovery import REFERENCE_RE, SCRIPT_EXTENSIONS, is_excluded, is_relevant_path
+from skillgate.mcp_app_assets import _asset_kind, _refs_from_text, _strip_ref_suffix
+from skillgate.mcp_apps import inventory_from_json_text
 from skillgate.models import SCHEMA_VERSION
 
 GITHUB_API = "https://api.github.com"
@@ -359,6 +361,79 @@ def referenced_script_candidates(source_path: str, content: str) -> list[str]:
     return sorted(set(references))
 
 
+def _normalize_remote_ref(source_path: str, raw_ref: str) -> str:
+    base = Path(source_path).parent
+    normalized = (base / _strip_ref_suffix(raw_ref)).as_posix()
+    parts = []
+    for part in normalized.split("/"):
+        if part in {"", "."}:
+            continue
+        if part == "..":
+            if parts:
+                parts.pop()
+            else:
+                parts.append("..")
+        else:
+            parts.append(part)
+    return "/".join(parts)
+
+
+def _remote_resource_uri_candidates(source_path: str, uri: str, subpath: str | None) -> list[str]:
+    parsed = urlparse(uri)
+    candidates: list[str] = []
+    prefix = f"{subpath}/" if subpath else ""
+    if parsed.scheme == "ui":
+        combined = "/".join(part for part in [parsed.netloc, parsed.path.lstrip("/")] if part)
+        if combined:
+            candidates.append(f"{prefix}{combined}")
+        if parsed.path:
+            candidates.append(f"{prefix}{parsed.path.lstrip('/')}")
+    elif "://" not in uri and not uri.startswith("/"):
+        candidates.append(_normalize_remote_ref(source_path, uri))
+        candidates.append(f"{prefix}{_strip_ref_suffix(uri)}")
+    return sorted(set(candidates))
+
+
+def mcp_app_asset_seed_associations(
+    fetched_remote: dict[str, str],
+    *,
+    subpath: str | None,
+) -> tuple[dict[str, set[str]], set[str]]:
+    associations: dict[str, set[str]] = {}
+    unsupported: set[str] = set()
+    for source_path, content in sorted(fetched_remote.items()):
+        app_inventory = inventory_from_json_text(content)
+        for resource in app_inventory.resources:
+            candidates = _remote_resource_uri_candidates(
+                source_path, resource.resource_uri, subpath
+            )
+            eligible = [candidate for candidate in candidates if _asset_kind(candidate)]
+            if not eligible:
+                unsupported.add(resource.resource_uri)
+                continue
+            for candidate in eligible:
+                associations.setdefault(candidate, set()).add(resource.resource_uri)
+    return associations, unsupported
+
+
+def referenced_mcp_app_asset_candidates(
+    fetched_remote: dict[str, str],
+    associations: dict[str, set[str]],
+) -> dict[str, set[str]]:
+    candidates: dict[str, set[str]] = {}
+    for source_path in sorted(associations):
+        content = fetched_remote.get(source_path)
+        if content is None or _asset_kind(source_path) is None:
+            continue
+        for raw_ref in _refs_from_text(source_path, content):
+            if "://" in raw_ref or raw_ref.startswith("ui://"):
+                continue
+            candidate = _normalize_remote_ref(source_path, raw_ref)
+            if _asset_kind(candidate):
+                candidates.setdefault(candidate, set()).update(associations[source_path])
+    return candidates
+
+
 def raw_url(repo: GitHubRepo, ref: str, path: str) -> str:
     quoted_path = "/".join(quote(part, safe="") for part in path.split("/"))
     return f"{GITHUB_RAW}/{repo.owner}/{repo.repo}/{quote(ref, safe='')}/{quoted_path}"
@@ -574,6 +649,48 @@ def fetch_github_sparse(
                 materialized_path=strip_subpath(path, repo.subpath),
                 content=content,
                 reason="referenced_script",
+            )
+
+    app_asset_associations, unsupported_app_assets = mcp_app_asset_seed_associations(
+        fetched_remote, subpath=repo.subpath
+    )
+    for resource_uri in sorted(unsupported_app_assets):
+        add_skipped(manifest, resource_uri, "unsupported_mcp_app_asset")
+
+    fetched_assets: set[str] = set()
+    while True:
+        candidate_associations = referenced_mcp_app_asset_candidates(
+            fetched_remote, app_asset_associations
+        )
+        next_assets = sorted(
+            path
+            for path in app_asset_associations | candidate_associations
+            if path not in fetched_remote and path not in fetched_assets
+        )
+        if not next_assets:
+            break
+        for path in next_assets:
+            fetched_assets.add(path)
+            if path.startswith("../") or not path_within_subpath(path, repo.subpath):
+                add_skipped(manifest, path, "mcp_app_asset_outside_subtree")
+                continue
+            if is_excluded(Path(path)):
+                add_skipped(manifest, path, "excluded_path")
+                continue
+            if path not in available_paths:
+                add_skipped(manifest, path, "missing_mcp_app_asset")
+                continue
+            content = fetch_text_with_limits(repo, resolved.commit_sha, path, manifest, limits)
+            fetched_remote[path] = content
+            app_asset_associations.setdefault(path, set()).update(
+                app_asset_associations.get(path, set()) or candidate_associations.get(path, set())
+            )
+            add_downloaded(
+                manifest,
+                remote_path=path,
+                materialized_path=strip_subpath(path, repo.subpath),
+                content=content,
+                reason="mcp_app_asset",
             )
 
     fetched = {

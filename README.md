@@ -108,11 +108,18 @@ The default path is local and upload-free:
   scan` read local files and write results to the terminal or local output files.
 - These local paths do not call GitHub, upload reports, install packages, start
   servers, or execute scanned content.
+- MCP Apps declarations are static review evidence. Local scans may read
+  already-materialized HTML, CSS, and JavaScript assets inside the scan root,
+  but they do not dereference `ui://` resources, CSP origins, frame domains,
+  script URLs, or MCP endpoints.
 
 Connections are explicit opt-ins:
 
 - `github scan` and `review preinstall` with a GitHub URL make bounded requests
   to GitHub to fetch the requested source for static review.
+- GitHub MCP Apps asset fetching is limited to eligible relative files from the
+  same repository and selected subtree. Declared UI origins and domains are not
+  fetch targets.
 - GitHub Actions, SARIF uploads, Actions artifacts, and Code Scanning are
   optional integrations used only when a repository owner enables a workflow.
 

@@ -1,5 +1,14 @@
 # Change Log
 
+## Unreleased
+
+- Added a static MCP Apps adapter that inventories app resources, assets,
+  origins, permissions, tool surfaces, host bridge markers, and malformed
+  declarations without rendering UI or dereferencing declared URLs.
+- Added MCP Apps evidence to advisory review packets and benchmark coverage
+  while preserving schema version `2`, existing rule IDs, and local-only scan
+  boundaries.
+
 ## 0.1.3 - Review evidence foundations and MCP compatibility inventory
 
 Released 2026-07-29.

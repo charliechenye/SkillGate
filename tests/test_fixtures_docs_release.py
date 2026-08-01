@@ -76,7 +76,7 @@ def test_cli_fixtures_summary_json() -> None:
     assert result.exit_code == 0
     data = json.loads(result.output)
     assert data["summary"]["failed"] == 0
-    assert data["summary"]["fixtures"] == 29
+    assert data["summary"]["fixtures"] == 30
     assert all(item["status"] == "pass" for item in data["fixtures"])
 
 
@@ -210,6 +210,7 @@ def test_release_metadata_and_roadmap_are_consistent() -> None:
     skills_docs = ROOT / "docs" / "skills-validation.md"
     sessions_docs = ROOT / "docs" / "sessions" / "README.md"
     release_checklist = (ROOT / "docs" / "release-checklist.md").read_text(encoding="utf-8")
+    mcp_apps_docs = ROOT / "docs" / "mcp-apps-static-review.md"
     release_notes = ROOT / "docs" / "release-notes" / "0.1.3.md"
     assert pyproject["project"]["name"] == "openevalgate-skillgate"
     assert pyproject["project"]["authors"] == [{"name": "Chenye Zhu"}]
@@ -243,6 +244,11 @@ def test_release_metadata_and_roadmap_are_consistent() -> None:
     assert "Pre-install review" in sessions_docs.read_text(encoding="utf-8")
     assert "GitHub tags and GitHub Release assets are the" in future_steps
     assert "docs/mcp-compatibility.md" in future_steps
+    assert "docs/mcp-apps-static-review.md" in future_steps
+    assert "MCP Apps static adapter (implemented)" in future_steps
+    assert "Skills over MCP adapter (next)" in future_steps
+    assert mcp_apps_docs.exists()
+    assert "Local scans never dereference" in mcp_apps_docs.read_text(encoding="utf-8")
     assert "The current stable release is `v0.1.3`." in future_steps
     assert "For `v0.1.3`, both version commands should print `0.1.3`." in release_checklist
     assert 'git tag -a v0.1.3 -m "SkillGate v0.1.3"' in release_checklist
