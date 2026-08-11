@@ -9,6 +9,7 @@ from conftest import ROOT, clean_test_dir, runner
 from skillgate.cli import app
 
 SKILLS_FIXTURES = ROOT / "fixtures" / "skills-validation"
+ARCHIVE_SKILL_FIXTURE = ROOT / "fixtures" / "skills-validation-archives" / "valid-archive"
 PACKAGED_SKILL = """---
 name: packaged-skill
 description: A packaged skill.
@@ -25,6 +26,17 @@ def write_skill_zip(tmp_path: Path, entries: dict[str, str]) -> Path:
     with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for name, content in entries.items():
             archive.writestr(name, content)
+    return archive_path
+
+
+def zip_skill_directory(tmp_path: Path, source: Path, name: str = "skill.zip") -> Path:
+    archive_path = tmp_path / name
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        for source_path in sorted(path for path in source.rglob("*") if path.is_file()):
+            member = zipfile.ZipInfo(source_path.relative_to(source).as_posix())
+            member.date_time = (1980, 1, 1, 0, 0, 0)
+            member.compress_type = zipfile.ZIP_DEFLATED
+            archive.writestr(member, source_path.read_bytes())
     return archive_path
 
 
@@ -137,13 +149,7 @@ def test_invalid_skill_validation_path_exits_two() -> None:
 def test_valid_skill_zip_is_extracted_and_validated_without_directory_name_finding(
     tmp_path: Path,
 ) -> None:
-    archive = write_skill_zip(
-        tmp_path,
-        {
-            "SKILL.md": PACKAGED_SKILL,
-            "references/guide.md": "# Guide\n",
-        },
-    )
+    archive = zip_skill_directory(tmp_path, ARCHIVE_SKILL_FIXTURE)
     result = runner.invoke(app, ["skills", "validate", str(archive), "--format", "json"])
 
     assert result.exit_code == 0
@@ -151,7 +157,24 @@ def test_valid_skill_zip_is_extracted_and_validated_without_directory_name_findi
     assert payload["root"] == "."
     assert payload["archive"]["archive"]["format"] == "zip"
     assert payload["skills"][0]["path"] == "SKILL.md"
+    assert payload["skills"][0]["name"] == "packaged-skill"
     assert payload["findings"] == []
+
+
+def test_fixture_skill_zip_manifest_is_deterministic(tmp_path: Path) -> None:
+    first = zip_skill_directory(tmp_path, ARCHIVE_SKILL_FIXTURE, "first.zip")
+    second = zip_skill_directory(tmp_path, ARCHIVE_SKILL_FIXTURE, "second.zip")
+    first_result = runner.invoke(app, ["skills", "validate", str(first), "--format", "json"])
+    second_result = runner.invoke(app, ["skills", "validate", str(second), "--format", "json"])
+
+    assert first_result.exit_code == second_result.exit_code == 0
+    first_payload = json.loads(first_result.output)
+    second_payload = json.loads(second_result.output)
+    assert (
+        first_payload["archive"]["archive"]["sha256"]
+        == second_payload["archive"]["archive"]["sha256"]
+    )
+    assert first_payload["archive"]["members"] == second_payload["archive"]["members"]
 
 
 def test_skill_zip_keeps_static_findings_for_packaged_files(tmp_path: Path) -> None:
