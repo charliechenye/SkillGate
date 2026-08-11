@@ -6,7 +6,11 @@ from conftest import FIXTURES, ROOT, runner
 
 from skillgate.baseline import create_baseline, diff_against_baseline
 from skillgate.cli import app
-from skillgate.mcp_compatibility import inventory_mcp_compatibility
+from skillgate.mcp_compatibility import (
+    compatibility_capabilities,
+    compatibility_details,
+    inventory_mcp_compatibility,
+)
 from skillgate.mcp_registry import compare_registry_metadata
 from skillgate.preinstall import build_preinstall_packet, render_preinstall_markdown
 from skillgate.scan import scan_repository
@@ -62,6 +66,48 @@ def test_inventory_keeps_legacy_and_modern_protocol_revisions_together() -> None
         ("2026-07-28", "modern"),
     ]
     assert not inventory.unknown_declarations
+
+
+def test_tasks_inventory_requires_exact_extension_and_method_declarations() -> None:
+    inventory = inventory_mcp_compatibility(
+        {
+            "description": "tasks/get is mentioned in documentation only",
+            "extensions": {"io.modelcontextprotocol/tasks": {}},
+            "capabilities": {
+                "extensions": {"io.modelcontextprotocol/tasks": {"methods": ["tasks/get"]}},
+                "tools": [
+                    {"name": "tasks/update"},
+                    {"name": "tasks/cancel"},
+                    {"name": "tasks/result"},
+                    {"name": "run_job"},
+                ],
+            },
+        },
+        declaration_path="server",
+        scope="server:tasks",
+    )
+
+    assert {item.method for item in inventory.task_methods} == {
+        "tasks/get",
+        "tasks/update",
+        "tasks/cancel",
+    }
+    assert compatibility_details(inventory)["task_methods"] == [
+        "tasks/cancel",
+        "tasks/get",
+        "tasks/update",
+    ]
+    task_capabilities = compatibility_capabilities(inventory, source_file="server.json")
+    assert {
+        (item.resource, item.details["task_surface"])
+        for item in task_capabilities
+        if item.type == "mcp_task_capability"
+    } == {
+        ("io.modelcontextprotocol/tasks", "extension"),
+        ("tasks/get", "method"),
+        ("tasks/update", "method"),
+        ("tasks/cancel", "method"),
+    }
 
 
 def test_scan_keeps_transition_versions_advisory_and_leaves_absence_unspecified() -> None:

@@ -2,7 +2,7 @@
 
 The helpers in this module only inspect explicitly declared compatibility
 metadata. They never negotiate with, start, or otherwise contact an MCP
-server, and they intentionally do not interpret extension settings.
+server, and they do not infer runtime behavior from extension settings.
 """
 
 from __future__ import annotations
@@ -21,6 +21,9 @@ _EXTENSION_ID_RE = re.compile(
     r"^[A-Za-z][A-Za-z0-9-]*(?:\.[A-Za-z][A-Za-z0-9-]*)+/[A-Za-z0-9][A-Za-z0-9._-]*$"
 )
 _VERSION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$")
+TASKS_EXTENSION_ID = "io.modelcontextprotocol/tasks"
+TASK_METHODS = frozenset({"tasks/get", "tasks/update", "tasks/cancel"})
+_TASK_METHOD_FIELDS = ("methods", "supportedMethods", "supported_methods", "operations")
 
 # These are compatibility labels, not an allow-list. A declared date-form
 # revision is still retained even when it is newer than this table. The two
@@ -61,14 +64,27 @@ class McpUnknownCompatibilityDeclaration:
 
 
 @dataclass(frozen=True)
+class McpTaskMethodDeclaration:
+    method: str
+    declaration_path: str
+    scope: str
+
+
+@dataclass(frozen=True)
 class McpCompatibilityInventory:
     protocol_versions: tuple[McpProtocolDeclaration, ...]
     extensions: tuple[McpExtensionDeclaration, ...]
     unknown_declarations: tuple[McpUnknownCompatibilityDeclaration, ...]
+    task_methods: tuple[McpTaskMethodDeclaration, ...] = ()
 
     @property
     def is_empty(self) -> bool:
-        return not (self.protocol_versions or self.extensions or self.unknown_declarations)
+        return not (
+            self.protocol_versions
+            or self.extensions
+            or self.unknown_declarations
+            or self.task_methods
+        )
 
 
 def _path(parent: str, child: str) -> str:
@@ -163,6 +179,96 @@ def _extensions_from_value(
     return extensions, unknown
 
 
+def _task_method_declarations_from_mapping(
+    value: object,
+    *,
+    declaration_path: str,
+    scope: str,
+) -> tuple[list[McpTaskMethodDeclaration], list[McpUnknownCompatibilityDeclaration]]:
+    methods: list[McpTaskMethodDeclaration] = []
+    unknown: list[McpUnknownCompatibilityDeclaration] = []
+    if not isinstance(value, dict):
+        return methods, unknown
+
+    for field in _TASK_METHOD_FIELDS:
+        if field not in value:
+            continue
+        field_path = _path(declaration_path, field)
+        raw = value[field]
+        if isinstance(raw, str):
+            candidates = [(raw, field_path)]
+        elif isinstance(raw, list):
+            candidates = [(item, f"{field_path}[{index}]") for index, item in enumerate(raw)]
+            if not all(isinstance(item, str) for item in raw):
+                unknown.append(
+                    McpUnknownCompatibilityDeclaration(
+                        declaration_path=field_path,
+                        reason="invalid_task_method_declaration",
+                        scope=scope,
+                    )
+                )
+        else:
+            unknown.append(
+                McpUnknownCompatibilityDeclaration(
+                    declaration_path=field_path,
+                    reason="invalid_task_method_declaration",
+                    scope=scope,
+                )
+            )
+            continue
+        methods.extend(
+            McpTaskMethodDeclaration(
+                method=item,
+                declaration_path=item_path,
+                scope=scope,
+            )
+            for item, item_path in candidates
+            if isinstance(item, str) and item in TASK_METHODS
+        )
+    return methods, unknown
+
+
+def _task_method_declarations_from_tools(
+    value: object,
+    *,
+    declaration_path: str,
+    scope: str,
+) -> list[McpTaskMethodDeclaration]:
+    if not isinstance(value, dict) or "tools" not in value:
+        return []
+    tools = value["tools"]
+    tools_path = _path(declaration_path, "tools")
+    declarations: list[McpTaskMethodDeclaration] = []
+    if isinstance(tools, list):
+        entries = ((f"{tools_path}[{index}]", item) for index, item in enumerate(tools))
+    elif isinstance(tools, dict):
+        entries = ((_path(tools_path, str(name)), item) for name, item in sorted(tools.items()))
+    else:
+        return []
+
+    for entry_path, entry in entries:
+        if isinstance(entry, str):
+            candidates = [(entry, entry_path)]
+        elif isinstance(entry, dict):
+            candidates = [
+                (entry[key], _path(entry_path, key))
+                for key in ("name", "method", "id")
+                if isinstance(entry.get(key), str)
+            ]
+        else:
+            candidates = []
+        declarations.extend(
+            McpTaskMethodDeclaration(
+                method=item,
+                declaration_path=item_path,
+                scope=scope,
+            )
+            for item, item_path in candidates
+            if item in TASK_METHODS
+        )
+    return declarations
+
+
 def inventory_mcp_compatibility(
     data: object,
     *,
@@ -184,6 +290,7 @@ def inventory_mcp_compatibility(
     protocol_versions: list[McpProtocolDeclaration] = []
     extensions: list[McpExtensionDeclaration] = []
     unknown_declarations: list[McpUnknownCompatibilityDeclaration] = []
+    task_methods: list[McpTaskMethodDeclaration] = []
 
     def add_protocols(value: object, path: str) -> None:
         versions, invalid = _safe_protocol_versions(value)
@@ -248,6 +355,43 @@ def inventory_mcp_compatibility(
         extensions.extend(found_extensions)
         unknown_declarations.extend(found_unknown)
 
+    task_sources: list[tuple[object, str]] = [(data, declaration_path)]
+    if isinstance(capabilities, dict):
+        task_sources.append((capabilities, _path(declaration_path, "capabilities")))
+    if isinstance(metadata, dict):
+        client_capabilities = metadata.get("io.modelcontextprotocol/clientCapabilities")
+        if isinstance(client_capabilities, dict):
+            task_sources.append(
+                (
+                    client_capabilities,
+                    _path(
+                        declaration_path,
+                        "_meta.io.modelcontextprotocol/clientCapabilities",
+                    ),
+                )
+            )
+    for value, path in extension_sources:
+        if not isinstance(value, dict):
+            continue
+        task_settings = value.get(TASKS_EXTENSION_ID)
+        if isinstance(task_settings, dict):
+            task_sources.append((task_settings, _path(path, TASKS_EXTENSION_ID)))
+    for value, path in task_sources:
+        found_methods, found_unknown = _task_method_declarations_from_mapping(
+            value,
+            declaration_path=path,
+            scope=scope,
+        )
+        task_methods.extend(found_methods)
+        unknown_declarations.extend(found_unknown)
+        task_methods.extend(
+            _task_method_declarations_from_tools(
+                value,
+                declaration_path=path,
+                scope=scope,
+            )
+        )
+
     return McpCompatibilityInventory(
         protocol_versions=tuple(
             sorted(
@@ -272,12 +416,18 @@ def inventory_mcp_compatibility(
                 key=lambda item: (item.declaration_path, item.reason, item.scope),
             )
         ),
+        task_methods=tuple(
+            sorted(
+                set(task_methods),
+                key=lambda item: (item.method, item.declaration_path, item.scope),
+            )
+        ),
     )
 
 
 def compatibility_details(inventory: McpCompatibilityInventory) -> dict[str, object]:
     """Return redaction-safe, JSON-stable details for an MCP server capability."""
-    return {
+    details: dict[str, object] = {
         "protocol_versions": sorted({item.version for item in inventory.protocol_versions}),
         "protocol_version_eras": [
             {"version": version, "era": era}
@@ -299,6 +449,9 @@ def compatibility_details(inventory: McpCompatibilityInventory) -> dict[str, obj
             )
         ],
     }
+    if inventory.task_methods:
+        details["task_methods"] = sorted({item.method for item in inventory.task_methods})
+    return details
 
 
 def compatibility_capabilities(
@@ -334,6 +487,31 @@ def compatibility_capabilities(
                 version=item.version,
             )
         )
+        if item.identifier == TASKS_EXTENSION_ID:
+            capabilities.append(
+                make_capability(
+                    "mcp_task_capability",
+                    source_file,
+                    None,
+                    resource=item.identifier,
+                    declaration_path=item.declaration_path,
+                    scope=item.scope,
+                    task_surface="extension",
+                    version=item.version,
+                )
+            )
+    for item in inventory.task_methods:
+        capabilities.append(
+            make_capability(
+                "mcp_task_capability",
+                source_file,
+                None,
+                resource=item.method,
+                declaration_path=item.declaration_path,
+                scope=item.scope,
+                task_surface="method",
+            )
+        )
     for item in inventory.unknown_declarations:
         capabilities.append(
             make_capability(
@@ -354,6 +532,7 @@ def compatibility_evidence(capabilities: list[dict[str, Any]]) -> dict[str, obje
     protocol_versions = []
     extensions = []
     unknown_declarations = []
+    task_capabilities = []
     for capability in capabilities:
         details = capability.get("details")
         if not isinstance(details, dict):
@@ -381,10 +560,21 @@ def compatibility_evidence(capabilities: list[dict[str, Any]]) -> dict[str, obje
             )
         elif capability.get("type") == "mcp_unknown_declaration":
             unknown_declarations.append({"reason": details.get("reason"), **record})
-    if not (protocol_versions or extensions or unknown_declarations):
+        elif capability.get("type") == "mcp_task_capability":
+            task_capabilities.append(
+                {
+                    "surface": details.get("task_surface"),
+                    "resource": capability.get("resource"),
+                    **record,
+                }
+            )
+    if not (protocol_versions or extensions or unknown_declarations or task_capabilities):
         return None
-    return {
+    evidence: dict[str, object] = {
         "protocol_versions": sorted(protocol_versions, key=lambda item: str(item)),
         "extensions": sorted(extensions, key=lambda item: str(item)),
         "unknown_declarations": sorted(unknown_declarations, key=lambda item: str(item)),
     }
+    if task_capabilities:
+        evidence["task_capabilities"] = sorted(task_capabilities, key=lambda item: str(item))
+    return evidence

@@ -88,6 +88,11 @@ def registry_server_object(value: object) -> dict[str, Any] | None:
             "protocolVersion",
             "protocolVersions",
             "supportedVersions",
+            "methods",
+            "supportedMethods",
+            "supported_methods",
+            "operations",
+            "tools",
         ]
     ):
         return value
@@ -771,6 +776,11 @@ def compare_values(
             remote_compatibility["protocol_versions"],
         ),
         ("extensions", local_compatibility["extensions"], remote_compatibility["extensions"]),
+        (
+            "task_methods",
+            local_compatibility.get("task_methods", []),
+            remote_compatibility.get("task_methods", []),
+        ),
         (
             "unknown_declarations",
             local_compatibility["unknown_declarations"],
