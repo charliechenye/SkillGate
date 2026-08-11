@@ -17,6 +17,7 @@ Validate one `SKILL.md` directly or produce machine-readable output:
 
 ```bash
 skillgate skills validate path/to/my-skill/SKILL.md
+skillgate skills validate path/to/my-skill.zip
 skillgate skills validate . --format json --output skillgate-skills.json
 skillgate skills validate skills/ --fail-on medium
 ```
@@ -47,16 +48,28 @@ The command discovers a direct `SKILL.md`, a directory containing `SKILL.md`,
 and recursive skill layouts such as `skills/**/SKILL.md`,
 `.agents/skills/**/SKILL.md`, and `.claude/skills/**/SKILL.md`.
 
+ZIP inputs are inspected through SkillGate's bounded archive layer. The archive
+must contain a regular file named `SKILL.md` at its root. SkillGate extracts it
+into a temporary directory with traversal, symlink, special-file, compression,
+encryption, nested-archive, and resource-limit checks before validating the
+contents. The temporary path is never included in the report; JSON instead
+includes an `archive` manifest with the archive digest, limits, and sorted
+member hashes. The archive root is reported as `.` because the package
+directory name is not a reliable source for `SKILL004`.
+
 ## Output
 
 Text output is designed for a quick author feedback loop. JSON output includes
 `schema_version`, `tool_version`, `root`, `skills`, `findings`, and `summary`,
-with stable finding codes from `SKILL001` through `SKILL009`.
+with stable finding codes from `SKILL001` through `SKILL009`. ZIP reports add
+the deterministic `archive` manifest described above.
 
 ## Limitations
 
 This is structural validation, not runtime enforcement. SkillGate does not
 execute code, resolve packages, start services, make network calls, or make a
-malware determination. It also does not yet compare declared capabilities with
-capabilities observed during execution. That declared-vs-observed diff remains
-a future workflow.
+malware determination. ZIP validation supports ZIP-compatible stored and
+deflated members only; it does not implement TAR/RAR/7z support or an
+MCP-delivered `index.json`/digest contract. It also does not compare declared
+capabilities with capabilities observed during execution. That
+declared-vs-observed diff remains a future workflow.

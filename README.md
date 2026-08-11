@@ -256,14 +256,16 @@ installs packages, calls a network, or uses an LLM:
 ```bash
 skillgate skills validate path/to/my-skill
 skillgate skills validate path/to/my-skill/SKILL.md --format json
+skillgate skills validate path/to/my-skill.zip --format json
 skillgate skills validate skills/ --fail-on medium
 ```
 
 It checks frontmatter, slug-style names, directory/name consistency, recommended
 metadata, declared tool breadth, local references, and executable files outside
-`scripts/`. Findings are advisory unless `--fail-on` is supplied. See the
-[Agent Skills validation guide](docs/skills-validation.md) for examples and
-limitations.
+`scripts/`. ZIP inputs must contain a root-level `SKILL.md` and are passed
+through the bounded archive safety layer before extraction. Findings are
+advisory unless `--fail-on` is supplied. See the [Agent Skills validation
+guide](docs/skills-validation.md) for examples and limitations.
 
 ## 2. Scan A GitHub Repository Before Installing
 
