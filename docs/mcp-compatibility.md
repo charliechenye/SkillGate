@@ -3,7 +3,7 @@
 SkillGate statically inventories explicit MCP protocol and extension
 declarations so reviewers can see compatibility surface changes before enabling
 an MCP server or client configuration. It does not contact a server, negotiate
-extensions, resolve schemas, or inspect extension settings.
+extensions, resolve schemas, or infer runtime behavior from extension settings.
 
 ## Transition support
 
@@ -36,6 +36,30 @@ Protocol capabilities and packet evidence also carry the normalized `era`
 label, while existing `protocol_versions` lists retain the declared strings for
 stable comparisons.
 
+## Tasks capability
+
+SkillGate recognizes the current MCP Tasks extension ID,
+`io.modelcontextprotocol/tasks`, and records it as an advisory
+`mcp_task_capability`. It also records only these exact lifecycle method names
+when they appear in explicit method or tool metadata:
+
+- `tasks/get` for polling task state;
+- `tasks/update` for task input updates; and
+- `tasks/cancel` for cooperative cancellation.
+
+The normalized MCP server details expose a sorted `task_methods` list. Scan
+capabilities expose the extension and methods separately with their declaration
+paths, and pre-install packets add optional `task_capabilities` evidence without
+changing packet schema version `2`. Baseline comparison treats changes to the
+normalized method list as `SG010` drift; registry comparison reports them as a
+`task_methods` field under `SG013`.
+
+The adapter reads bounded, explicit fields only. It does not treat prose,
+ordinary job names, task IDs, or arbitrary strings as Tasks support, and it does
+not claim that an ordinary tool creates durable work. It also does not execute
+or poll a task. See the [official MCP Tasks overview](https://modelcontextprotocol.io/extensions/tasks/overview)
+for the protocol behavior that remains outside SkillGate's static boundary.
+
 MCP Apps are inventoried separately through the static adapter described in
 [`docs/mcp-apps-static-review.md`](mcp-apps-static-review.md). App resources,
 assets, origins, permissions, tool surfaces, host bridges, and unknown
@@ -48,7 +72,11 @@ declarations appear under the `mcp_apps` trust boundary and optional
   for the configured client or server. Mixed declarations are a migration
   surface to review, not a failure verdict.
 - Review newly added extension IDs and their declared versions before enabling
-  them. Extension settings are intentionally not interpreted by this inventory.
+  them. Extension settings are not treated as runtime behavior by this
+  inventory.
+- Review each new MCP Tasks extension or lifecycle method as a durable or
+  deferred-execution surface. The capability is evidence for a decision, not a
+  claim that the server will create a task at runtime.
 - Treat malformed IDs, malformed versions, and non-object extension settings as
   explicit review surfaces, not security verdicts.
 - Use `diff` or registry comparison to approve changes after review. This first
@@ -59,8 +87,8 @@ declarations appear under the `mcp_apps` trust boundary and optional
 SkillGate does not infer a protocol revision from a software `version`, a
 transport type, or package metadata. It does not start MCP servers, negotiate
 extensions, render MCP Apps, execute Tasks, perform OAuth exchanges, or resolve
-external references. Skills over MCP, Tasks, and authorization/schema analysis
-remain separate follow-up work.
+external references. It does not implement the unsettled Skills-over-MCP
+delivery/index contract, task execution, or authorization/schema analysis.
 
 The field locations follow the MCP 2026-07-28 extension and per-request
 metadata model described in the [MCP extensions overview](https://modelcontextprotocol.io/extensions/overview)

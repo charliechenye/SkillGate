@@ -32,6 +32,10 @@ The current stable release is `v0.1.3`. The shipped baseline includes:
   Review Packet JSON Schema; and
 - static MCP protocol-version and extension inventory through scan, baseline,
   registry comparison, and advisory pre-install evidence.
+- bounded ZIP Agent Skill validation with archive provenance and no-execution
+  extraction; and
+- explicit MCP Tasks extension and lifecycle capability inventory through scan,
+  baseline, registry comparison, and advisory pre-install evidence.
 
 These are release history, not future work. Keep detailed records in
 `CHANGELOG.md`.
@@ -74,17 +78,20 @@ gateway, renderer, or runtime policy engine.
    importing, executing, or dereferencing declared URLs. See
    [`docs/mcp-apps-static-review.md`](docs/mcp-apps-static-review.md).
 
-3. **Skills over MCP adapter (next).** Accept a local materialized snapshot, index, or
-   archive of MCP-delivered skills. Validate `index.json` name/description/URI
-   metadata against `SKILL.md`, verify declared digests, preserve archive
-   provenance, and pass the resulting files through existing Agent Skill,
-   semantic-inventory, and archive-safety checks. Do not require live server
-   introspection or make a remote MCP server part of scanning.
+3. **Skills over MCP contract study (next).** Keep the delivery and `index.json`
+   contract standards-neutral until upstream conventions are stable. The local
+   ZIP validation substrate is implemented, including safe extraction, root
+   `SKILL.md` validation, and archive provenance. A future adapter may accept a
+   local materialized snapshot or MCP-delivered archive, but it should not
+   invent name/description/URI or digest semantics, require live server
+   introspection, or make a remote MCP server part of scanning.
 
-4. **Tasks capability signal.** Detect opt-in Tasks declarations and tools that
-   can create, poll, update, or cancel durable work. Record long-running or
-   deferred execution as a capability requiring review; do not infer runtime
-   behavior or execute a task.
+4. **Tasks capability signal (implemented).** SkillGate records the exact
+   `io.modelcontextprotocol/tasks` extension and explicit `tasks/get`,
+   `tasks/update`, and `tasks/cancel` declarations. The signal flows through
+   scan, baselines, registry comparison, and advisory pre-install evidence. It
+   records a review surface; it does not infer runtime behavior or execute a
+   task.
 
 5. **Schema and authorization metadata checks.** Add bounded checks for full
    JSON Schema constructs, external `$ref` references, unrestricted output
@@ -94,8 +101,8 @@ gateway, renderer, or runtime policy engine.
 
 ### Policy and evidence follow-up
 
-- Add fixtures for Skills index/digest mismatch, Tasks, external `$ref`, and
-  OAuth issuer drift.
+- Add fixtures for the eventual Skills index/digest contract, external `$ref`,
+  and OAuth issuer drift.
 - Extend MCP baselines and policy templates only after the normalized capability
   model is stable. Candidate controls include allowed extension IDs, UI origins,
   protocol revisions, task capability, and authorization issuers.
