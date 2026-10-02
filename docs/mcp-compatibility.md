@@ -66,6 +66,21 @@ assets, origins, permissions, tool surfaces, host bridges, and unknown
 declarations appear under the `mcp_apps` trust boundary and optional
 `metadata.mcp_apps` review packet evidence.
 
+## MCP Skills extension boundary
+
+The stable [MCP Skills extension](https://skills.extensions.modelcontextprotocol.io/specification/stable/skills)
+defines `io.modelcontextprotocol/skills`, `skills/list`, `skills/get`, and
+resource manifests containing URIs, SHA-256 digests, and byte sizes. SkillGate
+does not implement MCP Skills snapshot admission yet. The generic compatibility
+inventory may retain the extension declaration as an advisory extension
+surface, but it does not call a live server or validate skill resources.
+
+Static MCP Skills admission is planned for the v0.2 Agent Artifact Admission
+milestone. It will operate on a materialized directory, archive, or captured
+snapshot, preserve origin-plus-URI identity, account for nested and dynamic
+resources, and invalidate approval when the reviewed resource set changes. See
+the [canonical roadmap](../future_steps.md) for the planned contract.
+
 ## Reviewer guidance
 
 - Confirm the declared legacy, modern, or mixed protocol revisions are expected
@@ -86,9 +101,10 @@ declarations appear under the `mcp_apps` trust boundary and optional
 
 SkillGate does not infer a protocol revision from a software `version`, a
 transport type, or package metadata. It does not start MCP servers, negotiate
-extensions, render MCP Apps, execute Tasks, perform OAuth exchanges, or resolve
-external references. It does not implement the unsettled Skills-over-MCP
-delivery/index contract, task execution, or authorization/schema analysis.
+extensions, render MCP Apps, execute Tasks, perform OAuth exchanges, resolve
+external references, or implement MCP Skills `skills/list`/`skills/get`
+retrieval. Runtime MCP behavior and live Skills delivery remain outside the
+current product boundary.
 
 The field locations follow the MCP 2026-07-28 extension and per-request
 metadata model described in the [MCP extensions overview](https://modelcontextprotocol.io/extensions/overview)
