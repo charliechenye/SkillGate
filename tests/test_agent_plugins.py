@@ -10,6 +10,8 @@ from skillgate.agent_plugins import (
     MCP_SCHEMA,
     PLUGIN_SCHEMA,
     AgentPluginLimits,
+    _file_identity,
+    _read_json,
     agent_plugin_to_data,
     load_agent_plugin,
 )
@@ -91,8 +93,12 @@ def test_unknown_manifest_field_is_non_fatal_and_ignored(tmp_path: Path) -> None
     assert any(item.code == "manifest_unknown_field" for item in inventory.diagnostics)
 
 
-def test_non_object_extensions_is_non_fatal_and_does_not_hide_components(tmp_path: Path) -> None:
-    root = plugin(tmp_path, {**manifest(), "extensions": ["ignored"]})
+@pytest.mark.parametrize("extensions", [["ignored"], None])
+def test_non_object_extensions_is_non_fatal_and_does_not_hide_components(
+    tmp_path: Path,
+    extensions: object,
+) -> None:
+    root = plugin(tmp_path, {**manifest(), "extensions": extensions})
     (root / "skills" / "one").mkdir(parents=True)
     (root / "skills" / "one" / "SKILL.md").write_text(
         "---\nname: one\ndescription: One\nlicense: MIT\ncompatibility: local\n---\n",
@@ -104,6 +110,26 @@ def test_non_object_extensions_is_non_fatal_and_does_not_hide_components(tmp_pat
     assert inventory.manifest.status == "valid"
     assert [skill.name for skill in inventory.skills] == ["one"]
     assert any(item.code == "manifest_extensions_ignored" for item in inventory.diagnostics)
+
+
+@pytest.mark.parametrize("opaque_value", ["opaque", [1, 2], None])
+def test_unknown_extension_values_are_preserved_as_opaque(
+    tmp_path: Path,
+    opaque_value: object,
+) -> None:
+    root = plugin(
+        tmp_path,
+        {**manifest(), "extensions": {"com.example.client": opaque_value}},
+    )
+
+    inventory = load_agent_plugin(root)
+
+    assert inventory.status == "loaded"
+    assert inventory.coverage.portable_core == "COMPLETE"
+    assert inventory.coverage.overall_artifact == "INCOMPLETE"
+    assert [
+        (item.namespace, item.manifest_data_present, item.status) for item in inventory.extensions
+    ] == [("com.example.client", True, "unknown")]
 
 
 @pytest.mark.parametrize(
@@ -256,7 +282,7 @@ def test_invalid_mcp_server_preserves_valid_sibling(tmp_path: Path) -> None:
         {"type": "stdio", "command": "node", "cwd": "../escape"},
         {"type": "stdio", "command": "node", "cwd": "${PLUGIN_DATA}/../escape"},
         {"type": "stdio", "command": "node", "env": {"PLUGIN_ROOT": "bad"}},
-        {"type": "stdio", "command": "node --bad"},
+        {"type": "stdio", "command": "${PLUGIN_ROOT}/bin/server"},
     ],
 )
 def test_stdio_static_containment_and_reserved_env_are_per_server(
@@ -631,3 +657,120 @@ def test_plugin_relative_command_with_spaces_is_not_rejected_as_shell_syntax(
     inventory = load_agent_plugin(root)
 
     assert inventory.mcp.servers[0].status == "valid"
+
+
+@pytest.mark.parametrize("command", ["./bin/a&b", "./bin/a;b", "./bin/a|b"])
+def test_plugin_relative_command_keeps_shell_characters_opaque(
+    tmp_path: Path,
+    command: str,
+) -> None:
+    root = plugin(tmp_path)
+    write_json(
+        root / "mcp.json",
+        {
+            "$schema": MCP_SCHEMA,
+            "mcpServers": {"bundled": {"type": "stdio", "command": command}},
+        },
+    )
+
+    inventory = load_agent_plugin(root)
+
+    assert inventory.mcp.servers[0].status == "valid"
+
+
+def test_bare_command_with_spaces_is_not_shell_parsed(tmp_path: Path) -> None:
+    root = plugin(tmp_path)
+    write_json(
+        root / "mcp.json",
+        {
+            "$schema": MCP_SCHEMA,
+            "mcpServers": {"bundled": {"type": "stdio", "command": "node --bad"}},
+        },
+    )
+
+    inventory = load_agent_plugin(root)
+
+    assert inventory.mcp.servers[0].status == "valid"
+
+
+def test_bounded_json_read_does_not_depend_on_stat_or_read_past_limit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "payload.json"
+    path.write_text('{"value": true}', encoding="utf-8")
+    read_sizes: list[int] = []
+    original_open = Path.open
+
+    class TrackedStream:
+        def __init__(self, stream: object) -> None:
+            self.stream = stream
+
+        def __enter__(self) -> TrackedStream:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            self.stream.close()
+
+        def read(self, size: int) -> bytes:
+            read_sizes.append(size)
+            return self.stream.read(size)
+
+    def tracked_open(path_value: Path, *args: object, **kwargs: object) -> TrackedStream:
+        return TrackedStream(original_open(path_value, *args, **kwargs))
+
+    def forbidden_stat(_path: Path) -> object:
+        raise AssertionError("bounded JSON reads must not use stat() as their size guard")
+
+    monkeypatch.setattr(Path, "open", tracked_open)
+    monkeypatch.setattr(Path, "stat", forbidden_stat)
+
+    value, diagnostic = _read_json(path, "payload.json", max_bytes=3)
+
+    assert value is None
+    assert diagnostic is not None and diagnostic.code == "json_too_large"
+    assert read_sizes == [4]
+
+
+def test_invalid_utf8_json_has_a_distinct_diagnostic(tmp_path: Path) -> None:
+    root = plugin(tmp_path)
+    (root / "plugin.json").write_bytes(b"{\xff")
+
+    inventory = load_agent_plugin(root)
+
+    assert inventory.status == "rejected"
+    assert any(item.code == "json_invalid_utf8" for item in inventory.diagnostics)
+
+
+def test_oversized_package_surface_has_explicit_incomplete_identity(
+    tmp_path: Path,
+) -> None:
+    root = plugin(tmp_path)
+    payload = root / "payload.bin"
+    payload.write_bytes(b"0123456789")
+
+    inventory = load_agent_plugin(
+        root,
+        limits=AgentPluginLimits(max_package_file_bytes=4),
+    )
+    entry = next(
+        item
+        for item in inventory.provenance.entries
+        if item.component == "package_surface" and item.path == "payload.bin"
+    )
+
+    assert entry.sha256 is None
+    assert entry.size_bytes is None
+    assert entry.identity_skipped_reason == "file_too_large"
+    assert inventory.coverage.overall_artifact == "INCOMPLETE"
+
+
+def test_hash_identity_read_is_bounded_to_one_detection_chunk(tmp_path: Path) -> None:
+    root = plugin(tmp_path)
+    (root / "payload.bin").write_bytes(b"0123456789")
+
+    identity = _file_identity(root, "payload.bin", max_bytes=4)
+
+    assert identity.sha256 is None
+    assert identity.size_bytes is None
+    assert identity.identity_skipped_reason == "file_too_large"

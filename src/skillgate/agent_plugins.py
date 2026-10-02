@@ -79,6 +79,13 @@ DEFAULT_AGENT_PLUGIN_LIMITS = AgentPluginLimits()
 
 
 @dataclass(frozen=True)
+class _FileIdentity:
+    sha256: str | None = None
+    size_bytes: int | None = None
+    identity_skipped_reason: str | None = None
+
+
+@dataclass(frozen=True)
 class AgentPluginDiagnostic:
     code: str
     message: str
@@ -233,6 +240,7 @@ class AgentPluginProvenanceEntry:
     status: str
     sha256: str | None = None
     size_bytes: int | None = None
+    identity_skipped_reason: str | None = None
 
     def to_data(self) -> dict[str, object]:
         return {
@@ -241,6 +249,7 @@ class AgentPluginProvenanceEntry:
             "status": self.status,
             "sha256": self.sha256,
             "size_bytes": self.size_bytes,
+            "identity_skipped_reason": self.identity_skipped_reason,
         }
 
 
@@ -346,16 +355,22 @@ def _read_json(
     *,
     max_bytes: int,
 ) -> tuple[object | None, AgentPluginDiagnostic | None]:
+    limit = max(max_bytes, 0)
     try:
-        if path.stat().st_size > max_bytes:
-            return None, _diagnostic(
-                "json_too_large",
-                f"{label} exceeds the bounded JSON read limit",
-                label,
-            )
-        text = path.read_text(encoding="utf-8")
-    except (OSError, UnicodeError):
+        with path.open("rb", buffering=0) as stream:
+            raw = stream.read(limit + 1)
+    except OSError:
         return None, _diagnostic("json_unreadable", f"{label} could not be read safely", label)
+    if len(raw) > limit:
+        return None, _diagnostic(
+            "json_too_large",
+            f"{label} exceeds the bounded JSON read limit",
+            label,
+        )
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return None, _diagnostic("json_invalid_utf8", f"{label} is not valid UTF-8", label)
     try:
         return json.loads(text), None
     except json.JSONDecodeError:
@@ -367,22 +382,28 @@ def _file_identity(
     relative_path: str,
     *,
     max_bytes: int,
-) -> tuple[str | None, int | None]:
+) -> _FileIdentity:
     """Hash only a regular file that resolves safely within the plugin root."""
     candidate = _resolve_inside(root, root / relative_path)
     if candidate is None:
-        return None, None
+        return _FileIdentity(identity_skipped_reason="path_unavailable")
     try:
-        size = candidate.stat().st_size
-        if not candidate.is_file() or size > max_bytes:
-            return None, size if candidate.is_file() else None
+        if not candidate.is_file():
+            return _FileIdentity(identity_skipped_reason="not_regular_file")
+        limit = max(max_bytes, 0)
         digest = hashlib.sha256()
-        with candidate.open("rb") as stream:
-            for chunk in iter(lambda: stream.read(65_536), b""):
+        total = 0
+        with candidate.open("rb", buffering=0) as stream:
+            while True:
+                chunk = stream.read(min(65_536, limit - total + 1))
+                if not chunk:
+                    return _FileIdentity(digest.hexdigest(), total)
+                total += len(chunk)
+                if total > limit:
+                    return _FileIdentity(identity_skipped_reason="file_too_large")
                 digest.update(chunk)
-        return digest.hexdigest(), size
-    except (OSError, UnicodeError):
-        return None, None
+    except OSError:
+        return _FileIdentity(identity_skipped_reason="read_error")
 
 
 def _validate_name(value: object) -> bool:
@@ -487,7 +508,7 @@ def _validate_manifest(
         )
 
     extensions = data.get("extensions")
-    if extensions is not None and not isinstance(extensions, dict):
+    if "extensions" in data and not isinstance(extensions, dict):
         diagnostics.append(
             _diagnostic(
                 "manifest_extensions_ignored",
@@ -495,17 +516,8 @@ def _validate_manifest(
                 "plugin.json.extensions",
             )
         )
-    elif isinstance(extensions, dict):
-        for namespace in sorted(extensions):
-            if not isinstance(extensions[namespace], dict):
-                fatal = True
-                diagnostics.append(
-                    _diagnostic(
-                        "manifest_invalid_field",
-                        "extension manifest data must be an object",
-                        f"plugin.json.extensions.{namespace}",
-                    )
-                )
+    # SkillGate implements no client extension namespaces. Preserve the keys
+    # for inventory, but leave every unknown namespace value opaque.
 
     manifest = AgentPluginManifest(
         status="invalid" if fatal else "valid",
@@ -761,21 +773,13 @@ def _validate_cwd(root: Path, value: object, path: str) -> list[AgentPluginDiagn
 
 
 def _validate_command(root: Path, value: object, path: str) -> list[AgentPluginDiagnostic]:
-    if not isinstance(value, str) or not value or value != value.strip():
+    if not isinstance(value, str) or not value:
         return [
             _diagnostic("mcp_invalid_command", "stdio command must be one executable token", path)
         ]
     if value.startswith("./"):
-        # The JSON value is already one command token. A plugin-relative
-        # executable may contain spaces in its filename; do not split or
-        # shell-parse it while inspecting the package. Shell metacharacters
-        # remain invalid command syntax.
-        if any(character in value for character in "\r\n|;&<>`"):
-            return [
-                _diagnostic(
-                    "mcp_invalid_command", "stdio command must be one executable token", path
-                )
-            ]
+        # The schema constrains command to a non-empty string. Keep the JSON
+        # value as one token; do not shell-parse or infer runtime intent.
         if not _path_inside_root(root, value):
             return [
                 _diagnostic(
@@ -783,10 +787,6 @@ def _validate_command(root: Path, value: object, path: str) -> list[AgentPluginD
                 )
             ]
         return []
-    if any(char.isspace() for char in value):
-        return [
-            _diagnostic("mcp_invalid_command", "stdio command must be one executable token", path)
-        ]
     if "/" in value or "\\" in value or value.startswith(".") or value.startswith("$"):
         return [
             _diagnostic("mcp_invalid_command", "stdio command must be bare or begin with ./", path)
@@ -1312,6 +1312,25 @@ def _counts_for_overall_artifact(
     )
 
 
+def _provenance_file_entry(
+    root: Path,
+    component: str,
+    path: str,
+    status: str,
+    *,
+    max_bytes: int,
+) -> AgentPluginProvenanceEntry:
+    identity = _file_identity(root, path, max_bytes=max_bytes)
+    return AgentPluginProvenanceEntry(
+        component,
+        path,
+        status,
+        identity.sha256,
+        identity.size_bytes,
+        identity.identity_skipped_reason,
+    )
+
+
 def _provenance(
     root: Path,
     manifest: AgentPluginManifest,
@@ -1323,44 +1342,35 @@ def _provenance(
     unknown_surfaces: list[str],
     limits: AgentPluginLimits,
 ) -> AgentPluginProvenance:
-    manifest_sha256, manifest_size = _file_identity(
-        root,
-        "plugin.json",
-        max_bytes=limits.max_manifest_bytes,
-    )
     entries = [
-        AgentPluginProvenanceEntry(
+        _provenance_file_entry(
+            root,
             "manifest",
             "plugin.json",
             manifest.status,
-            manifest_sha256,
-            manifest_size,
+            max_bytes=limits.max_manifest_bytes,
         )
     ]
     if skills_status != "absent":
         entries.append(AgentPluginProvenanceEntry("skills", "skills", skills_status))
     entries.extend(
-        AgentPluginProvenanceEntry(
+        _provenance_file_entry(
+            root,
             "skill",
             item.path,
             item.status,
-            *_file_identity(root, item.path, max_bytes=limits.max_skill_bytes),
+            max_bytes=limits.max_skill_bytes,
         )
         for item in skills
     )
     if mcp.status != "absent":
-        mcp_sha256, mcp_size = _file_identity(
-            root,
-            mcp.path,
-            max_bytes=limits.max_mcp_bytes,
-        )
         entries.append(
-            AgentPluginProvenanceEntry(
+            _provenance_file_entry(
+                root,
                 "mcp",
                 mcp.path,
                 mcp.status,
-                mcp_sha256,
-                mcp_size,
+                max_bytes=limits.max_mcp_bytes,
             )
         )
     entries.extend(
@@ -1371,11 +1381,12 @@ def _provenance(
     )
     package_paths = {item.path for item in package_surfaces}
     entries.extend(
-        AgentPluginProvenanceEntry(
+        _provenance_file_entry(
+            root,
             "package_surface",
             item.path,
             item.status,
-            *_file_identity(root, item.path, max_bytes=limits.max_package_file_bytes),
+            max_bytes=limits.max_package_file_bytes,
         )
         for item in package_surfaces
     )
@@ -1400,20 +1411,15 @@ def _rejected_inventory(
     )
     empty_counts = AgentPluginCoverageCounts(discovered=1, invalid=1)
     coverage = AgentPluginCoverage("REJECTED", "REJECTED", empty_counts, empty_counts)
-    manifest_sha256, manifest_size = _file_identity(
-        root,
-        "plugin.json",
-        max_bytes=limits.max_manifest_bytes,
-    )
     provenance = AgentPluginProvenance(
         ".",
         (
-            AgentPluginProvenanceEntry(
+            _provenance_file_entry(
+                root,
                 "manifest",
                 "plugin.json",
                 "invalid",
-                manifest_sha256,
-                manifest_size,
+                max_bytes=limits.max_manifest_bytes,
             ),
         ),
     )
