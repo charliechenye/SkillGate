@@ -211,7 +211,9 @@ def test_release_metadata_and_roadmap_are_consistent() -> None:
     sessions_docs = ROOT / "docs" / "sessions" / "README.md"
     release_checklist = (ROOT / "docs" / "release-checklist.md").read_text(encoding="utf-8")
     mcp_apps_docs = ROOT / "docs" / "mcp-apps-static-review.md"
+    admission_roadmap = ROOT / "docs" / "roadmaps" / "agent-artifact-admission.md"
     release_notes = ROOT / "docs" / "release-notes" / "0.1.3.md"
+    admission = admission_roadmap.read_text(encoding="utf-8")
     assert pyproject["project"]["name"] == "openevalgate-skillgate"
     assert pyproject["project"]["authors"] == [{"name": "Chenye Zhu"}]
     assert pyproject["project"]["version"] == "0.1.3"
@@ -246,10 +248,17 @@ def test_release_metadata_and_roadmap_are_consistent() -> None:
     assert "docs/mcp-compatibility.md" in future_steps
     assert "docs/mcp-apps-static-review.md" in future_steps
     assert "MCP Apps static review" in future_steps
-    assert "Static MCP Skills admission review" in future_steps
-    assert "Agent Plugins 1.0 aggregate review" in future_steps
+    assert "v0.2A — Agent Plugins 1.0" in future_steps
+    assert "v0.2B — MCP Skills snapshots" in future_steps
     assert "Skills over MCP contract study (next)" not in future_steps
     assert "Tasks capability inventory" in future_steps
+    assert admission_roadmap.exists()
+    assert "Artifact/content identity" in admission
+    assert "Content changed: YES" in admission
+    assert "Capability changed: NO" in admission
+    assert "Coverage              INCOMPLETE" in admission
+    assert "No new rule ID" in admission
+    assert "Review what agent tooling can do before you install or merge it." in readme
     assert mcp_apps_docs.exists()
     assert "Local scans never dereference" in mcp_apps_docs.read_text(encoding="utf-8")
     assert "The current stable release is `v0.1.3`." in future_steps

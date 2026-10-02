@@ -13,6 +13,8 @@ Stable compatibility channel: `v0`
 
 ![SkillGate social preview: static trust checks for AI-agent skills and MCP configurations](docs/assets/repo_image.png)
 
+Review what agent tooling can do before you install or merge it.
+
 SkillGate is local-first, deterministic admission control for AI-agent skills,
 instruction files, helper scripts, MCP metadata, MCP bundles, and related agent
 artifacts. It helps reviewers answer one practical question before install,
@@ -624,4 +626,5 @@ Use [schemas/skillgate-policy.schema.json](schemas/skillgate-policy.schema.json)
 
 See [future_steps.md](future_steps.md) for the canonical product direction,
 planned Agent Artifact Admission milestone, evidence workstream, and explicit
-runtime boundary.
+runtime boundary. The detailed v0.2 design is in the [Agent Artifact Admission
+roadmap](docs/roadmaps/agent-artifact-admission.md).
