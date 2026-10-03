@@ -6,13 +6,18 @@ from conftest import FIXTURES, ROOT, runner
 
 from skillgate.baseline import create_baseline, diff_against_baseline
 from skillgate.cli import app
-from skillgate.mcp_compatibility import inventory_mcp_compatibility
+from skillgate.mcp_compatibility import (
+    compatibility_capabilities,
+    compatibility_details,
+    inventory_mcp_compatibility,
+)
 from skillgate.mcp_registry import compare_registry_metadata
 from skillgate.preinstall import build_preinstall_packet, render_preinstall_markdown
 from skillgate.scan import scan_repository
 
 COMPATIBILITY_FIXTURE = FIXTURES / "28-mcp-compatibility-inventory"
 TRANSITION_FIXTURE = FIXTURES / "29-mcp-protocol-transition"
+TASKS_FIXTURE = FIXTURES / "31-mcp-tasks-capability"
 MCP_COMPATIBILITY_FIXTURES = ROOT / "fixtures" / "mcp-compatibility"
 
 
@@ -64,6 +69,48 @@ def test_inventory_keeps_legacy_and_modern_protocol_revisions_together() -> None
     assert not inventory.unknown_declarations
 
 
+def test_tasks_inventory_requires_exact_extension_and_method_declarations() -> None:
+    inventory = inventory_mcp_compatibility(
+        {
+            "description": "tasks/get is mentioned in documentation only",
+            "extensions": {"io.modelcontextprotocol/tasks": {}},
+            "capabilities": {
+                "extensions": {"io.modelcontextprotocol/tasks": {"methods": ["tasks/get"]}},
+                "tools": [
+                    {"name": "tasks/update"},
+                    {"name": "tasks/cancel"},
+                    {"name": "tasks/result"},
+                    {"name": "run_job"},
+                ],
+            },
+        },
+        declaration_path="server",
+        scope="server:tasks",
+    )
+
+    assert {item.method for item in inventory.task_methods} == {
+        "tasks/get",
+        "tasks/update",
+        "tasks/cancel",
+    }
+    assert compatibility_details(inventory)["task_methods"] == [
+        "tasks/cancel",
+        "tasks/get",
+        "tasks/update",
+    ]
+    task_capabilities = compatibility_capabilities(inventory, source_file="server.json")
+    assert {
+        (item.resource, item.details["task_surface"])
+        for item in task_capabilities
+        if item.type == "mcp_task_capability"
+    } == {
+        ("io.modelcontextprotocol/tasks", "extension"),
+        ("tasks/get", "method"),
+        ("tasks/update", "method"),
+        ("tasks/cancel", "method"),
+    }
+
+
 def test_scan_keeps_transition_versions_advisory_and_leaves_absence_unspecified() -> None:
     report = scan_repository(TRANSITION_FIXTURE)
     versions = [item for item in report.capabilities if item.type == "mcp_protocol_version"]
@@ -98,6 +145,36 @@ def test_scan_inventory_is_advisory_and_preserves_mcp_server_drift_details() -> 
         "com.example/tasks",
         "io.modelcontextprotocol/ui",
     }
+
+
+def test_tasks_capabilities_flow_into_scan_and_preinstall_evidence() -> None:
+    report = scan_repository(TASKS_FIXTURE)
+    task_capabilities = [item for item in report.capabilities if item.type == "mcp_task_capability"]
+    assert {item.resource for item in task_capabilities} == {
+        "io.modelcontextprotocol/tasks",
+        "tasks/get",
+        "tasks/update",
+        "tasks/cancel",
+    }
+    assert "tasks/result" not in {item.resource for item in task_capabilities}
+
+    packet = build_preinstall_packet(
+        {
+            "kind": "local",
+            "reference": str(TASKS_FIXTURE),
+            "path": str(TASKS_FIXTURE),
+        },
+        report,
+    )
+    evidence = packet["metadata"]["mcp_compatibility"]
+    assert {item["resource"] for item in evidence["task_capabilities"]} == {
+        "io.modelcontextprotocol/tasks",
+        "tasks/get",
+        "tasks/update",
+        "tasks/cancel",
+    }
+    assert any("MCP Tasks" in action for action in packet["reviewer"]["next_actions"])
+    assert "### Tasks capability" in render_preinstall_markdown(packet)
 
 
 def test_preinstall_packet_exposes_compatibility_evidence_without_schema_bump() -> None:
@@ -140,6 +217,21 @@ def test_compatibility_changes_produce_mcp_baseline_drift() -> None:
     }
 
 
+def test_tasks_method_changes_produce_mcp_baseline_drift() -> None:
+    baseline = create_baseline(MCP_COMPATIBILITY_FIXTURES / "tasks-baseline-before")
+    diff, _report = diff_against_baseline(
+        MCP_COMPATIBILITY_FIXTURES / "tasks-baseline-after",
+        baseline,
+    )
+
+    finding = next(item for item in diff.findings if item.rule_id == "SG010")
+    assert "task_methods" in (finding.evidence or "")
+    assert any(
+        item.type == "mcp_task_capability" and item.resource == "tasks/update"
+        for item in diff.added_capabilities
+    )
+
+
 def test_registry_comparison_reports_extension_drift_from_local_fixture() -> None:
     report = compare_registry_metadata(
         MCP_COMPATIBILITY_FIXTURES / "registry" / "local",
@@ -152,6 +244,22 @@ def test_registry_comparison_reports_extension_drift_from_local_fixture() -> Non
     protocol_drift = next(item for item in drift if item["field"] == "protocol_versions")
     assert protocol_drift["local"] == ["2025-11-25"]
     assert protocol_drift["registry"] == ["2025-11-25", "2026-07-28"]
+    assert any(item.rule_id == "SG013" for item in report.findings)
+
+
+def test_registry_comparison_reports_tasks_method_drift() -> None:
+    report = compare_registry_metadata(
+        MCP_COMPATIBILITY_FIXTURES / "tasks-registry" / "local",
+        "io.example.tasks",
+        str(MCP_COMPATIBILITY_FIXTURES / "tasks-registry" / "registry.json"),
+    )
+
+    drift = report.summary["registry_drift"]
+    assert {item["field"] for item in drift} == {"task_methods"}
+    assert next(item for item in drift if item["field"] == "task_methods")["registry"] == [
+        "tasks/get",
+        "tasks/update",
+    ]
     assert any(item.rule_id == "SG013" for item in report.findings)
 
 

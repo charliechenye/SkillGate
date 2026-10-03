@@ -76,7 +76,7 @@ def test_cli_fixtures_summary_json() -> None:
     assert result.exit_code == 0
     data = json.loads(result.output)
     assert data["summary"]["failed"] == 0
-    assert data["summary"]["fixtures"] == 30
+    assert data["summary"]["fixtures"] == 31
     assert all(item["status"] == "pass" for item in data["fixtures"])
 
 
@@ -246,7 +246,8 @@ def test_release_metadata_and_roadmap_are_consistent() -> None:
     assert "docs/mcp-compatibility.md" in future_steps
     assert "docs/mcp-apps-static-review.md" in future_steps
     assert "MCP Apps static adapter (implemented)" in future_steps
-    assert "Skills over MCP adapter (next)" in future_steps
+    assert "Skills over MCP contract study (next)" in future_steps
+    assert "Tasks capability signal (implemented)" in future_steps
     assert mcp_apps_docs.exists()
     assert "Local scans never dereference" in mcp_apps_docs.read_text(encoding="utf-8")
     assert "The current stable release is `v0.1.3`." in future_steps

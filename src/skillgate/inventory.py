@@ -21,6 +21,7 @@ TRUST_BOUNDARY_TYPES = {
         "mcp_registry_server",
         "mcp_protocol_version",
         "mcp_extension",
+        "mcp_task_capability",
         "mcp_unknown_declaration",
     },
     "mcp_apps": {

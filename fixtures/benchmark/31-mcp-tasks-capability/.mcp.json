@@ -1,0 +1,21 @@
+{
+  "mcpServers": {
+    "tasks-server": {
+      "type": "streamable-http",
+      "url": "https://tasks.example.invalid/mcp",
+      "protocolVersion": "2026-07-28",
+      "capabilities": {
+        "extensions": {
+          "io.modelcontextprotocol/tasks": {}
+        },
+        "tools": [
+          {"name": "tasks/get"},
+          {"name": "tasks/update"},
+          {"name": "tasks/cancel"},
+          {"name": "tasks/result"},
+          {"name": "run_job"}
+        ]
+      }
+    }
+  }
+}
