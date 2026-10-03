@@ -11,6 +11,7 @@ be reviewed, and uninterpreted package surfaces remain explicit blind spots.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from collections.abc import Iterable
@@ -123,6 +124,9 @@ class AgentPluginCapabilityFileReview:
     status: str
     reason: str | None = None
     size_bytes: int | None = None
+    # Internal identity from the exact bounded read. Keep PR2's serialized
+    # shape stable by intentionally omitting this from to_data().
+    sha256: str | None = None
 
     def to_data(self) -> dict[str, object]:
         return {
@@ -835,6 +839,7 @@ def _read_and_analyze_candidate(
                 _FILE_UNSUPPORTED,
                 "binary_not_utf8",
                 size_bytes,
+                hashlib.sha256(data).hexdigest(),
             ),
             next_bytes_read,
             (),
@@ -860,6 +865,7 @@ def _read_and_analyze_candidate(
                 _FILE_SCAN_FAILED,
                 "rule_analysis_failed",
                 size_bytes,
+                hashlib.sha256(data).hexdigest(),
             ),
             next_bytes_read,
             (),
@@ -871,7 +877,12 @@ def _read_and_analyze_candidate(
             None,
         )
     return (
-        AgentPluginCapabilityFileReview(candidate.path, _FILE_SCANNED, size_bytes=size_bytes),
+        AgentPluginCapabilityFileReview(
+            candidate.path,
+            _FILE_SCANNED,
+            size_bytes=size_bytes,
+            sha256=hashlib.sha256(data).hexdigest(),
+        ),
         next_bytes_read,
         capabilities,
         None,
@@ -1229,6 +1240,7 @@ def _account_skill_associated_resources(
                 status=existing.status,
                 reason=reason,
                 size_bytes=existing.size_bytes,
+                sha256=existing.sha256,
             )
         else:
             reason = resolution.reason or "associated_resource_unreviewed"
@@ -1546,6 +1558,7 @@ def _scan_mcp_component(
             status=status,
             reason=reason,
             size_bytes=asset.size_bytes,
+            sha256=asset.sha256,
         )
         existing = file_reviews.get(asset.path)
         if existing is None or asset_status_rank[status] > asset_status_rank[existing.status]:
