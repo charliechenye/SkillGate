@@ -8,12 +8,16 @@ import pytest
 
 from skillgate.agent_plugin_approval import (
     AGENT_PLUGIN_APPROVAL_BINDING_VERSION,
+    APPROVAL_BINDING_FORMAT_UNSUPPORTED,
     APPROVAL_MATCHES,
     APPROVAL_NOT_BOUND,
     APPROVAL_SCOPE_OVERALL_ARTIFACT,
     APPROVAL_SCOPE_PORTABLE_CORE,
+    APPROVAL_SNAPSHOT_FORMAT_UNSUPPORTED,
     APPROVAL_STALE,
     APPROVAL_UNKNOWN,
+    CAPABILITY_COVERAGE_INCOMPLETE,
+    CONTENT_IDENTITY_INCOMPLETE,
     ELIGIBILITY_ELIGIBLE,
     ELIGIBILITY_INELIGIBLE,
     ELIGIBILITY_NOT_BOUND,
@@ -22,6 +26,8 @@ from skillgate.agent_plugin_approval import (
     RESOLVE_CONTENT_IDENTITY,
     REVIEW_CAPABILITY_CHANGE,
     REVIEW_CONTENT_CHANGE,
+    SNAPSHOT_FORMAT_UNSUPPORTED,
+    AgentPluginApprovalBinding,
     AgentPluginApprovalContract,
     AgentPluginApprovalEligibilityError,
     assess_agent_plugin_approval_eligibility,
@@ -353,7 +359,11 @@ def test_known_capability_delta_wins_over_incomplete_current_coverage(tmp_path: 
     assert evaluation.drift.capability.portable_core == DRIFT_CHANGED
     assert evaluation.capability_status == APPROVAL_STALE
     assert evaluation.current_eligibility.capability.status == ELIGIBILITY_INELIGIBLE
-    assert evaluation.required_actions == (REVIEW_CAPABILITY_CHANGE,)
+    assert CAPABILITY_COVERAGE_INCOMPLETE in evaluation.current_eligibility.capability.reasons
+    assert evaluation.required_actions == (
+        REVIEW_CAPABILITY_CHANGE,
+        RESOLVE_CAPABILITY_COVERAGE,
+    )
 
 
 def test_content_identity_degradation_is_unknown_and_ineligible(tmp_path: Path) -> None:
@@ -392,7 +402,11 @@ def test_known_content_change_wins_over_incomplete_current_identity(tmp_path: Pa
     assert evaluation.drift.content.portable_core == DRIFT_CHANGED
     assert evaluation.content_status == APPROVAL_STALE
     assert evaluation.current_eligibility.content.status == ELIGIBILITY_INELIGIBLE
-    assert evaluation.required_actions == (REVIEW_CONTENT_CHANGE,)
+    assert CONTENT_IDENTITY_INCOMPLETE in evaluation.current_eligibility.content.reasons
+    assert evaluation.required_actions == (
+        REVIEW_CONTENT_CHANGE,
+        RESOLVE_CONTENT_IDENTITY,
+    )
 
 
 def test_plugin_version_change_can_leave_capability_binding_matching(tmp_path: Path) -> None:
@@ -493,7 +507,111 @@ def test_snapshot_format_mismatch_maps_to_unknown_and_rebuild_action(tmp_path: P
     assert evaluation.content_status == APPROVAL_UNKNOWN
     assert evaluation.capability_status == APPROVAL_UNKNOWN
     assert REBUILD_COMPATIBLE_REVIEW in evaluation.required_actions
+    assert evaluation.current_eligibility.content.status == ELIGIBILITY_INELIGIBLE
+    assert evaluation.current_eligibility.capability.status == ELIGIBILITY_INELIGIBLE
+    assert evaluation.current_eligibility.reasons == (SNAPSHOT_FORMAT_UNSUPPORTED,)
+    assert evaluation.required_actions == (REBUILD_COMPATIBLE_REVIEW,)
+    assert RESOLVE_CONTENT_IDENTITY not in evaluation.required_actions
+    assert RESOLVE_CAPABILITY_COVERAGE not in evaluation.required_actions
+    assert any(item.code == APPROVAL_SNAPSHOT_FORMAT_UNSUPPORTED for item in evaluation.diagnostics)
+
+
+def test_future_reference_snapshot_is_not_bindable_and_unbound_stays_unbound(
+    tmp_path: Path,
+) -> None:
+    root = plugin(tmp_path)
+    write_skill(root, "deploy")
+    future = replace(snapshot(root), snapshot_format_version="future")
+    both_contract = AgentPluginApprovalContract(
+        content_scope=APPROVAL_SCOPE_PORTABLE_CORE,
+        capability_scope=APPROVAL_SCOPE_PORTABLE_CORE,
+    )
+    eligibility = assess_agent_plugin_approval_eligibility(future, both_contract)
+    assert eligibility.content.status == ELIGIBILITY_INELIGIBLE
+    assert eligibility.capability.status == ELIGIBILITY_INELIGIBLE
+    assert eligibility.content.reasons == (SNAPSHOT_FORMAT_UNSUPPORTED,)
+    assert eligibility.capability.reasons == (SNAPSHOT_FORMAT_UNSUPPORTED,)
+    with pytest.raises(AgentPluginApprovalEligibilityError) as error:
+        create_agent_plugin_approval_binding(future, both_contract)
+    assert error.value.eligibility == eligibility
+
+    content_contract = AgentPluginApprovalContract(content_scope=APPROVAL_SCOPE_PORTABLE_CORE)
+    content_only = assess_agent_plugin_approval_eligibility(future, content_contract)
+    assert content_only.content.status == ELIGIBILITY_INELIGIBLE
+    assert content_only.capability.status == ELIGIBILITY_NOT_BOUND
+
+
+def test_unsupported_binding_format_is_unknown_even_for_identical_snapshots(
+    tmp_path: Path,
+) -> None:
+    root = plugin(tmp_path)
+    write_skill(root, "deploy")
+    current = snapshot(root)
+    contract = AgentPluginApprovalContract(
+        content_scope=APPROVAL_SCOPE_PORTABLE_CORE,
+        capability_scope=APPROVAL_SCOPE_PORTABLE_CORE,
+    )
+    binding = replace(
+        create_agent_plugin_approval_binding(current, contract),
+        binding_format_version="future",
+    )
+    evaluation = evaluate_agent_plugin_approval(binding, current)
+    assert evaluation.content_status == APPROVAL_UNKNOWN
+    assert evaluation.capability_status == APPROVAL_UNKNOWN
     assert evaluation.current_eligibility.eligible is True
+    assert evaluation.required_actions == (REBUILD_COMPATIBLE_REVIEW,)
+    assert any(item.code == APPROVAL_BINDING_FORMAT_UNSUPPORTED for item in evaluation.diagnostics)
+
+
+def test_future_reference_and_current_snapshots_never_match_each_other(
+    tmp_path: Path,
+) -> None:
+    root = plugin(tmp_path)
+    write_skill(root, "deploy")
+    future = replace(snapshot(root), snapshot_format_version="future")
+    contract = AgentPluginApprovalContract(
+        content_scope=APPROVAL_SCOPE_PORTABLE_CORE,
+        capability_scope=APPROVAL_SCOPE_PORTABLE_CORE,
+    )
+    binding = AgentPluginApprovalBinding(contract=contract, reference_snapshot=future)
+    evaluation = evaluate_agent_plugin_approval(binding, future)
+    assert evaluation.content_status == APPROVAL_UNKNOWN
+    assert evaluation.capability_status == APPROVAL_UNKNOWN
+    assert evaluation.current_eligibility.eligible is False
+    assert evaluation.required_actions == (REBUILD_COMPATIBLE_REVIEW,)
+    assert any(item.code == APPROVAL_SNAPSHOT_FORMAT_UNSUPPORTED for item in evaluation.diagnostics)
+
+
+def test_format_incompatibility_and_real_coverage_degradation_emit_both_actions(
+    tmp_path: Path,
+) -> None:
+    limits = AgentPluginCapabilityLimits(max_file_bytes=128)
+    before, after = snapshot_pair(
+        tmp_path,
+        lambda root: write_skill(root, "deploy", 'subprocess.run(["deploy"])\n'),
+        lambda root: write_skill(
+            root,
+            "deploy",
+            'subprocess.run(["deploy"])\n',
+            supporting={"blob.bin": b"0123456789" * 20},
+        ),
+        after_capability_limits=limits,
+    )
+    after = replace(after, snapshot_format_version="future")
+    contract = AgentPluginApprovalContract(capability_scope=APPROVAL_SCOPE_PORTABLE_CORE)
+    evaluation = evaluate_agent_plugin_approval(
+        create_agent_plugin_approval_binding(before, contract),
+        after,
+    )
+    assert evaluation.capability_status == APPROVAL_UNKNOWN
+    assert evaluation.current_eligibility.capability.reasons == (
+        SNAPSHOT_FORMAT_UNSUPPORTED,
+        CAPABILITY_COVERAGE_INCOMPLETE,
+    )
+    assert evaluation.required_actions == (
+        RESOLVE_CAPABILITY_COVERAGE,
+        REBUILD_COMPATIBLE_REVIEW,
+    )
 
 
 def test_binding_and_evaluation_serialization_is_deterministic_and_path_free(

@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from skillgate.agent_plugin_drift import (
+    AGENT_PLUGIN_DRIFT_SNAPSHOT_VERSION,
     DRIFT_CHANGED,
     DRIFT_UNCHANGED,
     DRIFT_UNKNOWN,
@@ -20,6 +21,7 @@ from skillgate.agent_plugin_drift import (
     AgentPluginDriftSnapshot,
     compare_agent_plugin_drift,
 )
+from skillgate.agent_plugins import AgentPluginDiagnostic
 
 AGENT_PLUGIN_APPROVAL_BINDING_VERSION = "1"
 
@@ -40,6 +42,12 @@ REVIEW_CAPABILITY_CHANGE = "review_capability_change"
 RESOLVE_CONTENT_IDENTITY = "resolve_content_identity"
 RESOLVE_CAPABILITY_COVERAGE = "resolve_capability_coverage"
 REBUILD_COMPATIBLE_REVIEW = "rebuild_compatible_review"
+
+CONTENT_IDENTITY_INCOMPLETE = "content_identity_incomplete"
+CAPABILITY_COVERAGE_INCOMPLETE = "capability_coverage_incomplete"
+SNAPSHOT_FORMAT_UNSUPPORTED = "snapshot_format_unsupported"
+APPROVAL_BINDING_FORMAT_UNSUPPORTED = "approval_binding_format_unsupported"
+APPROVAL_SNAPSHOT_FORMAT_UNSUPPORTED = "approval_snapshot_format_unsupported"
 
 _APPROVAL_SCOPES = frozenset({APPROVAL_SCOPE_PORTABLE_CORE, APPROVAL_SCOPE_OVERALL_ARTIFACT})
 
@@ -193,13 +201,20 @@ def _dimension_eligibility(
     scope: str | None,
     complete: str,
     reason: str,
+    *,
+    snapshot_format_supported: bool,
 ) -> AgentPluginApprovalDimensionEligibility:
     if scope is None:
         return AgentPluginApprovalDimensionEligibility(
             scope=None,
             status=ELIGIBILITY_NOT_BOUND,
         )
-    if complete == "COMPLETE":
+    reasons: list[str] = []
+    if not snapshot_format_supported:
+        reasons.append(SNAPSHOT_FORMAT_UNSUPPORTED)
+    if complete != "COMPLETE":
+        reasons.append(reason)
+    if not reasons:
         return AgentPluginApprovalDimensionEligibility(
             scope=scope,
             status=ELIGIBILITY_ELIGIBLE,
@@ -207,7 +222,7 @@ def _dimension_eligibility(
     return AgentPluginApprovalDimensionEligibility(
         scope=scope,
         status=ELIGIBILITY_INELIGIBLE,
-        reasons=(reason,),
+        reasons=tuple(reasons),
     )
 
 
@@ -216,11 +231,60 @@ def _scope_value(value: Any, scope: str) -> Any:
     return getattr(value, scope)
 
 
+def _snapshot_format_supported(snapshot: AgentPluginDriftSnapshot) -> bool:
+    return snapshot.snapshot_format_version == AGENT_PLUGIN_DRIFT_SNAPSHOT_VERSION
+
+
+def _binding_format_supported(binding: AgentPluginApprovalBinding) -> bool:
+    return binding.binding_format_version == AGENT_PLUGIN_APPROVAL_BINDING_VERSION
+
+
+def _snapshot_formats_compatible(
+    reference_snapshot: AgentPluginDriftSnapshot,
+    current_snapshot: AgentPluginDriftSnapshot,
+) -> bool:
+    return (
+        _snapshot_format_supported(reference_snapshot)
+        and _snapshot_format_supported(current_snapshot)
+        and reference_snapshot.snapshot_format_version == current_snapshot.snapshot_format_version
+    )
+
+
+def _approval_diagnostics(
+    drift_diagnostics: tuple[Any, ...],
+    *,
+    binding_format_supported: bool,
+    snapshot_formats_compatible: bool,
+) -> tuple[AgentPluginDiagnostic, ...]:
+    additional: list[AgentPluginDiagnostic] = []
+    if not binding_format_supported:
+        additional.append(
+            AgentPluginDiagnostic(
+                code=APPROVAL_BINDING_FORMAT_UNSUPPORTED,
+                message="approval binding uses an unsupported binding format",
+            )
+        )
+    if not snapshot_formats_compatible:
+        additional.append(
+            AgentPluginDiagnostic(
+                code=APPROVAL_SNAPSHOT_FORMAT_UNSUPPORTED,
+                message="approval evaluation requires a supported drift snapshot format",
+            )
+        )
+    unique = {
+        (item.code, item.message, item.path): item for item in (*drift_diagnostics, *additional)
+    }
+    return tuple(
+        sorted(unique.values(), key=lambda item: (item.path or "", item.code, item.message))
+    )
+
+
 def assess_agent_plugin_approval_eligibility(
     snapshot: AgentPluginDriftSnapshot,
     contract: AgentPluginApprovalContract,
 ) -> AgentPluginApprovalEligibility:
     """Assess exact prerequisites without creating an approval binding."""
+    snapshot_format_supported = _snapshot_format_supported(snapshot)
     content_coverage = (
         _scope_value(snapshot.content_identity_coverage, contract.content_scope)
         if (contract.content_scope is not None)
@@ -235,12 +299,14 @@ def assess_agent_plugin_approval_eligibility(
         content=_dimension_eligibility(
             contract.content_scope,
             content_coverage,
-            "content_identity_incomplete",
+            CONTENT_IDENTITY_INCOMPLETE,
+            snapshot_format_supported=snapshot_format_supported,
         ),
         capability=_dimension_eligibility(
             contract.capability_scope,
             capability_coverage,
-            "capability_coverage_incomplete",
+            CAPABILITY_COVERAGE_INCOMPLETE,
+            snapshot_format_supported=snapshot_format_supported,
         ),
     )
 
@@ -277,27 +343,41 @@ def _approval_status(state: str) -> str:
 def _dimension_status(
     scope: str | None,
     drift: Any,
+    *,
+    formats_compatible: bool,
 ) -> str:
     if scope is None:
         return APPROVAL_NOT_BOUND
+    if not formats_compatible:
+        return APPROVAL_UNKNOWN
     return _approval_status(_scope_value(drift, scope))
 
 
 def _required_actions(
     content_status: str,
     capability_status: str,
-    diagnostics: tuple[Any, ...],
+    current_eligibility: AgentPluginApprovalEligibility,
+    *,
+    formats_compatible: bool,
 ) -> tuple[str, ...]:
     actions: list[str] = []
     if content_status == APPROVAL_STALE:
         actions.append(REVIEW_CONTENT_CHANGE)
-    elif content_status == APPROVAL_UNKNOWN:
-        actions.append(RESOLVE_CONTENT_IDENTITY)
     if capability_status == APPROVAL_STALE:
         actions.append(REVIEW_CAPABILITY_CHANGE)
-    elif capability_status == APPROVAL_UNKNOWN:
+
+    if (
+        current_eligibility.content.status == ELIGIBILITY_INELIGIBLE
+        and CONTENT_IDENTITY_INCOMPLETE in current_eligibility.content.reasons
+    ):
+        actions.append(RESOLVE_CONTENT_IDENTITY)
+    if (
+        current_eligibility.capability.status == ELIGIBILITY_INELIGIBLE
+        and CAPABILITY_COVERAGE_INCOMPLETE in current_eligibility.capability.reasons
+    ):
         actions.append(RESOLVE_CAPABILITY_COVERAGE)
-    if any(getattr(item, "code", None) == "drift_snapshot_format_mismatch" for item in diagnostics):
+
+    if not formats_compatible:
         actions.append(REBUILD_COMPATIBLE_REVIEW)
     return tuple(actions)
 
@@ -308,16 +388,31 @@ def evaluate_agent_plugin_approval(
 ) -> AgentPluginApprovalEvaluation:
     """Evaluate a binding by reusing the complete PR3 snapshot comparison."""
     drift = compare_agent_plugin_drift(binding.reference_snapshot, current_snapshot)
-    content_status = _dimension_status(binding.contract.content_scope, drift.content)
+    binding_format_supported = _binding_format_supported(binding)
+    snapshot_formats_compatible = _snapshot_formats_compatible(
+        binding.reference_snapshot,
+        current_snapshot,
+    )
+    formats_compatible = binding_format_supported and snapshot_formats_compatible
+    content_status = _dimension_status(
+        binding.contract.content_scope,
+        drift.content,
+        formats_compatible=formats_compatible,
+    )
     capability_status = _dimension_status(
         binding.contract.capability_scope,
         drift.capability,
+        formats_compatible=formats_compatible,
     )
     current_eligibility = assess_agent_plugin_approval_eligibility(
         current_snapshot,
         binding.contract,
     )
-    diagnostics = drift.diagnostics
+    diagnostics = _approval_diagnostics(
+        drift.diagnostics,
+        binding_format_supported=binding_format_supported,
+        snapshot_formats_compatible=snapshot_formats_compatible,
+    )
     return AgentPluginApprovalEvaluation(
         contract=binding.contract,
         content_status=content_status,
@@ -327,7 +422,8 @@ def evaluate_agent_plugin_approval(
         required_actions=_required_actions(
             content_status,
             capability_status,
-            diagnostics,
+            current_eligibility,
+            formats_compatible=formats_compatible,
         ),
         diagnostics=diagnostics,
     )
