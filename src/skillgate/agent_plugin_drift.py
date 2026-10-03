@@ -8,7 +8,7 @@ does not create findings, approval decisions, or CLI output.
 from __future__ import annotations
 
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -54,16 +54,12 @@ _UNSAFE_IDENTITY_REASONS = frozenset(
         "outside_plugin_boundary",
     }
 )
-_COVERAGE_DIAGNOSTIC_WORDS = frozenset(
+_INCOMPLETE_PACKAGE_SURFACE_KINDS = frozenset(
     {
-        "invalid",
-        "incomplete",
-        "limit",
-        "outside",
-        "skipped",
-        "unknown",
-        "unreadable",
-        "unsupported",
+        "client_extension",
+        "unknown_package_file",
+        "unknown_package_directory",
+        "discovery_limit",
     }
 )
 
@@ -691,7 +687,7 @@ def _package_incompleteness(
 ) -> tuple[tuple[str, str, str], ...]:
     states: set[tuple[str, str, str]] = set()
     for surface in inventory.package_surfaces:
-        if surface.kind != "portable_component" or surface.status != "known":
+        if _package_surface_is_incomplete(surface):
             states.add((surface.path, surface.kind, surface.status))
     for extension in inventory.extensions:
         # Extension status is intentionally opaque in PR1; retain its state
@@ -706,15 +702,15 @@ def _package_incompleteness(
     return tuple(sorted(states))
 
 
-def _coverage_diagnostic_states(
-    diagnostics: Iterable[AgentPluginDiagnostic],
-) -> tuple[tuple[str, str | None], ...]:
-    states: set[tuple[str, str | None]] = set()
-    for item in diagnostics:
-        code_words = set(item.code.split("_"))
-        if code_words & _COVERAGE_DIAGNOSTIC_WORDS:
-            states.add((item.code, item.path))
-    return tuple(sorted(states))
+def _package_surface_is_incomplete(surface: AgentPluginPackageSurface) -> bool:
+    """Map PR1 package-surface states to actual coverage incompleteness."""
+    if surface.kind == "portable_component":
+        return surface.status != "present"
+    if surface.kind == "package_metadata":
+        return surface.status != "known"
+    if surface.kind in _INCOMPLETE_PACKAGE_SURFACE_KINDS:
+        return surface.status in {"unknown", "invalid"}
+    return surface.status in {"unknown", "invalid"}
 
 
 def _coverage_state(
@@ -729,15 +725,16 @@ def _coverage_state(
         blind_spots=tuple(review.blind_spots),
         incomplete_components=_component_incompleteness(review),
         incomplete_package_surfaces=_package_incompleteness(inventory),
-        diagnostic_states=_coverage_diagnostic_states(
-            [*inventory.diagnostics, *review.diagnostics]
-        ),
+        # Diagnostics remain available on the snapshot/report for explanation,
+        # but diagnostic names are not coverage identity.
+        diagnostic_states=(),
     )
 
 
 def _content_identity_coverage(
     files: tuple[AgentPluginDriftFile, ...],
     memberships: tuple[AgentPluginDriftMembership, ...],
+    inventory: AgentPluginInventory,
     review: AgentPluginCapabilityReview,
     marker_paths: tuple[tuple[str, bool], ...],
 ) -> AgentPluginDriftContentCoverage:
@@ -769,20 +766,21 @@ def _content_identity_coverage(
         if record is None or not record.identity_complete:
             incomplete_overall.add(membership.component_path)
 
-    # If a portable component was not capability-reviewed at all, PR1 only
-    # proves its fixed declaration in some cases; supporting files remain
-    # unaccounted for.  An MCP/skill component with concrete file reviews is
-    # already represented above, so this does not penalize ordinary invalid
-    # server entries whose mcp.json bytes are known.
+    # Physical content identity is independent from capability interpretation.
+    # A Skill with no concrete file reviews may have an unenumerated supporting
+    # subtree, while MCP server entries are declarations inside mcp.json and
+    # do not imply a separate physical subtree.
     for component in review.components:
-        if component.component_kind not in {"skill", "skills", "mcp", "mcp_server"}:
-            continue
-        if component.capability_scan_status == "reviewed":
+        if component.component_kind not in {"skill", "skills"}:
             continue
         real_reviews = [item for item in component.file_reviews if not _is_marker_path(item.path)]
         if not real_reviews:
             incomplete_portable.add(component.component_path)
             incomplete_overall.add(component.component_path)
+
+    if inventory.skills_status not in {"absent", "valid"}:
+        incomplete_portable.add("skills")
+        incomplete_overall.add("skills")
 
     return AgentPluginDriftContentCoverage(
         portable_core=("COMPLETE" if not incomplete_portable else "INCOMPLETE"),
@@ -820,6 +818,7 @@ def _build_snapshot(
     content_coverage = _content_identity_coverage(
         files,
         memberships,
+        inventory,
         review,
         _marker_paths(review),
     )
@@ -1091,22 +1090,37 @@ def compare_agent_plugin_drift(
     after: AgentPluginDriftSnapshot,
 ) -> AgentPluginDriftReport:
     """Compare two self-bound snapshots without applying policy."""
-    if before.snapshot_format_version != after.snapshot_format_version:
-        diagnostics = (
+    format_mismatch = before.snapshot_format_version != after.snapshot_format_version
+    diagnostics = (
+        (
             _diagnostic(
                 "drift_snapshot_format_mismatch",
                 "before and after snapshots use different drift snapshot formats",
             ),
         )
-    else:
-        diagnostics = ()
+        if format_mismatch
+        else ()
+    )
+    content = _content_drift(before, after)
+    capability = _capability_drift(before, after)
+    if format_mismatch:
+        content = replace(
+            content,
+            portable_core=DRIFT_UNKNOWN,
+            overall_artifact=DRIFT_UNKNOWN,
+        )
+        capability = replace(
+            capability,
+            portable_core=DRIFT_UNKNOWN,
+            overall_artifact=DRIFT_UNKNOWN,
+        )
     return AgentPluginDriftReport(
         format=AGENT_PLUGIN_DRIFT_FORMAT,
         snapshot_format_version=AGENT_PLUGIN_DRIFT_SNAPSHOT_VERSION,
         before_plugin_identity=dict(before.plugin_identity),
         after_plugin_identity=dict(after.plugin_identity),
-        content=_content_drift(before, after),
-        capability=_capability_drift(before, after),
+        content=content,
+        capability=capability,
         coverage=_coverage_drift(before, after),
         diagnostics=_sorted_diagnostics([*before.diagnostics, *after.diagnostics, *diagnostics]),
     )
