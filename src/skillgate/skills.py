@@ -9,6 +9,7 @@ from typing import Any
 import yaml
 
 from skillgate import __version__
+from skillgate.archive import archive_manifest, inspect_archive
 from skillgate.discovery import EXCLUDED_DIRS, SCRIPT_EXTENSIONS
 from skillgate.models import SEVERITY_ORDER, stable_json
 
@@ -199,7 +200,12 @@ def _referenced_paths(content: str) -> list[str]:
     return sorted(path for path in paths if path is not None)
 
 
-def _validate_skill(skill_path: Path, root: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+def _validate_skill(
+    skill_path: Path,
+    root: Path,
+    *,
+    check_directory_name: bool = True,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     try:
         content = skill_path.read_text(encoding="utf-8")
     except (OSError, UnicodeError) as exc:
@@ -239,7 +245,12 @@ def _validate_skill(skill_path: Path, root: Path) -> tuple[dict[str, Any], list[
         findings.append(
             _finding("SKILL003", skill_path, root, line=frontmatter_line, evidence=name)
         )
-    if isinstance(name, str) and name.strip() and skill_path.parent.name != name.strip():
+    if (
+        check_directory_name
+        and isinstance(name, str)
+        and name.strip()
+        and skill_path.parent.name != name.strip()
+    ):
         findings.append(
             _finding(
                 "SKILL004",
@@ -317,7 +328,7 @@ def _validate_skill(skill_path: Path, root: Path) -> tuple[dict[str, Any], list[
     return skill, findings
 
 
-def validate_skills(path: Path) -> dict[str, Any]:
+def validate_skills(path: Path, *, check_directory_name: bool = True) -> dict[str, Any]:
     path = path.expanduser().resolve()
     skill_files = discover_skill_files(path)
     root = path.parent if path.is_file() else path
@@ -326,7 +337,11 @@ def validate_skills(path: Path) -> dict[str, Any]:
     skills: list[dict[str, Any]] = []
     findings: list[dict[str, Any]] = []
     for skill_file in skill_files:
-        skill, skill_findings = _validate_skill(skill_file, root)
+        skill, skill_findings = _validate_skill(
+            skill_file,
+            root,
+            check_directory_name=check_directory_name,
+        )
         skills.append(skill)
         findings.extend(skill_findings)
     findings.sort(
@@ -349,6 +364,30 @@ def validate_skills(path: Path) -> dict[str, Any]:
     }
 
 
+def validate_skill_archive(path: Path) -> dict[str, Any]:
+    """Validate a safely extracted ZIP containing a root-level SKILL.md."""
+    archive_path = path.expanduser().resolve()
+    with inspect_archive(archive_path) as archive:
+        root_skill = next(
+            (
+                member
+                for member in archive.members
+                if member.normalized_path == SKILL_FILE and member.member_type == "file"
+            ),
+            None,
+        )
+        if root_skill is None:
+            raise SkillsValidationError("skill archive must contain a root-level SKILL.md file")
+
+        payload = validate_skills(
+            archive.extraction_root,
+            check_directory_name=False,
+        )
+        payload["root"] = "."
+        payload["archive"] = archive_manifest(archive)
+        return payload
+
+
 def skills_text(payload: dict[str, Any]) -> str:
     lines = [
         "SkillGate skills validation completed",
@@ -356,6 +395,8 @@ def skills_text(payload: dict[str, Any]) -> str:
         f"Skills: {payload['summary']['skills']}",
         f"Findings: {payload['summary']['findings']}",
     ]
+    if payload.get("archive"):
+        lines.insert(2, "Source: ZIP archive")
     for finding in payload["findings"]:
         lines.extend(
             [

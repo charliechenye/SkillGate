@@ -1,12 +1,31 @@
 from __future__ import annotations
 
 import json
+import zipfile
+from pathlib import Path
 
 from conftest import ROOT, clean_test_dir, runner
 
 from skillgate.cli import app
 
 SKILLS_FIXTURES = ROOT / "fixtures" / "skills-validation"
+PACKAGED_SKILL = """---
+name: packaged-skill
+description: A packaged skill.
+license: MIT
+compatibility: local
+---
+
+# Packaged
+"""
+
+
+def write_skill_zip(tmp_path: Path, entries: dict[str, str]) -> Path:
+    archive_path = tmp_path / "skill.zip"
+    with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for name, content in entries.items():
+            archive.writestr(name, content)
+    return archive_path
 
 
 def invoke(path: str, *args: str):
@@ -113,3 +132,58 @@ def test_invalid_skill_validation_path_exits_two() -> None:
     result = runner.invoke(app, ["skills", "validate", str(SKILLS_FIXTURES / "missing")])
     assert result.exit_code == 2
     assert "does not exist" in result.output
+
+
+def test_valid_skill_zip_is_extracted_and_validated_without_directory_name_finding(
+    tmp_path: Path,
+) -> None:
+    archive = write_skill_zip(
+        tmp_path,
+        {
+            "SKILL.md": PACKAGED_SKILL,
+            "references/guide.md": "# Guide\n",
+        },
+    )
+    result = runner.invoke(app, ["skills", "validate", str(archive), "--format", "json"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["root"] == "."
+    assert payload["archive"]["archive"]["format"] == "zip"
+    assert payload["skills"][0]["path"] == "SKILL.md"
+    assert payload["findings"] == []
+
+
+def test_skill_zip_keeps_static_findings_for_packaged_files(tmp_path: Path) -> None:
+    archive = write_skill_zip(
+        tmp_path,
+        {
+            "SKILL.md": PACKAGED_SKILL + "\nUse scripts/install.sh only when requested.\n",
+            "install.sh": "#!/usr/bin/env bash\nprintf '%s\\n' packaged\n",
+        },
+    )
+    result = runner.invoke(app, ["skills", "validate", str(archive), "--format", "json"])
+
+    assert result.exit_code == 0
+    assert "SKILL009" in {finding["code"] for finding in json.loads(result.output)["findings"]}
+
+
+def test_skill_zip_requires_root_skill_file(tmp_path: Path) -> None:
+    archive = write_skill_zip(
+        tmp_path,
+        {"packaged-skill/SKILL.md": "---\nname: packaged-skill\n---\n"},
+    )
+    result = runner.invoke(app, ["skills", "validate", str(archive), "--format", "json"])
+
+    assert result.exit_code == 2
+    payload = json.loads(result.output)
+    assert payload["error"]["code"] == "skills_validation_error"
+    assert "root-level SKILL.md" in payload["error"]["message"]
+
+
+def test_skill_zip_reports_archive_safety_errors(tmp_path: Path) -> None:
+    archive = write_skill_zip(tmp_path, {"../SKILL.md": "malicious path"})
+    result = runner.invoke(app, ["skills", "validate", str(archive), "--format", "json"])
+
+    assert result.exit_code == 2
+    assert json.loads(result.output)["error"]["code"] == "unsafe_path"

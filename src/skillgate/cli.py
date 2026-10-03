@@ -75,6 +75,7 @@ from skillgate.skills import (
     skills_failed,
     skills_json,
     skills_text,
+    validate_skill_archive,
     validate_skills,
 )
 from skillgate.sources import RemoteScanLimits, SourceError, fetch_github_sparse
@@ -421,7 +422,7 @@ def demo_skill(
 def skills_validate(
     path: Annotated[
         Path,
-        typer.Argument(help="SKILL.md file or directory containing Agent Skills."),
+        typer.Argument(help="SKILL.md file, skill directory, or ZIP skill archive."),
     ],
     output_format: Annotated[str, typer.Option("--format", help="Output format.")] = "text",
     output: Annotated[
@@ -436,7 +437,16 @@ def skills_validate(
     output_format = validate_format(output_format, {"text", "json"})
     fail_on = validate_skills_fail_on(fail_on)
     try:
-        payload = validate_skills(path)
+        if path.suffix.lower() == ".zip":
+            payload = validate_skill_archive(path)
+        else:
+            payload = validate_skills(path)
+    except ArchiveError as exc:
+        if output_format == "json":
+            console.file.write(stable_json({"error": exc.to_data()}))
+        else:
+            console.file.write(f"Error: {exc}\n")
+        raise typer.Exit(2) from exc
     except SkillsValidationError as exc:
         if output_format == "json":
             console.file.write(
