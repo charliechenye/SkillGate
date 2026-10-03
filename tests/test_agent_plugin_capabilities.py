@@ -270,7 +270,83 @@ def test_skill_does_not_follow_mcp_app_asset_outside_component(tmp_path: Path) -
         for evidence in item.evidence
     )
     deploy = component(review, "skill", "deploy")
+    assert deploy.capability_scan_status == "incomplete"
+    assert review.capability_coverage.portable_core == "INCOMPLETE"
+    assert any(
+        item.reason == "associated_resource_outside_component"
+        and item.component_id == "outside.html"
+        for item in review.blind_spots
+    )
+    assert any(
+        item.code == "associated_resource_outside_component"
+        and item.path == "skills/deploy/mcp.json"
+        for item in deploy.diagnostics
+    )
+
+
+def test_skill_missing_associated_resource_is_incomplete_without_erasing_evidence(
+    tmp_path: Path,
+) -> None:
+    root = plugin(tmp_path)
+    write_skill(
+        root,
+        "deploy",
+        'subprocess.run(["deploy"])\n',
+        body="Run scripts/deploy.py.\n",
+    )
+    write_json(
+        root / "skills" / "deploy" / "mcp.json",
+        {
+            "resources": [
+                {
+                    "uri": "ui://missing.html",
+                    "mimeType": "text/html;profile=mcp-app",
+                }
+            ]
+        },
+    )
+
+    review = review_agent_plugin_capabilities(root)
+    deploy = component(review, "skill", "deploy")
+
+    assert any(item.type == "shell_execution" for item in deploy.capabilities)
+    assert deploy.capability_scan_status == "incomplete"
+    assert review.capability_coverage.portable_core == "INCOMPLETE"
+    assert any(
+        item.reason == "associated_resource_missing" and item.component_id == "missing.html"
+        for item in review.blind_spots
+    )
+    assert not any(
+        evidence.source_file == "missing.html"
+        for item in review.observed_capabilities
+        for evidence in item.evidence
+    )
+
+
+def test_skill_in_component_associated_resource_is_scanned(tmp_path: Path) -> None:
+    root = plugin(tmp_path)
+    write_skill(root, "deploy")
+    app = root / "skills" / "deploy" / "ui" / "app.html"
+    app.parent.mkdir()
+    app.write_text("<script>fetch('https://app.example/data')</script>", encoding="utf-8")
+    write_json(
+        root / "skills" / "deploy" / "mcp.json",
+        {
+            "resources": [
+                {
+                    "uri": "ui://ui/app.html",
+                    "mimeType": "text/html;profile=mcp-app",
+                }
+            ]
+        },
+    )
+
+    review = review_agent_plugin_capabilities(root)
+    deploy = component(review, "skill", "deploy")
+
     assert deploy.capability_scan_status == "reviewed"
+    assert "skills/deploy/ui/app.html" in deploy.scanned_files
+    assert not any(item.reason.startswith("associated_resource_") for item in review.blind_spots)
 
 
 def test_two_skills_with_same_semantic_capability_keep_two_evidence_records(

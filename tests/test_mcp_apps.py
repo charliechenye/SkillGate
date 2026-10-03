@@ -7,9 +7,11 @@ import subprocess
 import urllib.request
 import webbrowser
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from skillgate.mcp_app_assets import inventory_local_mcp_app_assets
 from skillgate.mcp_apps import (
     INLINE_RESOURCE_MAX_BYTES,
     detect_bridge_markers,
@@ -843,6 +845,85 @@ def test_local_asset_aggregate_limit_stops_content_analysis(tmp_path: Path) -> N
         and capability.details["path"] == "app/asset-5.js"
     ]
     assert "app/asset-5.js" not in {file.path for file in report.scanned_files}
+
+
+@pytest.mark.parametrize(
+    ("max_asset_bytes", "max_total_asset_bytes", "expected_reason"),
+    [
+        (100, 4, "asset_total_limit_exceeded"),
+        (4, 100, "asset_too_large"),
+        (4, 4, "asset_total_limit_exceeded"),
+    ],
+)
+def test_local_asset_bounded_read_uses_the_active_limit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    max_asset_bytes: int,
+    max_total_asset_bytes: int,
+    expected_reason: str,
+) -> None:
+    manifest = tmp_path / "mcp.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "_meta": {
+                    "ui": {
+                        "resourceUri": "ui://app/index.html",
+                        "mimeType": "text/html;profile=mcp-app",
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    app = tmp_path / "app"
+    app.mkdir()
+    asset = app / "index.html"
+    asset.write_bytes(b"x" * 64)
+
+    original_stat = Path.stat
+    original_open = Path.open
+    read_requests: list[int] = []
+
+    def raced_stat(self: Path, *args: object, **kwargs: object):
+        result = original_stat(self, *args, **kwargs)
+        if self == asset:
+            return SimpleNamespace(st_mode=result.st_mode, st_size=4)
+        return result
+
+    class TrackedStream:
+        def __init__(self, stream):
+            self.stream = stream
+
+        def __enter__(self):
+            self.stream.__enter__()
+            return self
+
+        def __exit__(self, *args: object):
+            return self.stream.__exit__(*args)
+
+        def read(self, size: int = -1) -> bytes:
+            read_requests.append(size)
+            return self.stream.read(size)
+
+    def tracked_open(self: Path, *args: object, **kwargs: object):
+        stream = original_open(self, *args, **kwargs)
+        return TrackedStream(stream) if self == asset else stream
+
+    monkeypatch.setattr(Path, "stat", raced_stat)
+    monkeypatch.setattr(Path, "open", tracked_open)
+
+    inventory = inventory_local_mcp_app_assets(
+        tmp_path,
+        {manifest},
+        max_asset_bytes=max_asset_bytes,
+        max_total_asset_bytes=max_total_asset_bytes,
+    )
+
+    record = next(item for item in inventory.assets if item.path == "app/index.html")
+    assert read_requests == [min(max_asset_bytes, max_total_asset_bytes) + 1]
+    assert record.skipped_reason == expected_reason
+    assert record.sha256 is None
 
 
 def test_local_asset_inventory_caps_emitted_records(tmp_path: Path) -> None:

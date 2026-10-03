@@ -172,12 +172,7 @@ def _asset_record(
             0,
         )
     max_asset_bytes = max(max_asset_bytes, 0)
-    if size_bytes > max_asset_bytes:
-        return (
-            McpAppAssetRecord(rel, kind, association, size_bytes, None, "asset_too_large"),
-            None,
-            0,
-        )
+    remaining_bytes = max(remaining_bytes, 0)
     if size_bytes > remaining_bytes:
         return (
             McpAppAssetRecord(
@@ -191,12 +186,32 @@ def _asset_record(
             None,
             0,
         )
+    if size_bytes > max_asset_bytes:
+        return (
+            McpAppAssetRecord(rel, kind, association, size_bytes, None, "asset_too_large"),
+            None,
+            0,
+        )
+    read_limit = min(max_asset_bytes, remaining_bytes) + 1
     try:
         with path.open("rb") as stream:
-            data = stream.read(max_asset_bytes + 1)
+            data = stream.read(read_limit)
     except OSError:
         return (
             McpAppAssetRecord(rel, kind, association, None, None, "missing_reference"),
+            None,
+            0,
+        )
+    if len(data) > remaining_bytes:
+        return (
+            McpAppAssetRecord(
+                rel,
+                kind,
+                association,
+                len(data),
+                None,
+                "asset_total_limit_exceeded",
+            ),
             None,
             0,
         )

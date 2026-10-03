@@ -17,6 +17,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
+from urllib.parse import urlparse
 
 from skillgate.agent_plugins import (
     DEFAULT_AGENT_PLUGIN_LIMITS,
@@ -32,6 +33,11 @@ from skillgate.discovery import EXCLUDED_DIRS, SCRIPT_EXTENSIONS, classify_file
 from skillgate.mcp_app_assets import (
     inventory_local_mcp_app_assets,
     mcp_app_asset_capabilities,
+)
+from skillgate.mcp_apps import (
+    MCP_APP_UI_MIME_PREFIX,
+    MCP_APP_UI_MIME_VALUES,
+    inventory_from_json_text,
 )
 from skillgate.models import Capability
 from skillgate.rules import DEFAULT_RULES
@@ -150,6 +156,20 @@ class _BoundedScanResult:
     diagnostics: tuple[AgentPluginDiagnostic, ...]
     bytes_read: int = 0
     text_by_path: tuple[tuple[str, str], ...] = ()
+
+
+@dataclass(frozen=True)
+class _SkillAssociatedResource:
+    source_file: str
+    declaration_path: str
+    uri: str
+
+
+@dataclass(frozen=True)
+class _SkillAssociatedResourceResolution:
+    label: str
+    reason: str | None
+    target_path: str | None = None
 
 
 @dataclass(frozen=True)
@@ -903,6 +923,304 @@ def _scan_bounded_candidates(
     )
 
 
+def _is_mcp_app_mime(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+    normalized = value.strip().lower()
+    return normalized in {item.lower() for item in MCP_APP_UI_MIME_VALUES} or normalized.startswith(
+        MCP_APP_UI_MIME_PREFIX.lower()
+    )
+
+
+def _associated_resource_uri(value: object, mime_type: object, key: str) -> str | None:
+    if not isinstance(value, str):
+        return None
+    uri = value.strip()
+    if not uri:
+        return None
+    if _is_mcp_app_mime(mime_type):
+        return uri
+    if key in {"resourceUri", "resource_uri"} and uri.startswith(
+        ("ui://", "file://", "./", "../", "/")
+    ):
+        return uri
+    if key == "uri" and uri.startswith("ui://"):
+        return uri
+    return None
+
+
+def _skill_associated_resources(
+    source_file: str,
+    text: str,
+) -> tuple[_SkillAssociatedResource, ...]:
+    declarations: list[_SkillAssociatedResource] = []
+    seen_uris: set[str] = set()
+
+    try:
+        inventory = inventory_from_json_text(text, declaration_path=source_file, scope="skill")
+    except Exception:
+        inventory = None
+    if inventory is not None:
+        for resource in inventory.resources:
+            if resource.resource_uri in seen_uris:
+                continue
+            seen_uris.add(resource.resource_uri)
+            declarations.append(
+                _SkillAssociatedResource(
+                    source_file=source_file,
+                    declaration_path=resource.declaration_path,
+                    uri=resource.resource_uri,
+                )
+            )
+
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        return tuple(declarations)
+
+    def walk(value: object, path: str) -> None:
+        if isinstance(value, dict):
+            mime_type = value.get("mimeType") or value.get("mime_type")
+            for key in ("uri", "resourceUri", "resource_uri"):
+                uri = _associated_resource_uri(value.get(key), mime_type, key)
+                if uri is None or uri in seen_uris:
+                    continue
+                seen_uris.add(uri)
+                declaration_path = f"{path}.{key}" if path else key
+                declarations.append(
+                    _SkillAssociatedResource(
+                        source_file=source_file,
+                        declaration_path=f"{source_file}.{declaration_path}",
+                        uri=uri,
+                    )
+                )
+            for key in sorted(value, key=str):
+                child_path = f"{path}.{key}" if path else str(key)
+                walk(value[key], child_path)
+        elif isinstance(value, list):
+            for index, child in enumerate(value):
+                child_path = f"{path}.{index}" if path else str(index)
+                walk(child, child_path)
+
+    walk(data, "")
+    return tuple(
+        sorted(
+            declarations,
+            key=lambda item: (item.source_file, item.declaration_path, item.uri),
+        )
+    )
+
+
+def _associated_resource_label(
+    root: Path,
+    candidate: Path | None,
+    raw_uri: str,
+    marker: str,
+) -> str:
+    if candidate is not None:
+        try:
+            relative = candidate.resolve().relative_to(root.resolve()).as_posix()
+        except (OSError, RuntimeError, ValueError):
+            relative = None
+        if relative:
+            return relative
+    clean_uri = raw_uri.split("#", 1)[0].split("?", 1)[0].replace("\\", "/")
+    name = PurePosixPath(clean_uri).name or "resource"
+    return f"<{marker}>/{name}"
+
+
+def _resolve_skill_associated_resource(
+    root: Path,
+    component_root: Path,
+    source_file: str,
+    raw_uri: str,
+) -> _SkillAssociatedResourceResolution:
+    uri = raw_uri.strip()
+    parsed = urlparse(uri)
+    if parsed.scheme in {"http", "https"}:
+        return _SkillAssociatedResourceResolution(
+            label="<external_resource>",
+            reason="associated_resource_external",
+        )
+    if parsed.scheme == "file":
+        return _SkillAssociatedResourceResolution(
+            label="<outside_plugin>/resource",
+            reason="associated_resource_outside_plugin",
+        )
+    if parsed.scheme and parsed.scheme != "ui":
+        return _SkillAssociatedResourceResolution(
+            label="<unsupported_resource>",
+            reason="associated_resource_unsupported",
+        )
+    if uri.startswith("/"):
+        return _SkillAssociatedResourceResolution(
+            label="<outside_plugin>/resource",
+            reason="associated_resource_outside_plugin",
+        )
+
+    source_path = root / source_file
+    candidates: list[Path]
+    is_ui_uri = parsed.scheme == "ui"
+    if is_ui_uri:
+        combined = "/".join(part for part in [parsed.netloc, parsed.path.lstrip("/")] if part)
+        if not combined:
+            return _SkillAssociatedResourceResolution(
+                label="<unsupported_resource>",
+                reason="associated_resource_unsupported",
+            )
+        candidates = [root / combined]
+        component_candidate = component_root / combined
+        if component_candidate != candidates[0]:
+            candidates.append(component_candidate)
+    else:
+        clean_uri = uri.split("#", 1)[0].split("?", 1)[0].replace("\\", "/")
+        if not clean_uri:
+            return _SkillAssociatedResourceResolution(
+                label="<unsupported_resource>",
+                reason="associated_resource_unsupported",
+            )
+        candidates = [source_path.parent / clean_uri, root / clean_uri]
+
+    selected: Path | None = None
+    for candidate in candidates:
+        try:
+            if candidate.exists():
+                selected = candidate
+                break
+        except OSError:
+            continue
+    if selected is None:
+        selected = candidates[0]
+        try:
+            resolved = selected.resolve()
+        except (OSError, RuntimeError):
+            return _SkillAssociatedResourceResolution(
+                label="<unsupported_resource>",
+                reason="associated_resource_unsupported",
+            )
+        if not _path_is_within(resolved, root):
+            reason = "associated_resource_outside_plugin"
+            marker = "outside_plugin"
+        elif not is_ui_uri and not _path_is_within(resolved, component_root):
+            reason = "associated_resource_outside_component"
+            marker = "outside_component"
+        else:
+            reason = "associated_resource_missing"
+            marker = "missing_resource"
+        return _SkillAssociatedResourceResolution(
+            label=_associated_resource_label(root, selected, uri, marker),
+            reason=reason,
+        )
+
+    try:
+        resolved = selected.resolve()
+    except (OSError, RuntimeError):
+        return _SkillAssociatedResourceResolution(
+            label="<unsupported_resource>",
+            reason="associated_resource_unsupported",
+        )
+    label = _associated_resource_label(root, selected, uri, "outside_plugin")
+    if not _path_is_within(resolved, root):
+        return _SkillAssociatedResourceResolution(
+            label=label,
+            reason="associated_resource_outside_plugin",
+        )
+    if not _path_is_within(resolved, component_root):
+        return _SkillAssociatedResourceResolution(
+            label=label,
+            reason="associated_resource_outside_component",
+        )
+    relative = _associated_resource_label(root, selected, uri, "unsupported_resource")
+    try:
+        supported = selected.is_file() and _is_capability_text_file(selected)
+    except OSError:
+        supported = False
+    if any(part in EXCLUDED_DIRS for part in PurePosixPath(relative).parts) or not supported:
+        return _SkillAssociatedResourceResolution(
+            label=relative,
+            reason="associated_resource_unsupported",
+            target_path=relative,
+        )
+    return _SkillAssociatedResourceResolution(label=relative, reason=None, target_path=relative)
+
+
+def _associated_reason_for_file_review(status: str) -> str:
+    return {
+        _FILE_LIMIT_EXCEEDED: "associated_resource_limit_exceeded",
+        _FILE_UNREADABLE: "associated_resource_unreadable",
+        _FILE_SCAN_FAILED: "associated_resource_scan_failed",
+    }.get(status, "associated_resource_unsupported")
+
+
+def _account_skill_associated_resources(
+    root: Path,
+    component_root: Path,
+    result: _BoundedScanResult,
+) -> _BoundedScanResult:
+    declarations = [
+        declaration
+        for source_file, text in result.text_by_path
+        if Path(source_file).suffix.lower() == ".json"
+        for declaration in _skill_associated_resources(source_file, text)
+    ]
+    if not declarations:
+        return result
+
+    file_reviews = {item.path: item for item in result.file_reviews}
+    diagnostics = list(result.diagnostics)
+    changed = False
+    for declaration in declarations:
+        resolution = _resolve_skill_associated_resource(
+            root,
+            component_root,
+            declaration.source_file,
+            declaration.uri,
+        )
+        if resolution.reason is None and resolution.target_path in result.scanned_files:
+            continue
+
+        path = resolution.target_path or resolution.label
+        existing = file_reviews.get(path)
+        if existing is not None and existing.status == _FILE_SCANNED:
+            continue
+        if existing is not None:
+            reason = _associated_reason_for_file_review(existing.status)
+            file_reviews[path] = AgentPluginCapabilityFileReview(
+                path=existing.path,
+                status=existing.status,
+                reason=reason,
+                size_bytes=existing.size_bytes,
+            )
+        else:
+            reason = resolution.reason or "associated_resource_unreviewed"
+            file_reviews[path] = AgentPluginCapabilityFileReview(
+                path=path,
+                status=_FILE_UNSUPPORTED,
+                reason=reason,
+            )
+        diagnostics.append(
+            _diagnostic(
+                reason,
+                f"{declaration.declaration_path} declares associated resource {path}; "
+                "the resource was not analyzed within the Skill capability boundary",
+                declaration.source_file,
+            )
+        )
+        changed = True
+
+    if not changed:
+        return result
+    return _BoundedScanResult(
+        status=_INCOMPLETE,
+        scanned_files=result.scanned_files,
+        file_reviews=tuple(sorted(file_reviews.values(), key=lambda item: item.path)),
+        capabilities=result.capabilities,
+        diagnostics=_dedupe_diagnostics(diagnostics),
+        bytes_read=result.bytes_read,
+        text_by_path=result.text_by_path,
+    )
+
+
 def _structural_diagnostics_for_path(
     diagnostics: tuple[AgentPluginDiagnostic, ...], path: str
 ) -> list[AgentPluginDiagnostic]:
@@ -981,6 +1299,7 @@ def _scan_skill(
         initial_complete=inventory.complete,
         enforce_source_containment=True,
     )
+    result = _account_skill_associated_resources(root, resolved_component_root, result)
     return AgentPluginComponentCapabilityReview(
         component_kind="skill",
         component_id=component_id,
@@ -1431,15 +1750,19 @@ def _file_blind_spots(
         for file_review in component.file_reviews:
             if file_review.status in {_FILE_SCANNED, _FILE_NOT_APPLICABLE}:
                 continue
+            if file_review.reason and file_review.reason.startswith("associated_resource_"):
+                reason = file_review.reason
+            else:
+                reason = reason_by_status.get(
+                    file_review.status,
+                    file_review.reason or "capability_surface_unreviewed",
+                )
             spots.append(
                 AgentPluginCapabilityBlindSpot(
                     component_kind=f"{component.component_kind}_file",
                     component_id=file_review.path,
                     component_path=file_review.path,
-                    reason=reason_by_status.get(
-                        file_review.status,
-                        file_review.reason or "capability_surface_unreviewed",
-                    ),
+                    reason=reason,
                 )
             )
     return spots
