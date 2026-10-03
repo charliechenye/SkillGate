@@ -1,206 +1,191 @@
-# Future Steps
+# Product Direction and Future Steps
 
-## Product Direction
+This is the canonical product-direction and roadmap document. README pages,
+discovery notes, and recommendation guidance should describe the current
+repository consistently and link here for planned work. Detailed v0.2
+artifact-admission design lives in the subordinate [Agent Artifact Admission
+roadmap](docs/roadmaps/agent-artifact-admission.md).
 
-SkillGate is a local-first, deterministic trust gate for AI-agent skills, MCP
-configurations, MCP bundles, and agent-tooling supply chains. Its clearest job
-is to answer this question before install, merge, or approval:
+## Product direction
 
-> What new capability surface does this artifact introduce?
+SkillGate is deterministic, no-execution admission control for agent artifacts
+before install, merge, or approval. Its core review question remains:
 
-The roadmap prioritizes complete review workflows, low-friction distribution,
-and public evidence over a large number of loosely connected rules. SkillGate
-should not become a hosted dashboard, runtime gateway, malware scanner, or
-generic agent framework without a deliberate product decision.
+> What new capability surface does this artifact introduce before I trust it?
 
-## Current Baseline
+The product turns materialized artifacts into reviewable evidence:
 
-The current stable release is `v0.1.3`. The shipped baseline includes:
+- artifact identity and provenance;
+- static capability evidence and capability drift;
+- reviewer-facing findings and approval state;
+- policy-as-code and CI admission control; and
+- explicit no-execution boundaries.
 
-- local and sparse GitHub static scans;
-- deterministic findings for agent instructions, scripts, MCP metadata, and
-  capability risks;
-- policy-as-code, waivers, baselines, capability drift, and provenance checks;
-- text, JSON, SARIF, Markdown review summaries, and GitHub Step Summary output;
-- MCP registry comparison and MCPB pre-install inspection without execution;
-- a composite GitHub Action with policy, baseline, review artifact, and MCPB
-  support;
-- a checksummed GitHub-first Node wrapper;
-- `skillgate skills validate` and deterministic Agent Skill/MCPB demos; and
-- guided review sessions for local review, pre-install review, and approval;
-- deterministic pre-install packet digests, source manifests, and a public
-  Review Packet JSON Schema; and
-- static MCP protocol-version and extension inventory through scan, baseline,
-  registry comparison, and advisory pre-install evidence.
-- bounded ZIP Agent Skill validation with archive provenance and no-execution
-  extraction; and
-- explicit MCP Tasks extension and lifecycle capability inventory through scan,
-  baseline, registry comparison, and advisory pre-install evidence.
+SkillGate may be used as a static security scanner, but it is not a runtime MCP
+gateway, sandbox, malware verdict engine, LLM-first scanner, hosted security
+platform, generic agent framework, or runtime watchdog. Runtime enforcement,
+isolation, least-privilege credentials, and monitoring remain complementary
+controls.
 
-These are release history, not future work. Keep detailed records in
-`CHANGELOG.md`.
+## Current baseline and shipped status
 
-## 0.1.3 Release Status
+The current stable release is `v0.1.3`. It established the pre-install review
+workflow, Review Packet v2, deterministic packet and source-manifest evidence,
+MCP protocol/extension inventory, capability baselines and drift, provenance,
+policy-as-code, and the no-execution product boundary. Historical release
+details remain in `CHANGELOG.md`; do not rewrite release-note history to make
+the roadmap current.
 
-`v0.1.3` was released on 2026-07-29. It delivered the adoption workflow,
-review-evidence foundations, and first MCP compatibility inventory. PyPI and npm
-publication remain deferred; GitHub tags and GitHub Release assets are the
-supported distribution paths. The next implementation work is the MCP
-compatibility sequence below.
+PyPI and npm publication remain deferred; GitHub tags and GitHub Release assets are the
+supported distribution paths for the current release line.
 
-## MCP 2026-07-28 Compatibility TODO
+The current repository baseline includes:
 
-Support the legacy MCP protocol revisions and `2026-07-28` in parallel during
-the ecosystem transition. This is a compatibility and review-surface workstream,
-not a change to SkillGate's local-first,
-deterministic, no-execution product boundary. The release makes stateless
-requests, extension negotiation, MCP Apps, Tasks, stronger authorization
-guidance, and full JSON Schema 2020-12 part of the ecosystem. SkillGate should
-review what those declarations introduce without implementing an MCP client,
-gateway, renderer, or runtime policy engine.
+- local and sparse GitHub static review for Agent Skills, instruction files,
+  scripts, MCP metadata, MCP registry metadata, and MCP bundles;
+- advisory [MCP Apps static review](docs/mcp-apps-static-review.md), including
+  bounded local web-asset evidence;
+- explicit MCP Tasks capability inventory documented in
+  [MCP compatibility review](docs/mcp-compatibility.md);
+- bounded ZIP validation for packaged Agent Skills;
+- review summaries, SARIF, policy checks, baselines, drift, and provenance;
+- deterministic demos, public scan-report examples, and adoption workflows; and
+- internal semantic artifact inventory, `SA001`/`SA002` analysis, and semantic
+  instruction drift helpers.
 
-### Near-term implementation order
+MCP Skills and Agent Plugins support are not shipped CLI capabilities today.
+The semantic CLI is not shipped, and runtime MCP inspection is outside the
+product boundary. Planned work must not make any of these appear implemented.
 
-1. **Version and extension inventory (implemented).** SkillGate now inventories
-   explicit declared legacy and modern protocol revisions, reverse-DNS extension
-   IDs/versions, and malformed declarations without inferring behavior. A mixed
-   declaration is retained as advisory migration evidence, never an upgrade
-   requirement. The capability data flows through reports, baselines, registry
-   comparison, and optional pre-install packet metadata without a packet-schema
-   bump. See
-   [`docs/mcp-compatibility.md`](docs/mcp-compatibility.md) for the review and
-   migration boundary.
+## Milestones at a glance
 
-2. **MCP Apps static adapter (implemented).** SkillGate now recognizes modern
-   and legacy MCP Apps resource declarations, UI MIME types, CSP origins,
-   browser permissions, app-callable tools, host bridge markers, local/GitHub
-   referenced HTML/CSS/JS assets, and bounded MCPB web assets without rendering,
-   importing, executing, or dereferencing declared URLs. See
-   [`docs/mcp-apps-static-review.md`](docs/mcp-apps-static-review.md).
+| Milestone | User problem | Required evidence | Exit criteria |
+| --- | --- | --- | --- |
+| **v0.2 — Agent Artifact Admission** | Review compound agent artifacts as one approval decision without losing component membership or provenance. | Deterministic aggregate fixtures, immutable identity evidence, capability deltas, content/capability drift cases, and incomplete-coverage cases. | Static aggregate review is reproducible; meaningful content/resource changes invalidate exact approval; capability changes remain distinct; unknown and dynamic surfaces are explicit. |
+| **v0.2A — Agent Plugins 1.0** | Review a materialized plugin containing skills, MCP configuration, and extensions as one trust artifact. | Valid, malformed, compound, partial, client-extension, provenance, and aggregate-drift fixtures. | A reviewer sees every discovered component, observed lower-bound capabilities, blind spots, and the required policy decision without execution. |
+| **v0.2B — MCP Skills snapshots** | Review a captured MCP Skills resource set without starting or querying a live server. | An approved materialized-input contract, complete/incomplete captures, resource digests and sizes, nested/dynamic cases, and exact-approval invalidation. | Snapshot admission is deterministic and origin-bound; content approval, capability drift, policy, and coverage are separate. |
+| **Follow-up — Evidence & Benchmarking** | Learn whether extraction and drift evidence help reviewers on real public artifacts. | Licensed representative corpus, synthetic regression fixtures, provenance, methodology, and repeatable evaluation reports. | Accuracy claims are limited to defensible evidence; false positives, blind spots, incomplete scans, and reviewer actionability are published. |
+| **Parallel — Distribution & Discoverability** | Let users find and reproduce original SkillGate evidence through familiar installation and technical-search paths. | Reproducible public reports, schemas, compatibility matrices, immutable sources, and synchronized documentation. | Distribution identity is coherent; public evidence is inspectable and refreshable without changing the local/no-upload default. |
+| **Later — Evidence-gated semantic review** | Expose semantic instruction concerns only if reviewers can act on them reliably. | Existing semantic corpus plus representative artifacts, defensible precision/recall, and actionability review. | Public semantic output has a deliberate schema and migration story, or remains internal/advisory. |
 
-3. **Skills over MCP contract study (next).** Keep the delivery and `index.json`
-   contract standards-neutral until upstream conventions are stable. The local
-   ZIP validation substrate is implemented, including safe extraction, root
-   `SKILL.md` validation, and archive provenance. A future adapter may accept a
-   local materialized snapshot or MCP-delivered archive, but it should not
-   invent name/description/URI or digest semantics, require live server
-   introspection, or make a remote MCP server part of scanning.
+## v0.2 implementation order
 
-4. **Tasks capability signal (implemented).** SkillGate records the exact
-   `io.modelcontextprotocol/tasks` extension and explicit `tasks/get`,
-   `tasks/update`, and `tasks/cancel` declarations. The signal flows through
-   scan, baselines, registry comparison, and advisory pre-install evidence. It
-   records a review surface; it does not infer runtime behavior or execute a
-   task.
+The order is part of the roadmap, not an implementation detail:
 
-5. **Schema and authorization metadata checks.** Add bounded checks for full
-   JSON Schema constructs, external `$ref` references, unrestricted output
-   schemas, OAuth/OIDC issuer and resource metadata, and declared credential or
-   scope requirements. Never dereference schemas, call authorization endpoints,
-   or retain secret values.
+1. [v0.2A — Agent Plugins 1.0 aggregate admission](docs/roadmaps/agent-artifact-admission.md#v02a--agent-plugins-10-aggregate-admission)
+   comes first because plugins are already materialized compound artifacts.
+2. [v0.2B — MCP Skills static snapshot admission](docs/roadmaps/agent-artifact-admission.md#v02b--mcp-skills-static-snapshot-admission)
+   comes second and requires an explicit static input/capture contract before
+   any parser or adapter is designed.
 
-### Policy and evidence follow-up
+The [Agent Artifact Admission roadmap](docs/roadmaps/agent-artifact-admission.md)
+defines the review-layer separation, aggregate identity, provenance,
+partial-coverage semantics, and evidence/exit criteria. It is planning only:
+MCP Skills and Agent Plugins are not implemented by this document.
 
-- Add fixtures for the eventual Skills index/digest contract, external `$ref`,
-  and OAuth issuer drift.
-- Extend MCP baselines and policy templates only after the normalized capability
-  model is stable. Candidate controls include allowed extension IDs, UI origins,
-  protocol revisions, task capability, and authorization issuers.
-- Publish benchmark and migration notes with the first compatibility release;
-  keep findings advisory until representative-repository review demonstrates
-  reviewer actionability.
-- Keep semantic CLI exposure, blocking semantic policy, and declared-purpose
-  mismatch enforcement behind the existing evidence gates.
+## Evidence and benchmarking
 
-### Explicit non-goals
+Keep two kinds of coverage separate:
 
-Do not add MCP server startup or introspection, a stateful MCP proxy/gateway,
-browser/UI rendering, task execution, OAuth exchanges, automatic schema
-resolution, telemetry, or a generic extension-specific rule family. Unknown
-extension behavior should remain an explicit review surface rather than an
-invented verdict.
+1. **Synthetic regression fixtures** provide deterministic checks for known
+   formats, malformed inputs, boundaries, redaction, and stable output.
+2. **Representative public artifacts** measure real-world usefulness. Each
+   artifact needs an immutable source identity, license/attribution record,
+   scan date, adapter/tool version, and human-reviewed expected evidence where
+   labels are required.
 
-## Later Work
+Evaluation should report, by artifact type and separately for incomplete scans:
 
-### Semantic artifact linting
+- format and contract correctness;
+- capability extraction and provenance accuracy;
+- stable versus noisy drift behavior;
+- true capability-change detection and false positives;
+- semantic `SA001`/`SA002` precision and recall only where defensible;
+- reviewer actionability and reviewer agreement; and
+- skipped, invalid, unknown, and incomplete accounting.
 
-Explore semantic artifact linting only as an opt-in, local-first extension to
-pre-install and pre-merge review. The goal is to surface suspicious
-agent-directed instructions that are already shipped in skills, MCP configs,
-MCPB bundles, manifests, prompt templates, and explicitly agent-facing static
-text artifacts. Ordinary README prose, arbitrary comments, binaries, rendered
-pages, and unclassified bundled assets are not semantic inputs by default.
+The existing 24-case semantic corpus remains useful synthetic regression
+coverage. It is not enough evidence for broad real-world semantic scanner
+quality and must not be marketed as such. Publish methodology, corpus
+boundaries, known blind spots, per-artifact-type results, thresholds, and exact
+commands before making public accuracy claims.
 
-This is not a pivot into runtime prompt-injection protection. Runtime web
-content, email, RAG stores, MCP server execution, hosted prompt firewalls,
-sandboxing, and action approval enforcement remain out of scope unless the
-project makes a separate product decision.
+## Distribution and discoverability
 
-Use the staged roadmap in
-[`docs/roadmaps/semantic-artifact-linting.md`](docs/roadmaps/semantic-artifact-linting.md)
-before implementing any semantic scanner. Rebase implementation work onto the
-current Review Packet schema and preserve existing `SG007`/`SG008` behavior.
-The initial compatibility, source-role, and inventory decisions are recorded
-in [`docs/semantic-artifact-inventory.md`](docs/semantic-artifact-inventory.md).
-The staged sequence is:
+Treat distribution as a parallel workstream, with this explicit sequence:
 
-```text
-contract and SG007 compatibility
-→ bounded text inventory
-→ narrow advisory rules and adversarial evaluation
-→ semantic instruction drift
-→ opt-in review integration and public evidence
-→ declared-purpose/capability/instruction comparison
-→ policy and suppression support
-```
+`brand/package identity → Python distribution identity → simple PyPI/uvx installation → Node/npm wrapper decision → broader discoverability`
 
-The first milestone is a bounded deterministic text inventory followed by a
-small, high-precision, library-only advisory rule pack. Semantic policy remains
-gated on representative repository evidence. This is not a classifier or
-blocking-policy commitment.
+The sequence prevents a public package or search push from hardening an
+ambiguous identity. The current repository name, brand, and
+`openevalgate-skillgate` distribution plan remain unchanged in this planning
+round. Do not publish or rename as part of this roadmap cleanup.
 
-The committed synthetic semantic-artifact corpus and its internal evaluation
-harness now validate source selection, labels, actual `SA001`/`SA002` rule-pack
-observations, and category metrics. The library-only pack meets its synthetic
-24-case gate (100% recall, zero false positives). The library-only semantic
-baseline also produces redacted, line-movement-stable instruction drift for
-internal callers. These remain internal tooling rather than public product
-surfaces. A semantic CLI, including `review preinstall --semantic` or a
-standalone semantic command, is explicitly delayed
-until representative-repository and reviewer-actionability evidence justifies
-it.
+Public review reports and an evidence observatory may later support maintainers,
+benchmarks, search engines, and answer engines. They must preserve immutable
+source identity, scan limits, skipped/incomplete accounting, findings,
+capability deltas, attribution, and redaction. This is not a hosted scanner and
+does not change the local command's upload behavior.
 
-### Declared purpose, capability, and instruction comparison
+Keep `llms.txt` as answer-engine orientation, not the primary SEO mechanism.
+Prioritize high-intent technical documentation, compatibility matrices,
+benchmark reports, schemas, public review reports, and example capability
+diffs. Avoid generic content marketing and unsupported “safe” or “detects all
+attacks” claims.
 
-After semantic review and drift have real usage, add an explainable comparison of
-what an artifact claims to do, what its code/configuration can do, and what its
-agent-facing instructions request. Report potential mismatches with evidence;
-do not infer maintainer intent or label a mismatch malicious without proof.
+## Decision gate — brand and package identity
 
-### Targeted MCPB and Agent Skills expansion
+There is another project using the `SkillGate` name in the same broad
+AI-agent-security space. Resolve the brand/package question before:
 
-Expand MCPB policy controls and Agent Skills validation only in response to
-real adoption evidence. Do not add new rule families or rule IDs merely to make
-the roadmap look larger.
+- a major public v0.2 launch;
+- a PyPI or other public package push; or
+- a major SEO/AEO and broader discoverability push.
 
-## Maintenance Requirements
+This gate does not block internal v0.2A Agent Plugins model work. The decision
+should compare:
 
-Keep the documented Action behavior stable for advisory scans, blocking policy
-checks, baseline drift blocking, GitHub Step Summary, Markdown summaries, JSON
-artifacts, and SARIF review artifacts. Preserve copy-pasteable examples for:
+1. retaining `SkillGate`, preserving recognition while accepting search and
+   package ambiguity;
+2. using `OpenEvalGate SkillGate` / `SkillGate by OpenEvalGate`, adding a
+   differentiator at the cost of presentation complexity; or
+3. renaming while adoption is still relatively small, accepting migration cost
+   for cleaner long-term identity.
 
-- nonblocking scan with SARIF retained as a pull-request artifact;
-- blocking policy check with policy-aware SARIF;
-- baseline drift blocking; and
-- review-summary artifact upload.
+Consider GitHub discoverability, search and answer-engine ambiguity,
+Python/npm/package names, website/domain identity, and community recognition.
 
-The composite Action can enforce a supplied `baseline` plus `fail-on-drift` when
-a repository explicitly opts into that gate.
+## Later semantic review
 
-Do not add telemetry without an explicit privacy design and opt-in decision.
+The repository already contains an internal bounded semantic inventory,
+`SA001`/`SA002` advisory helpers, and line-movement-stable semantic drift. They
+remain library-only because representative-repository evidence and reviewer
+actionability have not yet justified a public semantic CLI or Review Packet
+integration.
 
-## Release Checklist References
+Use the detailed [semantic artifact linting roadmap](docs/roadmaps/semantic-artifact-linting.md)
+as a subordinate design record. Its next decision is an evidence gate, not an
+immediate implementation task. Preserve current `SG007` compatibility and
+Review Packet schema migration discipline.
 
-The release checklist records the `v0.1.3` publication and binary verification
-procedure. Use it with `uv sync --locked`, the generated benchmark report, the
-starter-repository smoke test, and the final no-execution review.
+## Maintenance rules and non-goals
+
+- Keep this file as the canonical direction; link to it instead of copying
+  roadmap prose into every documentation page.
+- Keep release history in `CHANGELOG.md`; mark work as released only when it is
+  actually released.
+- Preserve stable CLI, JSON, SARIF, policy, Review Packet, and rule semantics
+  unless a future milestone explicitly includes a migration plan.
+- The composite Action can enforce a supplied `baseline` plus `fail-on-drift`
+  when a repository explicitly opts into that gate.
+- Keep findings deterministic, static, reproducible, redacted, and local-first.
+- Do not start arbitrary MCP servers as the default review path. Runtime MCP
+  behavior, runtime enforcement, sandboxing, and watchdogs remain outside this
+  product boundary.
+- This round adds no MCP Skills parser, Agent Plugins implementation, public
+  semantic CLI, new rule, benchmark corpus implementation, package
+  publication, package rename, website, CI behavior, or release.
+
+This round stops at the planning/documentation patch. Implementation begins
+only after review of the v0.2 contract, evidence requirements, and the brand
+decision gate.

@@ -21,6 +21,16 @@ The product should say:
 
 > SkillGate identifies suspicious agent-directed instructions in shipped artifacts. It does not claim to prove that an agent is safe from runtime prompt injection.
 
+## Current repository status
+
+The design record, bounded text inventory, deterministic `SA001`/`SA002`
+library-only rule pack, synthetic corpus, and line-movement-stable semantic
+drift helpers are implemented internally. They are not public CLI, Review
+Packet, SARIF, policy, or capability-baseline behavior. Representative public
+artifact evidence and reviewer-actionability evidence remain outstanding; the
+next semantic decision is therefore an evidence gate, not immediate product
+integration.
+
 ## Why this is worth doing
 
 The agent-security research landscape includes runtime and semantic attacks:
@@ -437,13 +447,15 @@ Cons:
 
 - depends on the unified pre-install review flow landing first.
 
-Recommendation:
+Recommendation after the evidence gate:
 
-- best first product integration.
+- use an opt-in review-flow flag if representative evidence justifies public
+  integration.
 
-### Recommended path
+### Potential path after the evidence gate
 
-Implement semantic artifact linting first as:
+If representative evidence justifies a public surface, the preferred first
+integration remains an opt-in review command:
 
 ```bash
 skillgate review preinstall SOURCE --semantic
@@ -985,48 +997,41 @@ A useful public summary after Stage 5:
 
 > SkillGate does not pretend to solve prompt injection. It makes the part of the problem that ships with agent artifacts reviewable, reproducible, and enforceable before install or merge.
 
-## Open questions before implementation
+## Future integration decisions
 
-The following decisions should be recorded before Stage 1 code is started:
+The following decisions are recorded for the internal implementation. Recheck
+them before public integration or a Review Packet schema change:
 
-1. Confirm `SA###` identifiers plus a separate `semantic_findings` section, with
+1. Keep `SA###` identifiers and a separate `semantic_findings` section, with
    no duplicate output for existing `SG###` rules.
-2. Record the SG007 compatibility cycle, related-rule behavior, and any future
-   deprecation requirements before changing existing rule output.
-3. Confirm `review preinstall --semantic` as the MVP entry point; do not add
+2. Preserve the recorded SG007 compatibility cycle, related-rule behavior, and
+   any future deprecation requirements before changing existing rule output.
+3. Keep `review preinstall --semantic` as the candidate entry point; do not add
    `scan --semantic` until the review-packet experiment has real usage.
-4. Define source roles, `structured_field`, `agent_consumption`, and the default
-   file/field allowlist. Unknown source role must not become an inferred agent
-   instruction.
-5. Define the `potential_impact`, confidence, and applicability matrix and the
-   minimum precision and false-positive gates for each MVP category.
-6. Define how explicit fixture/documentation metadata is represented without
-   trusting text to self-classify as safe.
-7. Define normalized semantic block identity and how semantic drift extends,
-   rather than silently changes, existing baseline behavior.
-8. Start with synthetic benchmark fixtures and add public examples only with
-   clear license and attribution records.
-9. Decide what evidence report is required before semantic policy enforcement;
+4. Preserve source roles, `structured_field`, `agent_consumption`, and the
+   bounded file/field allowlist. Unknown source role must not become an
+   inferred agent instruction.
+5. Apply the recorded potential-impact, confidence, applicability, precision,
+   and false-positive gates to representative evidence.
+6. Keep explicit fixture/documentation metadata separate from text-based
+   safety inference.
+7. Keep normalized semantic block identity and semantic drift separate from
+   existing capability-baseline behavior until explicitly integrated.
+8. Add public examples only with clear license, attribution, and immutable
+   source records.
+9. Publish the evidence report required before semantic policy enforcement;
    policy and suppression support remain deferred until then.
-10. Rebase implementation work onto the current Review Packet schema and record
-    any required migration before changing public JSON.
+10. Record any Review Packet schema migration before changing public JSON.
 
 ## Recommendation
 
-Proceed with the design and bounded inventory first. Start the deterministic
-rule MVP only after the SG007 overlap matrix and benchmark gates are in place.
-Then prioritize semantic instruction drift before policy enforcement. Do not
-make policy or classifier decisions from this planning document alone.
+Keep the implemented inventory, advisory rule pack, and drift helpers internal
+while the broader Evidence & Benchmarking workstream gathers representative
+public artifacts. If the documented precision, false-positive, and
+reviewer-actionability gates pass, integrate the feature into
+`review preinstall --semantic`, version the Review Packet deliberately, and
+publish the evidence report. If they do not pass, keep the inventory/drift
+value and narrow or retire noisy findings.
 
-The immediate next implementation milestone should be:
-
-> Build a deterministic semantic text inventory, a small high-precision advisory
-> rule pack, and a line-movement-stable semantic drift report for shipped
-> agent-facing artifacts.
-
-Do not start with a classifier. Do not start with runtime monitoring. Do not market this as prompt-injection prevention.
-
-If the advisory rule pack and drift report produce useful, low-noise evidence on
-reviewed MCP/Agent Skill repositories, integrate them into
-`review preinstall --semantic` and publish the evidence report. Keep runtime
-monitoring, hosted models, and broad semantic inference out of scope.
+Do not start with a classifier. Do not start with runtime monitoring. Do not
+market this as prompt-injection prevention.

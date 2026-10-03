@@ -1,4 +1,4 @@
-# SkillGate - Static trust checks for AI-agent skills and MCP configurations
+# SkillGate - Deterministic admission control for agent artifacts
 
 [![SkillGate CI](https://github.com/charliechenye/SkillGate/actions/workflows/skillgate.yml/badge.svg?branch=main)](https://github.com/charliechenye/SkillGate/actions/workflows/skillgate.yml)
 [![Latest release](https://img.shields.io/github/v/release/charliechenye/SkillGate?sort=semver&display_name=tag&label=release)](https://github.com/charliechenye/SkillGate/releases/latest)
@@ -13,15 +13,23 @@ Stable compatibility channel: `v0`
 
 ![SkillGate social preview: static trust checks for AI-agent skills and MCP configurations](docs/assets/repo_image.png)
 
-SkillGate is a local-first static trust gate for AI-agent skills, instruction
-files, helper scripts, and Model Context Protocol (MCP) metadata. It helps
-reviewers answer one practical question before install or merge:
+Review what agent tooling can do before you install or merge it.
 
-> What new agent capability would this code or configuration introduce?
+SkillGate is local-first, deterministic admission control for AI-agent skills,
+instruction files, helper scripts, MCP metadata, MCP bundles, and related agent
+artifacts. It helps reviewers answer one practical question before install,
+merge, or approval:
+
+> What new capability surface does this artifact introduce?
 
 SkillGate does not execute repository code, start MCP servers, call LLMs, or
-install remote packages. It scans files, reports capabilities and findings, and
-lets teams block unapproved behavior with policy-as-code.
+install remote packages. It scans materialized files, reports capabilities and
+findings, and lets teams block unapproved behavior with policy-as-code.
+
+Its product boundary is admission review, not a runtime MCP gateway, sandbox,
+malware verdict engine, hosted security platform, or generic agent framework.
+See the [canonical product direction and roadmap](future_steps.md) for planned
+MCP Skills and Agent Plugins support.
 
 ## Start With Pre-Install Review
 
@@ -538,11 +546,21 @@ Contributor docs:
 
 ### What is SkillGate?
 
-SkillGate is a static AI-agent security scanner for skills, MCP configurations, instruction files, and helper scripts. It scans for risky capabilities before code is installed, merged, or run in CI.
+SkillGate is a deterministic pre-install and pre-merge admission-control tool
+for agent artifacts. It reviews skills, MCP configurations and bundles,
+instruction files, and helper scripts for capability surfaces and evidence
+before code is installed, approved, or run in CI.
 
 ### Is SkillGate an MCP security scanner?
 
-Yes. SkillGate scans MCP config files, MCP registry metadata, MCP tool metadata, MCP transport metadata, protocol/extension declarations, and MCP capability drift. It can detect remote endpoints, secret-bearing headers, stdio package transports, localhost bridges, unauthenticated remote transports, and local-vs-registry metadata drift. See [MCP compatibility review](docs/mcp-compatibility.md) for the advisory protocol and extension inventory boundary.
+Yes, as a static review surface. SkillGate scans MCP config files, MCP registry
+metadata, MCP tool metadata, MCP transport metadata, protocol/extension
+declarations, and MCP capability drift. It can detect remote endpoints,
+secret-bearing headers, stdio package transports, localhost bridges,
+unauthenticated remote transports, and local-vs-registry metadata drift. It is
+not a runtime MCP gateway and does not currently implement the MCP Skills
+extension. See [MCP compatibility review](docs/mcp-compatibility.md) for the
+current advisory protocol and extension inventory boundary.
 
 ### Can SkillGate scan Codex skills?
 
@@ -606,4 +624,7 @@ Use [schemas/skillgate-policy.schema.json](schemas/skillgate-policy.schema.json)
 
 ## Roadmap
 
-See [future_steps.md](future_steps.md) for planned adoption, PR review, MCP, and runtime-evidence work.
+See [future_steps.md](future_steps.md) for the canonical product direction,
+planned Agent Artifact Admission milestone, evidence workstream, and explicit
+runtime boundary. The detailed v0.2 design is in the [Agent Artifact Admission
+roadmap](docs/roadmaps/agent-artifact-admission.md).
