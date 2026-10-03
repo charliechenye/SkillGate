@@ -328,6 +328,33 @@ def _validate_skill(
     return skill, findings
 
 
+def validate_skill_file(
+    skill_path: Path,
+    root: Path,
+    *,
+    check_directory_name: bool = True,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Validate one already-discovered skill file without recursive discovery.
+
+    Agent Plugins has a narrower discovery rule than the general skills
+    validator. This wrapper lets its loader reuse the existing validation
+    logic after it has selected one immediate-child ``SKILL.md`` safely.
+    """
+    resolved_root = root.expanduser().resolve()
+    resolved_skill = skill_path.expanduser().resolve()
+    try:
+        resolved_skill.relative_to(resolved_root)
+    except ValueError as exc:
+        raise SkillsValidationError("skill file resolves outside its validation root") from exc
+    if not resolved_skill.is_file():
+        raise SkillsValidationError(f"skill file is not a regular file: {skill_path}")
+    return _validate_skill(
+        resolved_skill,
+        resolved_root,
+        check_directory_name=check_directory_name,
+    )
+
+
 def validate_skills(path: Path, *, check_directory_name: bool = True) -> dict[str, Any]:
     path = path.expanduser().resolve()
     skill_files = discover_skill_files(path)
