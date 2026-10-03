@@ -241,6 +241,11 @@ def build_preinstall_packet(
             1,
             "Review unknown MCP compatibility declarations before enabling the server or client.",
         )
+    if mcp_compatibility and mcp_compatibility.get("task_capabilities"):
+        next_actions.insert(
+            1,
+            "Review MCP Tasks durable-work and deferred-execution surfaces before enabling.",
+        )
     if apps:
         if apps["tools"]:
             next_actions.insert(1, "Review MCP Apps UI-callable tool surfaces before enabling.")
@@ -414,6 +419,29 @@ def render_preinstall_markdown(packet: dict[str, Any]) -> str:
                             .get("extensions", [])
                         ],
                     )
+                ),
+                *(
+                    [
+                        "",
+                        "### Tasks capability",
+                        "",
+                        _table(
+                            ["Tasks surface", "Resource", "Scope", "Source"],
+                            [
+                                [
+                                    item.get("surface") or "",
+                                    item.get("resource") or "",
+                                    item.get("scope") or "",
+                                    item.get("source_file") or "",
+                                ]
+                                for item in packet["metadata"]
+                                .get("mcp_compatibility", {})
+                                .get("task_capabilities", [])
+                            ],
+                        ),
+                    ]
+                    if packet["metadata"].get("mcp_compatibility", {}).get("task_capabilities")
+                    else []
                 ),
                 "",
                 *(
