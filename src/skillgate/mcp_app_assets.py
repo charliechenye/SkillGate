@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
@@ -139,6 +140,7 @@ def _asset_record(
     association: str,
     *,
     remaining_bytes: int,
+    max_asset_bytes: int = MCP_APP_MAX_ASSET_BYTES,
 ) -> tuple[McpAppAssetRecord, str | None, int]:
     rel = _safe_rel(root, path)
     if rel is None:
@@ -169,7 +171,8 @@ def _asset_record(
             None,
             0,
         )
-    if size_bytes > MCP_APP_MAX_ASSET_BYTES:
+    max_asset_bytes = max(max_asset_bytes, 0)
+    if size_bytes > max_asset_bytes:
         return (
             McpAppAssetRecord(rel, kind, association, size_bytes, None, "asset_too_large"),
             None,
@@ -190,14 +193,14 @@ def _asset_record(
         )
     try:
         with path.open("rb") as stream:
-            data = stream.read(MCP_APP_MAX_ASSET_BYTES + 1)
+            data = stream.read(max_asset_bytes + 1)
     except OSError:
         return (
             McpAppAssetRecord(rel, kind, association, None, None, "missing_reference"),
             None,
             0,
         )
-    if len(data) > MCP_APP_MAX_ASSET_BYTES:
+    if len(data) > max_asset_bytes:
         return (
             McpAppAssetRecord(rel, kind, association, len(data), None, "asset_too_large"),
             None,
@@ -227,13 +230,23 @@ def mcp_app_asset_paths(root: Path, seed_paths: set[Path]) -> list[Path]:
     )
 
 
-def inventory_local_mcp_app_assets(root: Path, seed_paths: set[Path]) -> McpAppAssetInventory:
+def inventory_local_mcp_app_assets(
+    root: Path,
+    seed_paths: set[Path],
+    *,
+    seed_texts: Mapping[Path, str] | None = None,
+    max_assets: int = MCP_APP_MAX_ASSETS,
+    max_asset_bytes: int = MCP_APP_MAX_ASSET_BYTES,
+    max_total_asset_bytes: int = MCP_APP_MAX_TOTAL_ASSET_BYTES,
+) -> McpAppAssetInventory:
     root = root.resolve()
     queue: list[tuple[Path, str]] = []
     records: dict[tuple[str, str], McpAppAssetRecord] = {}
     bridges: dict[tuple[str, tuple[str, ...], str], McpAppHostBridgeRecord] = {}
     reserved_records: set[tuple[str, str]] = set()
-    remaining_bytes = MCP_APP_MAX_TOTAL_ASSET_BYTES
+    max_assets = max(max_assets, 0)
+    max_asset_bytes = max(max_asset_bytes, 0)
+    remaining_bytes = max(max_total_asset_bytes, 0)
     limit_reached = False
 
     def reserve(path: str, association: str) -> bool:
@@ -241,7 +254,7 @@ def inventory_local_mcp_app_assets(root: Path, seed_paths: set[Path]) -> McpAppA
         key = (path, association)
         if key in reserved_records:
             return False
-        if len(reserved_records) >= MCP_APP_MAX_ASSETS:
+        if len(reserved_records) >= max_assets:
             limit_reached = True
             return False
         reserved_records.add(key)
@@ -262,12 +275,22 @@ def inventory_local_mcp_app_assets(root: Path, seed_paths: set[Path]) -> McpAppA
             queue.append((path.resolve(), association))
 
     for seed in sorted(seed_paths, key=lambda item: _safe_rel(root, item) or ""):
-        try:
-            data = json.loads(seed.read_text(encoding="utf-8", errors="replace"))
-        except (OSError, json.JSONDecodeError):
-            continue
+        seed_text = None
+        if seed_texts is not None:
+            if seed in seed_texts:
+                seed_text = seed_texts[seed]
+            else:
+                resolved_seed = seed.resolve()
+                if resolved_seed in seed_texts:
+                    seed_text = seed_texts[resolved_seed]
+        if seed_text is None:
+            try:
+                data = json.loads(seed.read_text(encoding="utf-8", errors="replace"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            seed_text = json.dumps(data, sort_keys=True)
         inventory = inventory_from_json_text(
-            json.dumps(data, sort_keys=True),
+            seed_text,
             declaration_path="",
             scope="local_assets",
         )
@@ -299,7 +322,11 @@ def inventory_local_mcp_app_assets(root: Path, seed_paths: set[Path]) -> McpAppA
     while queue:
         path, association = queue.pop(0)
         record, text, consumed = _asset_record(
-            root, path, association, remaining_bytes=remaining_bytes
+            root,
+            path,
+            association,
+            remaining_bytes=remaining_bytes,
+            max_asset_bytes=max_asset_bytes,
         )
         remaining_bytes -= consumed
         records[(record.path, record.association)] = record

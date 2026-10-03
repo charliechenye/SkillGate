@@ -12,8 +12,10 @@ be reviewed, and uninterpreted package surfaces remain explicit blind spots.
 from __future__ import annotations
 
 import json
+import os
+from collections.abc import Iterable
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from skillgate.agent_plugins import (
@@ -26,15 +28,128 @@ from skillgate.agent_plugins import (
     AgentPluginSkill,
     load_agent_plugin,
 )
-from skillgate.discovery import discover_paths
+from skillgate.discovery import EXCLUDED_DIRS, SCRIPT_EXTENSIONS, classify_file
+from skillgate.mcp_app_assets import (
+    inventory_local_mcp_app_assets,
+    mcp_app_asset_capabilities,
+)
 from skillgate.models import Capability
-from skillgate.scan import scan_paths
+from skillgate.rules import DEFAULT_RULES
+from skillgate.rules.base import FileContent
+from skillgate.scan import unique_capabilities
 
 _ROOT_COMPONENT_ID = "mcp.json"
 _REVIEWED = "reviewed"
 _INCOMPLETE = "incomplete"
 _INVALID = "invalid"
 _SKIPPED = "skipped"
+_FILE_SCANNED = "scanned"
+_FILE_NOT_APPLICABLE = "not_applicable"
+_FILE_UNSUPPORTED = "unsupported"
+_FILE_LIMIT_EXCEEDED = "limit_exceeded"
+_FILE_UNREADABLE = "unreadable"
+_FILE_SCAN_FAILED = "scan_failed"
+_CAPABILITY_TEXT_EXTENSIONS = frozenset(
+    {
+        ".css",
+        ".html",
+        ".htm",
+        ".json",
+        ".markdown",
+        ".md",
+        ".rst",
+        ".toml",
+        ".txt",
+        ".xml",
+        ".yaml",
+        ".yml",
+    }
+)
+_CAPABILITY_TEXT_NAMES = frozenset(
+    {
+        "AGENTS.md",
+        "CLAUDE.md",
+        "SKILL.md",
+        ".agent.yaml",
+        ".agent.yml",
+        ".env",
+        ".env.local",
+        "agent-config.toml",
+        "agent-config.yaml",
+        "agent-config.yml",
+        "agent.toml",
+        "agent.yaml",
+        "agent.yml",
+        "agents.toml",
+        "agents.yaml",
+        "agents.yml",
+        "mcp-registry.json",
+        "mcp-server.json",
+        "mcp.json",
+        "package.json",
+        "prompts.toml",
+        "prompts.yaml",
+        "prompts.yml",
+        "pyproject.toml",
+    }
+)
+
+
+@dataclass(frozen=True)
+class AgentPluginCapabilityLimits:
+    """Bounded file-analysis limits for one Agent Plugin component."""
+
+    max_files_per_component: int = 256
+    max_file_bytes: int = 1_048_576
+    max_total_bytes_per_component: int = 8_388_608
+    max_directories_per_component: int = 256
+    max_entries_per_component: int = 1_024
+
+
+DEFAULT_AGENT_PLUGIN_CAPABILITY_LIMITS = AgentPluginCapabilityLimits()
+
+
+@dataclass(frozen=True)
+class AgentPluginCapabilityFileReview:
+    """Accounting for one file in a component capability review."""
+
+    path: str
+    status: str
+    reason: str | None = None
+    size_bytes: int | None = None
+
+    def to_data(self) -> dict[str, object]:
+        return {
+            "path": self.path,
+            "status": self.status,
+            "reason": self.reason,
+            "size_bytes": self.size_bytes,
+        }
+
+
+@dataclass(frozen=True)
+class _CapabilityFileCandidate:
+    path: str
+    read_path: Path
+
+
+@dataclass
+class _CapabilityFileInventory:
+    candidates: list[_CapabilityFileCandidate]
+    file_reviews: list[AgentPluginCapabilityFileReview]
+    diagnostics: list[AgentPluginDiagnostic]
+    complete: bool = True
+
+
+@dataclass(frozen=True)
+class _BoundedScanResult:
+    status: str
+    scanned_files: tuple[str, ...]
+    file_reviews: tuple[AgentPluginCapabilityFileReview, ...]
+    capabilities: tuple[Capability, ...]
+    diagnostics: tuple[AgentPluginDiagnostic, ...]
+    bytes_read: int = 0
+    text_by_path: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -89,6 +204,7 @@ class AgentPluginComponentCapabilityReview:
     scanned_files: tuple[str, ...] = ()
     capabilities: tuple[Capability, ...] = ()
     diagnostics: tuple[AgentPluginDiagnostic, ...] = ()
+    file_reviews: tuple[AgentPluginCapabilityFileReview, ...] = ()
 
     def to_data(self) -> dict[str, object]:
         return {
@@ -98,6 +214,7 @@ class AgentPluginComponentCapabilityReview:
             "structural_status": self.structural_status,
             "capability_scan_status": self.capability_scan_status,
             "scanned_files": list(self.scanned_files),
+            "file_reviews": [item.to_data() for item in self.file_reviews],
             "capabilities": [item.model_dump(mode="json") for item in self.capabilities],
             "diagnostics": [item.to_data() for item in self.diagnostics],
         }
@@ -222,6 +339,570 @@ def _skill_component_path(skill: AgentPluginSkill) -> str:
     return Path(skill.path).parent.as_posix()
 
 
+def _relative_plugin_path(root: Path, path: Path) -> str | None:
+    try:
+        return path.relative_to(root).as_posix()
+    except ValueError:
+        try:
+            return path.resolve().relative_to(root.resolve()).as_posix()
+        except (OSError, RuntimeError, ValueError):
+            return None
+
+
+def _safe_file_size(path: Path) -> int | None:
+    try:
+        return path.stat().st_size
+    except OSError:
+        return None
+
+
+def _is_capability_text_file(path: Path) -> bool:
+    return path.name in _CAPABILITY_TEXT_NAMES or path.suffix.lower() in (
+        SCRIPT_EXTENSIONS | _CAPABILITY_TEXT_EXTENSIONS
+    )
+
+
+def _path_is_within(path: Path, root: Path) -> bool:
+    try:
+        path.resolve().relative_to(root.resolve())
+    except (OSError, RuntimeError, ValueError):
+        return False
+    return True
+
+
+def _inventory_marker(
+    inventory: _CapabilityFileInventory,
+    component_path: str,
+    reason: str,
+    message: str,
+) -> None:
+    marker = f"{component_path}/<unaccounted>"
+    status = (
+        _FILE_LIMIT_EXCEEDED
+        if "limit_exceeded" in reason
+        else _FILE_UNREADABLE
+        if "unavailable" in reason
+        else _FILE_UNSUPPORTED
+    )
+    if not any(item.path == marker for item in inventory.file_reviews):
+        inventory.file_reviews.append(
+            AgentPluginCapabilityFileReview(
+                path=marker,
+                status=status,
+                reason=reason,
+            )
+        )
+    inventory.diagnostics.append(_diagnostic(reason, message, marker))
+    inventory.complete = False
+
+
+def _inventory_skill_files(
+    root: Path,
+    component_root: Path,
+    component_path: str,
+    limits: AgentPluginCapabilityLimits,
+) -> _CapabilityFileInventory:
+    """Boundedly account for every inspectable file under one Skill root."""
+    inventory = _CapabilityFileInventory([], [], [])
+    root_resolved = root.resolve()
+    component_resolved = component_root.resolve()
+    pending = [component_root]
+    visited_directories: set[Path] = set()
+    file_count = 0
+    directory_count = 0
+    entry_count = 0
+    max_files = max(limits.max_files_per_component, 0)
+    max_directories = max(limits.max_directories_per_component, 0)
+    max_entries = max(limits.max_entries_per_component, 0)
+
+    while pending:
+        current = pending.pop(0)
+        try:
+            current_resolved = current.resolve()
+        except (OSError, RuntimeError):
+            _inventory_marker(
+                inventory,
+                component_path,
+                "capability_directory_unavailable",
+                "a Skill directory could not be resolved safely",
+            )
+            continue
+        if current_resolved in visited_directories:
+            continue
+        if directory_count >= max_directories:
+            _inventory_marker(
+                inventory,
+                component_path,
+                "capability_directory_limit_exceeded",
+                "the Skill component exceeded its bounded directory inventory limit",
+            )
+            break
+        directory_count += 1
+        visited_directories.add(current_resolved)
+        directory_entry_limit_reached = False
+        try:
+            with os.scandir(current) as iterator:
+                entries = []
+                for entry in iterator:
+                    if entry_count + len(entries) >= max_entries:
+                        directory_entry_limit_reached = True
+                        break
+                    entries.append(entry)
+        except OSError:
+            current_path = _relative_plugin_path(root, current) or component_path
+            marker = f"{current_path}/<unreadable>"
+            inventory.file_reviews.append(
+                AgentPluginCapabilityFileReview(
+                    path=marker,
+                    status=_FILE_UNREADABLE,
+                    reason="directory_unreadable",
+                )
+            )
+            inventory.diagnostics.append(
+                _diagnostic(
+                    "capability_directory_unreadable",
+                    "a Skill directory could not be listed safely",
+                    current_path,
+                )
+            )
+            inventory.complete = False
+            continue
+
+        for entry in entries:
+            entry_count += 1
+            candidate_path = Path(entry.path)
+            relative = _relative_plugin_path(root, candidate_path)
+            if relative is None:
+                _inventory_marker(
+                    inventory,
+                    component_path,
+                    "capability_path_unavailable",
+                    "a Skill file path could not be represented relative to the plugin",
+                )
+                pending.clear()
+                break
+
+            if entry.name in EXCLUDED_DIRS:
+                inventory.file_reviews.append(
+                    AgentPluginCapabilityFileReview(
+                        path=f"{relative}/<excluded>",
+                        status=_FILE_UNSUPPORTED,
+                        reason="excluded_directory_not_analyzed",
+                    )
+                )
+                inventory.diagnostics.append(
+                    _diagnostic(
+                        "capability_surface_unsupported",
+                        "an excluded Skill directory was not capability-analyzed",
+                        relative,
+                    )
+                )
+                inventory.complete = False
+                continue
+
+            try:
+                is_directory = entry.is_dir(follow_symlinks=False)
+                is_file = entry.is_file(follow_symlinks=False)
+                is_symlink = entry.is_symlink()
+            except OSError:
+                inventory.file_reviews.append(
+                    AgentPluginCapabilityFileReview(
+                        path=relative,
+                        status=_FILE_UNREADABLE,
+                        reason="file_type_unreadable",
+                    )
+                )
+                inventory.diagnostics.append(
+                    _diagnostic(
+                        "capability_file_unreadable",
+                        "a Skill file could not be inspected safely",
+                        relative,
+                    )
+                )
+                inventory.complete = False
+                continue
+
+            if is_directory:
+                pending.append(candidate_path)
+                pending.sort(key=lambda item: _relative_plugin_path(root, item) or "")
+                continue
+
+            read_path = candidate_path
+            if is_symlink:
+                try:
+                    read_path = candidate_path.resolve()
+                except (OSError, RuntimeError):
+                    read_path = candidate_path
+                if read_path.is_dir():
+                    inventory.file_reviews.append(
+                        AgentPluginCapabilityFileReview(
+                            path=relative,
+                            status=_FILE_UNSUPPORTED,
+                            reason="symlink_directory_not_followed",
+                        )
+                    )
+                    inventory.diagnostics.append(
+                        _diagnostic(
+                            "capability_surface_unsupported",
+                            "a symlinked Skill directory was not followed during bounded review",
+                            relative,
+                        )
+                    )
+                    inventory.complete = False
+                    continue
+                is_file = read_path.is_file()
+
+            if not is_file:
+                inventory.file_reviews.append(
+                    AgentPluginCapabilityFileReview(
+                        path=relative,
+                        status=_FILE_UNSUPPORTED,
+                        reason="non_regular_file",
+                        size_bytes=_safe_file_size(read_path),
+                    )
+                )
+                inventory.diagnostics.append(
+                    _diagnostic(
+                        "capability_surface_unsupported",
+                        "a non-regular Skill surface was not capability-analyzed",
+                        relative,
+                    )
+                )
+                inventory.complete = False
+                continue
+
+            file_count += 1
+            if file_count > max_files:
+                inventory.file_reviews.append(
+                    AgentPluginCapabilityFileReview(
+                        path=relative,
+                        status=_FILE_LIMIT_EXCEEDED,
+                        reason="max_files_per_component",
+                        size_bytes=_safe_file_size(read_path),
+                    )
+                )
+                inventory.diagnostics.append(
+                    _diagnostic(
+                        "capability_file_limit_exceeded",
+                        "the Skill component exceeded its bounded file-count limit",
+                        relative,
+                    )
+                )
+                inventory.complete = False
+                pending.clear()
+                break
+
+            if not _path_is_within(read_path, component_resolved) or not _path_is_within(
+                read_path, root_resolved
+            ):
+                inventory.file_reviews.append(
+                    AgentPluginCapabilityFileReview(
+                        path=relative,
+                        status=_FILE_UNSUPPORTED,
+                        reason="outside_component_boundary",
+                        size_bytes=_safe_file_size(read_path),
+                    )
+                )
+                inventory.diagnostics.append(
+                    _diagnostic(
+                        "capability_surface_outside_component",
+                        "a Skill file resolves outside its component boundary",
+                        relative,
+                    )
+                )
+                inventory.complete = False
+                continue
+
+            if _is_capability_text_file(candidate_path):
+                inventory.candidates.append(
+                    _CapabilityFileCandidate(path=relative, read_path=read_path)
+                )
+            else:
+                inventory.file_reviews.append(
+                    AgentPluginCapabilityFileReview(
+                        path=relative,
+                        status=_FILE_UNSUPPORTED,
+                        reason="unsupported_file_type",
+                        size_bytes=_safe_file_size(read_path),
+                    )
+                )
+                inventory.diagnostics.append(
+                    _diagnostic(
+                        "capability_surface_unsupported",
+                        "the Skill file type is outside the bounded capability analyzer",
+                        relative,
+                    )
+                )
+                inventory.complete = False
+
+        if directory_entry_limit_reached:
+            _inventory_marker(
+                inventory,
+                component_path,
+                "capability_entry_limit_exceeded",
+                "the Skill component exceeded its bounded entry inventory limit",
+            )
+            pending.clear()
+
+    inventory.candidates.sort(key=lambda item: item.path)
+    inventory.file_reviews.sort(key=lambda item: item.path)
+    return inventory
+
+
+def _analyze_file_content(file: FileContent) -> list[Capability]:
+    """Apply the existing static rules without performing any file I/O."""
+    capabilities: list[Capability] = []
+    for rule in DEFAULT_RULES:
+        capabilities.extend(rule.analyze(file).capabilities)
+    return unique_capabilities(capabilities)
+
+
+def _read_and_analyze_candidate(
+    candidate: _CapabilityFileCandidate,
+    *,
+    bytes_read: int,
+    limits: AgentPluginCapabilityLimits,
+) -> tuple[
+    AgentPluginCapabilityFileReview,
+    int,
+    tuple[Capability, ...],
+    AgentPluginDiagnostic | None,
+    str | None,
+]:
+    size_bytes = _safe_file_size(candidate.read_path)
+    if size_bytes is None:
+        return (
+            AgentPluginCapabilityFileReview(
+                candidate.path,
+                _FILE_UNREADABLE,
+                "file_unreadable",
+            ),
+            bytes_read,
+            (),
+            _diagnostic(
+                "capability_file_unreadable",
+                "a Skill capability file could not be read safely",
+                candidate.path,
+            ),
+            None,
+        )
+
+    max_file_bytes = max(limits.max_file_bytes, 0)
+    max_total_bytes = max(limits.max_total_bytes_per_component, 0)
+    remaining_bytes = max_total_bytes - bytes_read
+    if size_bytes > max_file_bytes:
+        return (
+            AgentPluginCapabilityFileReview(
+                candidate.path,
+                _FILE_LIMIT_EXCEEDED,
+                "max_file_bytes",
+                size_bytes,
+            ),
+            bytes_read,
+            (),
+            _diagnostic(
+                "capability_file_limit_exceeded",
+                "a Skill capability file exceeds the bounded per-file byte limit",
+                candidate.path,
+            ),
+            None,
+        )
+    if size_bytes > remaining_bytes:
+        return (
+            AgentPluginCapabilityFileReview(
+                candidate.path,
+                _FILE_LIMIT_EXCEEDED,
+                "max_total_bytes_per_component",
+                size_bytes,
+            ),
+            bytes_read,
+            (),
+            _diagnostic(
+                "capability_total_bytes_limit_exceeded",
+                "the Skill component exceeded its bounded cumulative byte limit",
+                candidate.path,
+            ),
+            None,
+        )
+
+    read_limit = min(size_bytes + 1, max_file_bytes + 1, max(remaining_bytes, 0))
+    try:
+        with candidate.read_path.open("rb", buffering=0) as stream:
+            data = stream.read(read_limit)
+    except OSError:
+        return (
+            AgentPluginCapabilityFileReview(
+                candidate.path,
+                _FILE_UNREADABLE,
+                "file_unreadable",
+                size_bytes,
+            ),
+            bytes_read,
+            (),
+            _diagnostic(
+                "capability_file_unreadable",
+                "a Skill capability file could not be read safely",
+                candidate.path,
+            ),
+            None,
+        )
+
+    consumed = len(data)
+    next_bytes_read = bytes_read + consumed
+    if len(data) != size_bytes:
+        return (
+            AgentPluginCapabilityFileReview(
+                candidate.path,
+                _FILE_UNREADABLE,
+                "file_changed_during_read",
+                size_bytes,
+            ),
+            next_bytes_read,
+            (),
+            _diagnostic(
+                "capability_file_changed_during_read",
+                "a capability file changed while it was being boundedly read",
+                candidate.path,
+            ),
+            None,
+        )
+
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        return (
+            AgentPluginCapabilityFileReview(
+                candidate.path,
+                _FILE_UNSUPPORTED,
+                "binary_not_utf8",
+                size_bytes,
+            ),
+            next_bytes_read,
+            (),
+            _diagnostic(
+                "capability_surface_unsupported",
+                "a binary or non-UTF-8 capability surface was not decoded",
+                candidate.path,
+            ),
+            None,
+        )
+
+    file = FileContent(
+        path=candidate.path,
+        file_type=classify_file(Path(candidate.path)),
+        text=text,
+    )
+    try:
+        capabilities = tuple(_analyze_file_content(file))
+    except Exception:
+        return (
+            AgentPluginCapabilityFileReview(
+                candidate.path,
+                _FILE_SCAN_FAILED,
+                "rule_analysis_failed",
+                size_bytes,
+            ),
+            next_bytes_read,
+            (),
+            _diagnostic(
+                "capability_scan_failed",
+                "existing capability rules failed for a component file",
+                candidate.path,
+            ),
+            None,
+        )
+    return (
+        AgentPluginCapabilityFileReview(candidate.path, _FILE_SCANNED, size_bytes=size_bytes),
+        next_bytes_read,
+        capabilities,
+        None,
+        text,
+    )
+
+
+def _source_within_component(source_file: str, component_path: str) -> bool:
+    if not source_file or source_file.startswith("/") or source_file.startswith("<"):
+        return False
+    source_parts = PurePosixPath(source_file).parts
+    component_parts = PurePosixPath(component_path).parts
+    if ".." in source_parts:
+        return False
+    return source_parts[: len(component_parts)] == component_parts
+
+
+def _scan_bounded_candidates(
+    candidates: Iterable[_CapabilityFileCandidate],
+    *,
+    component_path: str,
+    limits: AgentPluginCapabilityLimits,
+    initial_file_reviews: Iterable[AgentPluginCapabilityFileReview] = (),
+    initial_diagnostics: Iterable[AgentPluginDiagnostic] = (),
+    initial_complete: bool = True,
+    enforce_source_containment: bool = False,
+) -> _BoundedScanResult:
+    file_reviews = list(initial_file_reviews)
+    diagnostics = list(initial_diagnostics)
+    capabilities: list[Capability] = []
+    scanned_files: set[str] = set()
+    text_by_path: list[tuple[str, str]] = []
+    bytes_read = 0
+
+    for candidate in candidates:
+        file_review, bytes_read, file_capabilities, diagnostic, text = _read_and_analyze_candidate(
+            candidate,
+            bytes_read=bytes_read,
+            limits=limits,
+        )
+        file_reviews.append(file_review)
+        if diagnostic is not None:
+            diagnostics.append(diagnostic)
+        if file_review.status == _FILE_SCANNED:
+            scanned_files.add(candidate.path)
+            if text is not None:
+                text_by_path.append((candidate.path, text))
+            capabilities.extend(file_capabilities)
+
+    filtered_capabilities: list[Capability] = []
+    for capability in unique_capabilities(capabilities):
+        if enforce_source_containment:
+            if not _source_within_component(capability.source_file, component_path):
+                diagnostics.append(
+                    _diagnostic(
+                        "capability_source_outside_component",
+                        "capability evidence was excluded because its source is outside "
+                        "the Skill component",
+                        capability.source_file,
+                    )
+                )
+                continue
+            if capability.source_file not in scanned_files:
+                diagnostics.append(
+                    _diagnostic(
+                        "capability_source_not_scanned",
+                        "capability evidence was excluded because its source file was not scanned",
+                        capability.source_file,
+                    )
+                )
+                continue
+        filtered_capabilities.append(capability)
+
+    file_reviews.sort(key=lambda item: item.path)
+    complete = (
+        initial_complete
+        and not diagnostics
+        and all(item.status in {_FILE_SCANNED, _FILE_NOT_APPLICABLE} for item in file_reviews)
+    )
+    return _BoundedScanResult(
+        status=_REVIEWED if complete else _INCOMPLETE,
+        scanned_files=tuple(sorted(scanned_files)),
+        file_reviews=tuple(file_reviews),
+        capabilities=tuple(sorted(filtered_capabilities, key=_capability_key)),
+        diagnostics=_dedupe_diagnostics(diagnostics),
+        bytes_read=bytes_read,
+        text_by_path=tuple(sorted(text_by_path)),
+    )
+
+
 def _structural_diagnostics_for_path(
     diagnostics: tuple[AgentPluginDiagnostic, ...], path: str
 ) -> list[AgentPluginDiagnostic]:
@@ -258,63 +939,17 @@ def _not_reviewed_component(
     )
 
 
-def _scan_selected_paths(
+def _scan_skill(
     root: Path,
-    paths: list[Path],
-    *,
-    component_path: str,
-) -> tuple[str, tuple[str, ...], tuple[Capability, ...], tuple[AgentPluginDiagnostic, ...]]:
-    if not paths:
-        return (
-            _INCOMPLETE,
-            (),
-            (),
-            (
-                _diagnostic(
-                    "capability_discovery_empty",
-                    "no files were selected for capability scanning",
-                    component_path,
-                ),
-            ),
-        )
-    try:
-        report = scan_paths(root, paths)
-    except Exception:
-        return (
-            _INCOMPLETE,
-            (),
-            (),
-            (
-                _diagnostic(
-                    "capability_scan_failed",
-                    "capability scanning failed for this component",
-                    component_path,
-                ),
-            ),
-        )
-
-    scanned_files = {item.path for item in report.scanned_files}
-    for capability in report.capabilities:
-        source_file = capability.source_file
-        if source_file.startswith("<") or Path(source_file).is_absolute():
-            continue
-        scanned_files.add(source_file)
-    return (
-        _REVIEWED,
-        tuple(sorted(scanned_files)),
-        tuple(sorted(report.capabilities, key=_capability_key)),
-        (),
-    )
-
-
-def _scan_skill(root: Path, skill: AgentPluginSkill) -> AgentPluginComponentCapabilityReview:
+    skill: AgentPluginSkill,
+    limits: AgentPluginCapabilityLimits,
+) -> AgentPluginComponentCapabilityReview:
     component_id = _skill_component_id(skill)
     component_path = _skill_component_path(skill)
     component_root = root / Path(skill.path).parent
     try:
         resolved_component_root = component_root.resolve()
         resolved_component_root.relative_to(root.resolve())
-        paths = discover_paths(resolved_component_root)
     except Exception:
         return AgentPluginComponentCapabilityReview(
             component_kind="skill",
@@ -331,25 +966,38 @@ def _scan_skill(root: Path, skill: AgentPluginSkill) -> AgentPluginComponentCapa
             ),
         )
 
-    status, scanned_files, capabilities, diagnostics = _scan_selected_paths(
+    inventory = _inventory_skill_files(
         root,
-        paths,
+        component_root,
+        component_path,
+        limits,
+    )
+    result = _scan_bounded_candidates(
+        inventory.candidates,
         component_path=component_path,
+        limits=limits,
+        initial_file_reviews=inventory.file_reviews,
+        initial_diagnostics=inventory.diagnostics,
+        initial_complete=inventory.complete,
+        enforce_source_containment=True,
     )
     return AgentPluginComponentCapabilityReview(
         component_kind="skill",
         component_id=component_id,
         component_path=component_path,
         structural_status=skill.status,
-        capability_scan_status=status,
-        scanned_files=scanned_files,
-        capabilities=capabilities,
-        diagnostics=diagnostics,
+        capability_scan_status=result.status,
+        scanned_files=result.scanned_files,
+        file_reviews=result.file_reviews,
+        capabilities=result.capabilities,
+        diagnostics=result.diagnostics,
     )
 
 
 def _skill_reviews(
-    root: Path, inventory: AgentPluginInventory
+    root: Path,
+    inventory: AgentPluginInventory,
+    limits: AgentPluginCapabilityLimits,
 ) -> list[AgentPluginComponentCapabilityReview]:
     reviews: list[AgentPluginComponentCapabilityReview] = []
     if inventory.skills_status != "absent" and inventory.skills_status != "valid":
@@ -366,7 +1014,7 @@ def _skill_reviews(
         )
     for skill in inventory.skills:
         if skill.status == "valid" and skill.conformant:
-            reviews.append(_scan_skill(root, skill))
+            reviews.append(_scan_skill(root, skill, limits))
         else:
             reviews.append(
                 _not_reviewed_component(
@@ -455,8 +1103,145 @@ def _mcp_capability_owner(
     return _ROOT_COMPONENT_ID, None
 
 
+def _scan_mcp_component(
+    root: Path,
+    root_path: str,
+    limits: AgentPluginCapabilityLimits,
+) -> _BoundedScanResult:
+    candidate = _CapabilityFileCandidate(path=root_path, read_path=root / root_path)
+    result = _scan_bounded_candidates(
+        [candidate],
+        component_path=root_path,
+        limits=limits,
+    )
+    text_by_path = dict(result.text_by_path)
+    mcp_text = text_by_path.get(root_path)
+    if mcp_text is None:
+        return result
+
+    diagnostics = list(result.diagnostics)
+    file_reviews = {item.path: item for item in result.file_reviews}
+    scanned_files = set(result.scanned_files)
+    capabilities = list(result.capabilities)
+    bytes_read = result.bytes_read
+    try:
+        asset_inventory = inventory_local_mcp_app_assets(
+            root,
+            {root / root_path},
+            seed_texts={(root / root_path).resolve(): mcp_text},
+            max_assets=max(limits.max_files_per_component - 1, 0),
+            max_asset_bytes=max(limits.max_file_bytes, 0),
+            max_total_asset_bytes=max(limits.max_total_bytes_per_component - bytes_read, 0),
+        )
+    except Exception:
+        diagnostics.append(
+            _diagnostic(
+                "capability_asset_scan_failed",
+                "MCP App asset capability inspection failed for the bounded MCP component",
+                root_path,
+            )
+        )
+        file_reviews[f"{root_path}/<mcp-app-assets>"] = AgentPluginCapabilityFileReview(
+            path=f"{root_path}/<mcp-app-assets>",
+            status=_FILE_SCAN_FAILED,
+            reason="asset_inventory_failed",
+        )
+        return _BoundedScanResult(
+            status=_INCOMPLETE,
+            scanned_files=tuple(sorted(scanned_files)),
+            file_reviews=tuple(sorted(file_reviews.values(), key=lambda item: item.path)),
+            capabilities=tuple(sorted(unique_capabilities(capabilities), key=_capability_key)),
+            diagnostics=_dedupe_diagnostics(diagnostics),
+            bytes_read=bytes_read,
+            text_by_path=result.text_by_path,
+        )
+
+    asset_status_rank = {
+        _FILE_SCAN_FAILED: 4,
+        _FILE_UNREADABLE: 3,
+        _FILE_LIMIT_EXCEEDED: 2,
+        _FILE_UNSUPPORTED: 1,
+        _FILE_SCANNED: 0,
+    }
+    for asset in asset_inventory.assets:
+        if asset.skipped_reason is None and asset.size_bytes is not None:
+            status = _FILE_SCANNED
+            scanned_files.add(asset.path)
+            bytes_read += asset.size_bytes
+            reason = None
+        elif asset.skipped_reason in {
+            "asset_too_large",
+            "asset_total_limit_exceeded",
+        }:
+            status = _FILE_LIMIT_EXCEEDED
+            reason = asset.skipped_reason
+        elif asset.skipped_reason == "asset_not_utf8":
+            status = _FILE_UNSUPPORTED
+            reason = asset.skipped_reason
+            if asset.size_bytes is not None:
+                bytes_read += asset.size_bytes
+        else:
+            status = _FILE_UNREADABLE
+            reason = asset.skipped_reason or "asset_unreviewed"
+        candidate_review = AgentPluginCapabilityFileReview(
+            path=asset.path,
+            status=status,
+            reason=reason,
+            size_bytes=asset.size_bytes,
+        )
+        existing = file_reviews.get(asset.path)
+        if existing is None or asset_status_rank[status] > asset_status_rank[existing.status]:
+            file_reviews[asset.path] = candidate_review
+        if status != _FILE_SCANNED:
+            code = (
+                "capability_file_limit_exceeded"
+                if status == _FILE_LIMIT_EXCEEDED
+                else "capability_surface_unsupported"
+                if status == _FILE_UNSUPPORTED
+                else "capability_asset_unreviewed"
+            )
+            diagnostics.append(
+                _diagnostic(
+                    code,
+                    "an MCP App asset was not completely capability-analyzed",
+                    asset.path,
+                )
+            )
+
+    if asset_inventory.limit_reached:
+        marker = f"{root_path}/<mcp-app-assets>"
+        file_reviews[marker] = AgentPluginCapabilityFileReview(
+            path=marker,
+            status=_FILE_LIMIT_EXCEEDED,
+            reason="max_files_per_component",
+        )
+        diagnostics.append(
+            _diagnostic(
+                "capability_file_limit_exceeded",
+                "the MCP component exceeded its bounded asset-count limit",
+                marker,
+            )
+        )
+
+    capabilities.extend(mcp_app_asset_capabilities(asset_inventory))
+    complete = not diagnostics and all(
+        item.status in {_FILE_SCANNED, _FILE_NOT_APPLICABLE} for item in file_reviews.values()
+    )
+    return _BoundedScanResult(
+        status=_REVIEWED if complete else _INCOMPLETE,
+        scanned_files=tuple(sorted(scanned_files)),
+        file_reviews=tuple(sorted(file_reviews.values(), key=lambda item: item.path)),
+        capabilities=tuple(sorted(unique_capabilities(capabilities), key=_capability_key)),
+        diagnostics=_dedupe_diagnostics(diagnostics),
+        bytes_read=bytes_read,
+        text_by_path=result.text_by_path,
+    )
+
+
 def _mcp_reviews(
-    root: Path, inventory: AgentPluginInventory
+    root: Path,
+    inventory: AgentPluginInventory,
+    limits: AgentPluginCapabilityLimits,
 ) -> list[AgentPluginComponentCapabilityReview]:
     mcp = inventory.mcp
     if mcp.status == "absent":
@@ -473,11 +1258,11 @@ def _mcp_reviews(
             )
         ]
 
-    status, scanned_files, capabilities, scan_diagnostics = _scan_selected_paths(
-        root,
-        [root / root_path],
-        component_path=root_path,
-    )
+    scan = _scan_mcp_component(root, root_path, limits)
+    status = scan.status
+    scanned_files = scan.scanned_files
+    capabilities = scan.capabilities
+    scan_diagnostics = scan.diagnostics
     by_config_path, by_name, valid_by_config_path = _mcp_server_maps(mcp.servers)
     invalid_server_present = any(item.status != "valid" for item in mcp.servers)
     root_capabilities: list[Capability] = []
@@ -486,28 +1271,27 @@ def _mcp_reviews(
     server_attribution_diagnostics: dict[str, list[AgentPluginDiagnostic]] = {
         item.name: [] for item in mcp.servers
     }
-    if status == _REVIEWED:
-        for capability in capabilities:
-            owner, diagnostic = _mcp_capability_owner(
-                capability,
-                by_config_path=by_config_path,
-                by_name=by_name,
-                valid_by_config_path=valid_by_config_path,
-                invalid_server_present=invalid_server_present,
+    for capability in capabilities:
+        owner, diagnostic = _mcp_capability_owner(
+            capability,
+            by_config_path=by_config_path,
+            by_name=by_name,
+            valid_by_config_path=valid_by_config_path,
+            invalid_server_present=invalid_server_present,
+        )
+        if diagnostic is not None:
+            matching_server = next(
+                (item for item in mcp.servers if item.path == diagnostic.path),
+                None,
             )
-            if diagnostic is not None:
-                matching_server = next(
-                    (item for item in mcp.servers if item.path == diagnostic.path),
-                    None,
-                )
-                if matching_server is None:
-                    root_attribution_diagnostics.append(diagnostic)
-                else:
-                    server_attribution_diagnostics[matching_server.name].append(diagnostic)
-            if owner == _ROOT_COMPONENT_ID:
-                root_capabilities.append(capability)
-            elif owner in server_capabilities:
-                server_capabilities[owner].append(capability)
+            if matching_server is None:
+                root_attribution_diagnostics.append(diagnostic)
+            else:
+                server_attribution_diagnostics[matching_server.name].append(diagnostic)
+        if owner == _ROOT_COMPONENT_ID:
+            root_capabilities.append(capability)
+        elif owner in server_capabilities:
+            server_capabilities[owner].append(capability)
 
     root_status = (
         _REVIEWED if status == _REVIEWED and not root_attribution_diagnostics else _INCOMPLETE
@@ -520,6 +1304,7 @@ def _mcp_reviews(
             structural_status=mcp.status,
             capability_scan_status=root_status,
             scanned_files=scanned_files,
+            file_reviews=scan.file_reviews,
             capabilities=tuple(sorted(root_capabilities, key=_capability_key)),
             diagnostics=_dedupe_diagnostics([*scan_diagnostics, *root_attribution_diagnostics]),
         )
@@ -551,7 +1336,8 @@ def _mcp_reviews(
                 component_path=server.path,
                 structural_status=server.status,
                 capability_scan_status=status if not server_diagnostics else _INCOMPLETE,
-                scanned_files=scanned_files if status == _REVIEWED else (),
+                scanned_files=scanned_files,
+                file_reviews=scan.file_reviews,
                 capabilities=tuple(sorted(server_capabilities[server.name], key=_capability_key)),
                 diagnostics=_dedupe_diagnostics(server_diagnostics),
             )
@@ -631,6 +1417,34 @@ def _component_blind_spots(
     return spots
 
 
+def _file_blind_spots(
+    components: list[AgentPluginComponentCapabilityReview],
+) -> list[AgentPluginCapabilityBlindSpot]:
+    reason_by_status = {
+        _FILE_UNSUPPORTED: "capability_surface_unsupported",
+        _FILE_LIMIT_EXCEEDED: "capability_file_limit_exceeded",
+        _FILE_UNREADABLE: "capability_file_unreadable",
+        _FILE_SCAN_FAILED: "capability_scan_failed",
+    }
+    spots: list[AgentPluginCapabilityBlindSpot] = []
+    for component in components:
+        for file_review in component.file_reviews:
+            if file_review.status in {_FILE_SCANNED, _FILE_NOT_APPLICABLE}:
+                continue
+            spots.append(
+                AgentPluginCapabilityBlindSpot(
+                    component_kind=f"{component.component_kind}_file",
+                    component_id=file_review.path,
+                    component_path=file_review.path,
+                    reason=reason_by_status.get(
+                        file_review.status,
+                        file_review.reason or "capability_surface_unreviewed",
+                    ),
+                )
+            )
+    return spots
+
+
 def _dedupe_blind_spots(
     spots: list[AgentPluginCapabilityBlindSpot],
 ) -> tuple[AgentPluginCapabilityBlindSpot, ...]:
@@ -697,6 +1511,7 @@ def review_agent_plugin_capabilities(
     *,
     inventory: AgentPluginInventory | None = None,
     limits: AgentPluginLimits = DEFAULT_AGENT_PLUGIN_LIMITS,
+    capability_limits: AgentPluginCapabilityLimits = DEFAULT_AGENT_PLUGIN_CAPABILITY_LIMITS,
 ) -> AgentPluginCapabilityReview:
     """Review observed static capabilities without executing plugin code."""
     root = Path(path).expanduser().resolve()
@@ -712,9 +1527,10 @@ def review_agent_plugin_capabilities(
             )
         ]
     else:
-        components = _skill_reviews(root, inventory)
-        components.extend(_mcp_reviews(root, inventory))
+        components = _skill_reviews(root, inventory, capability_limits)
+        components.extend(_mcp_reviews(root, inventory, capability_limits))
         blind_spots = _component_blind_spots(components)
+        blind_spots.extend(_file_blind_spots(components))
         blind_spots.extend(_package_blind_spots(inventory))
 
     components = sorted(components, key=_component_key)
