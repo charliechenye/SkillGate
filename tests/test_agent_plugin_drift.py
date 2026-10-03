@@ -250,6 +250,102 @@ def test_mcp_only_change_is_attributed_to_mcp_server(tmp_path: Path) -> None:
     assert any(item.component_id == "remote" for item in report.content.added_membership)
 
 
+def test_fully_reviewed_mcp_membership_does_not_change_coverage(tmp_path: Path) -> None:
+    before, after = snapshot_pair(
+        tmp_path,
+        lambda root: None,
+        lambda root: write_mcp(root, {"local": {"type": "stdio", "command": "bash"}}),
+    )
+    report = compare_agent_plugin_drift(before, after)
+    assert report.content.portable_core == DRIFT_CHANGED
+    assert report.coverage.changed is False
+
+
+def test_first_fully_reviewed_zero_capability_skill_does_not_change_coverage(
+    tmp_path: Path,
+) -> None:
+    before, after = snapshot_pair(
+        tmp_path,
+        lambda root: None,
+        lambda root: write_skill(root, "clean", body="Documentation only.\n"),
+    )
+    report = compare_agent_plugin_drift(before, after)
+    assert report.content.portable_core == DRIFT_CHANGED
+    assert report.capability.portable_core == DRIFT_UNCHANGED
+    assert report.coverage.changed is False
+
+
+def test_known_package_metadata_is_content_only_drift(tmp_path: Path) -> None:
+    def after_setup(root: Path) -> None:
+        (root / "README.md").write_text("Known package metadata.\n", encoding="utf-8")
+
+    before, after = snapshot_pair(tmp_path, lambda root: None, after_setup)
+    report = compare_agent_plugin_drift(before, after)
+    assert report.content.overall_artifact == DRIFT_CHANGED
+    assert report.coverage.changed is False
+
+
+def test_nonfatal_manifest_unknown_field_does_not_change_coverage(tmp_path: Path) -> None:
+    def after_setup(root: Path) -> None:
+        write_json(root / "plugin.json", manifest(futureField="opaque"))
+
+    before, after = snapshot_pair(tmp_path, lambda root: None, after_setup)
+    report = compare_agent_plugin_drift(before, after)
+    assert report.content.portable_core == DRIFT_CHANGED
+    assert report.coverage.changed is False
+    assert any(item.code == "manifest_unknown_field" for item in after.diagnostics)
+    assert after.coverage_state.diagnostic_states == ()
+
+
+def test_identical_invalid_mcp_bytes_keep_content_exact_but_capability_unknown(
+    tmp_path: Path,
+) -> None:
+    invalid_servers = {"bad": {"type": "stdio", "command": "./../escape"}}
+    before, after = snapshot_pair(
+        tmp_path,
+        lambda root: write_mcp(root, invalid_servers),
+        lambda root: write_mcp(root, invalid_servers),
+    )
+    report = compare_agent_plugin_drift(before, after)
+    assert before.content_identity_coverage.portable_core == "COMPLETE"
+    assert report.content.portable_core == DRIFT_UNCHANGED
+    assert report.content.overall_artifact == DRIFT_UNCHANGED
+    assert report.capability.portable_core == DRIFT_UNKNOWN
+    assert report.capability.overall_artifact == DRIFT_UNKNOWN
+    assert report.coverage.changed is False
+
+
+def test_identical_malformed_mcp_bytes_keep_known_content_identity(tmp_path: Path) -> None:
+    def malformed(root: Path) -> None:
+        (root / "mcp.json").write_text(
+            '{"$schema":"' + MCP_SCHEMA + '","mcpServers":',
+            encoding="utf-8",
+        )
+
+    before, after = snapshot_pair(tmp_path, malformed, malformed)
+    report = compare_agent_plugin_drift(before, after)
+    mcp_file = next(item for item in before.content_files if item.path == "mcp.json")
+    assert mcp_file.identity_complete is True
+    assert report.content.overall_artifact == DRIFT_UNCHANGED
+    assert report.capability.overall_artifact == DRIFT_UNKNOWN
+    assert report.coverage.changed is False
+
+
+def test_snapshot_format_mismatch_forces_semantic_states_unknown(tmp_path: Path) -> None:
+    before, after = snapshot_pair(
+        tmp_path,
+        lambda root: write_skill(root, "clean"),
+        lambda root: write_skill(root, "clean"),
+    )
+    mismatched = replace(after, snapshot_format_version="future")
+    report = compare_agent_plugin_drift(before, mismatched)
+    assert report.content.portable_core == DRIFT_UNKNOWN
+    assert report.content.overall_artifact == DRIFT_UNKNOWN
+    assert report.capability.portable_core == DRIFT_UNKNOWN
+    assert report.capability.overall_artifact == DRIFT_UNKNOWN
+    assert any(item.code == "drift_snapshot_format_mismatch" for item in report.diagnostics)
+
+
 def test_unknown_extension_is_overall_drift_and_coverage_drift(tmp_path: Path) -> None:
     def after_setup(root: Path) -> None:
         write_json(root / "plugin.json", manifest(extensions={"acme.tools": {}}))
