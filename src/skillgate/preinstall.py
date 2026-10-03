@@ -425,7 +425,7 @@ def render_preinstall_markdown(packet: dict[str, Any]) -> str:
                         "",
                         "### Tasks capability",
                         "",
-                        _table(
+                        *_table(
                             ["Tasks surface", "Resource", "Scope", "Source"],
                             [
                                 [
