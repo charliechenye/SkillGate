@@ -8,8 +8,10 @@ schemas, or interpret client extensions.
 
 from __future__ import annotations
 
+import hashlib
 import ipaddress
 import json
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,7 +20,8 @@ from urllib.parse import urlsplit
 from skillgate.skills import (
     SKILL_FILE,
     SkillsValidationError,
-    validate_skill_file,
+    SkillValidationResult,
+    validate_skill_file_result,
 )
 
 AGENT_PLUGINS_FORMAT = "agent_plugins"
@@ -44,11 +47,35 @@ _MCP_FIELDS = frozenset({"$schema", "mcpServers"})
 _STDIO_FIELDS = frozenset({"type", "command", "args", "env", "cwd"})
 _HTTP_FIELDS = frozenset({"type", "url", "headers"})
 _TRANSPORTS = frozenset({"stdio", "streamable-http", "sse"})
-_FATAL_SKILL_FINDINGS = frozenset(
-    {"SKILL001", "SKILL002", "SKILL003", "SKILL004", "SKILL006", "SKILL008"}
-)
 _EXTENSION_NAMESPACE_RE = re.compile(r"^[a-z0-9]+(?:\.[a-z0-9-]+)+$")
 _HEADER_NAME_RE = re.compile(r"^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$")
+_KNOWN_PACKAGE_METADATA_FILES = frozenset(
+    {
+        "CHANGELOG",
+        "CHANGELOG.md",
+        "LICENSE",
+        "LICENSE.md",
+        "LICENSE.txt",
+        "README",
+        "README.md",
+        "README.txt",
+    }
+)
+
+
+@dataclass(frozen=True)
+class AgentPluginLimits:
+    """Safety limits for inspecting an untrusted local plugin directory."""
+
+    max_manifest_bytes: int = 1_048_576
+    max_mcp_bytes: int = 1_048_576
+    max_skill_bytes: int = 1_048_576
+    max_package_file_bytes: int = 1_048_576
+    max_skill_components: int = 128
+    max_top_level_entries: int = 256
+
+
+DEFAULT_AGENT_PLUGIN_LIMITS = AgentPluginLimits()
 
 
 @dataclass(frozen=True)
@@ -90,6 +117,9 @@ class AgentPluginSkill:
     path: str
     status: str
     diagnostics: tuple[AgentPluginDiagnostic, ...] = ()
+    conformant: bool = False
+    conformance_diagnostics: tuple[AgentPluginDiagnostic, ...] = ()
+    advisory_findings: tuple[dict[str, object], ...] = ()
 
     @property
     def identity(self) -> str:
@@ -101,7 +131,10 @@ class AgentPluginSkill:
             "name": self.name,
             "path": self.path,
             "status": self.status,
+            "conformant": self.conformant,
             "diagnostics": [item.to_data() for item in self.diagnostics],
+            "conformance_diagnostics": [item.to_data() for item in self.conformance_diagnostics],
+            "advisory_findings": [dict(item) for item in self.advisory_findings],
         }
 
 
@@ -198,13 +231,27 @@ class AgentPluginProvenanceEntry:
     component: str
     path: str
     status: str
+    sha256: str | None = None
+    size_bytes: int | None = None
 
-    def to_data(self) -> dict[str, str]:
+    def to_data(self) -> dict[str, object]:
         return {
             "component": self.component,
             "path": self.path,
             "status": self.status,
+            "sha256": self.sha256,
+            "size_bytes": self.size_bytes,
         }
+
+
+@dataclass(frozen=True)
+class AgentPluginPackageSurface:
+    path: str
+    kind: str
+    status: str
+
+    def to_data(self) -> dict[str, str]:
+        return {"path": self.path, "kind": self.kind, "status": self.status}
 
 
 @dataclass(frozen=True)
@@ -229,6 +276,7 @@ class AgentPluginInventory:
     skills_status: str
     mcp: AgentPluginMcp
     extensions: tuple[AgentPluginExtension, ...]
+    package_surfaces: tuple[AgentPluginPackageSurface, ...]
     coverage: AgentPluginCoverage
     unknown_surfaces: tuple[str, ...]
     diagnostics: tuple[AgentPluginDiagnostic, ...]
@@ -247,6 +295,7 @@ class AgentPluginInventory:
             },
             "mcp": self.mcp.to_data(),
             "extensions": [item.to_data() for item in self.extensions],
+            "package_surfaces": [item.to_data() for item in self.package_surfaces],
             "coverage": self.coverage.to_data(),
             "unknown_surfaces": list(self.unknown_surfaces),
             "diagnostics": [item.to_data() for item in self.diagnostics],
@@ -280,8 +329,30 @@ def _resolve_inside(root: Path, path: Path) -> Path | None:
     return resolved
 
 
-def _read_json(path: Path, label: str) -> tuple[object | None, AgentPluginDiagnostic | None]:
+def _bounded_entries(path: Path, limit: int) -> tuple[list[Path], bool]:
+    """List at most ``limit`` entries, reporting overflow without sampling."""
+    entries: list[Path] = []
+    with os.scandir(path) as iterator:
+        for entry in iterator:
+            if len(entries) >= max(limit, 0):
+                return [], True
+            entries.append(Path(entry.path))
+    return sorted(entries, key=lambda item: item.name), False
+
+
+def _read_json(
+    path: Path,
+    label: str,
+    *,
+    max_bytes: int,
+) -> tuple[object | None, AgentPluginDiagnostic | None]:
     try:
+        if path.stat().st_size > max_bytes:
+            return None, _diagnostic(
+                "json_too_large",
+                f"{label} exceeds the bounded JSON read limit",
+                label,
+            )
         text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeError):
         return None, _diagnostic("json_unreadable", f"{label} could not be read safely", label)
@@ -289,6 +360,29 @@ def _read_json(path: Path, label: str) -> tuple[object | None, AgentPluginDiagno
         return json.loads(text), None
     except json.JSONDecodeError:
         return None, _diagnostic("json_invalid", f"{label} is not valid JSON", label)
+
+
+def _file_identity(
+    root: Path,
+    relative_path: str,
+    *,
+    max_bytes: int,
+) -> tuple[str | None, int | None]:
+    """Hash only a regular file that resolves safely within the plugin root."""
+    candidate = _resolve_inside(root, root / relative_path)
+    if candidate is None:
+        return None, None
+    try:
+        size = candidate.stat().st_size
+        if not candidate.is_file() or size > max_bytes:
+            return None, size if candidate.is_file() else None
+        digest = hashlib.sha256()
+        with candidate.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(65_536), b""):
+                digest.update(chunk)
+        return digest.hexdigest(), size
+    except (OSError, UnicodeError):
+        return None, None
 
 
 def _validate_name(value: object) -> bool:
@@ -380,7 +474,7 @@ def _validate_manifest(
                     )
 
     keywords = data.get("keywords")
-    if keywords is not None and (
+    if "keywords" in data and (
         not isinstance(keywords, list) or not all(isinstance(item, str) for item in keywords)
     ):
         fatal = True
@@ -429,17 +523,41 @@ def _empty_mcp(status: str = "not_applicable") -> AgentPluginMcp:
 
 
 def _invalid_skill(path: str, diagnostics: list[AgentPluginDiagnostic]) -> AgentPluginSkill:
+    sorted_diagnostics = _sorted_diagnostics(diagnostics)
     return AgentPluginSkill(
         name=None,
         path=path,
         status="skipped"
         if any(item.code == "skill_path_outside_plugin_root" for item in diagnostics)
         else "invalid",
-        diagnostics=_sorted_diagnostics(diagnostics),
+        diagnostics=sorted_diagnostics,
+        conformant=False,
+        conformance_diagnostics=sorted_diagnostics,
     )
 
 
-def _load_skills(root: Path) -> tuple[list[AgentPluginSkill], str, list[AgentPluginDiagnostic]]:
+def _skill_result_diagnostics(
+    skill_path: str,
+    result: SkillValidationResult,
+) -> tuple[AgentPluginDiagnostic, ...]:
+    diagnostics = []
+    for item in result.conformance_diagnostics:
+        line = item.get("line_number")
+        path = f"{skill_path}:{line}" if isinstance(line, int) else skill_path
+        diagnostics.append(
+            _diagnostic(
+                str(item.get("code", "skill_conformance")),
+                str(item.get("message", "Agent Skill conformance error")),
+                path,
+            )
+        )
+    return _sorted_diagnostics(diagnostics)
+
+
+def _load_skills(
+    root: Path,
+    limits: AgentPluginLimits,
+) -> tuple[list[AgentPluginSkill], str, list[AgentPluginDiagnostic]]:
     location = root / "skills"
     if not location.exists() and not location.is_symlink():
         return [], "absent", []
@@ -474,7 +592,10 @@ def _load_skills(root: Path) -> tuple[list[AgentPluginSkill], str, list[AgentPlu
     skills: list[AgentPluginSkill] = []
     diagnostics: list[AgentPluginDiagnostic] = []
     try:
-        children = sorted(resolved_location.iterdir(), key=lambda item: item.name)
+        children, discovery_limited = _bounded_entries(
+            resolved_location,
+            limits.max_skill_components,
+        )
     except OSError:
         return (
             [],
@@ -486,8 +607,19 @@ def _load_skills(root: Path) -> tuple[list[AgentPluginSkill], str, list[AgentPlu
             ],
         )
 
-    for child in children:
-        skill_candidate = child / SKILL_FILE
+    if discovery_limited:
+        diagnostics.append(
+            _diagnostic(
+                "skill_discovery_limit",
+                "skills/ contains more immediate child entries than the bounded discovery limit",
+                relative_location,
+            )
+        )
+
+    for child in children[: limits.max_skill_components]:
+        # Keep the fixed-location identity stable even when skills/ is a
+        # symlink to another directory inside the plugin root.
+        skill_candidate = location / child.name / SKILL_FILE
         if not child.is_dir() and not child.is_symlink():
             continue
         if not skill_candidate.exists() and not skill_candidate.is_symlink():
@@ -520,7 +652,25 @@ def _load_skills(root: Path) -> tuple[list[AgentPluginSkill], str, list[AgentPlu
             continue
 
         try:
-            skill_data, findings = validate_skill_file(resolved_skill, root)
+            if resolved_skill.stat().st_size > limits.max_skill_bytes:
+                skill_diagnostics = [
+                    _diagnostic(
+                        "skill_too_large",
+                        "discovered SKILL.md exceeds the bounded skill read limit",
+                        skill_path,
+                    )
+                ]
+                skill = _invalid_skill(skill_path, skill_diagnostics)
+                skills.append(skill)
+                diagnostics.extend(skill_diagnostics)
+                continue
+            result = validate_skill_file_result(
+                resolved_skill,
+                root,
+                directory_name=Path(skill_path).parent.name,
+                max_bytes=limits.max_skill_bytes,
+                scan_advisories=False,
+            )
         except (OSError, SkillsValidationError):
             skill_diagnostics = [
                 _diagnostic(
@@ -532,30 +682,26 @@ def _load_skills(root: Path) -> tuple[list[AgentPluginSkill], str, list[AgentPlu
             diagnostics.extend(skill_diagnostics)
             continue
 
-        skill_diagnostics = [
-            _diagnostic(
-                str(finding.get("code", "skill_validation")),
-                str(finding.get("description", "Agent Skill validation finding")),
-                f"{skill_path}:{finding.get('line_number', 1)}",
-            )
-            for finding in findings
-        ]
-        status = (
-            "invalid"
-            if any(str(finding.get("code")) in _FATAL_SKILL_FINDINGS for finding in findings)
-            else "valid"
-        )
+        skill_diagnostics = list(_skill_result_diagnostics(skill_path, result))
+        status = "valid" if result.conformant else "invalid"
         skill = AgentPluginSkill(
-            name=skill_data.get("name") if isinstance(skill_data.get("name"), str) else None,
-            path=skill_data.get("path", skill_path),
+            name=result.skill.get("name") if isinstance(result.skill.get("name"), str) else None,
+            path=skill_path,
             status=status,
             diagnostics=_sorted_diagnostics(skill_diagnostics),
+            conformant=result.conformant,
+            conformance_diagnostics=_sorted_diagnostics(skill_diagnostics),
+            advisory_findings=tuple(dict(item) for item in result.advisory_findings),
         )
         skills.append(skill)
         diagnostics.extend(skill_diagnostics)
 
     skills.sort(key=lambda item: item.path)
-    status = "partial" if any(item.status in {"invalid", "skipped"} for item in skills) else "valid"
+    status = (
+        "partial"
+        if discovery_limited or any(item.status in {"invalid", "skipped"} for item in skills)
+        else "valid"
+    )
     return skills, status, diagnostics
 
 
@@ -615,16 +761,21 @@ def _validate_cwd(root: Path, value: object, path: str) -> list[AgentPluginDiagn
 
 
 def _validate_command(root: Path, value: object, path: str) -> list[AgentPluginDiagnostic]:
-    if (
-        not isinstance(value, str)
-        or not value
-        or value != value.strip()
-        or any(char.isspace() for char in value)
-    ):
+    if not isinstance(value, str) or not value or value != value.strip():
         return [
             _diagnostic("mcp_invalid_command", "stdio command must be one executable token", path)
         ]
     if value.startswith("./"):
+        # The JSON value is already one command token. A plugin-relative
+        # executable may contain spaces in its filename; do not split or
+        # shell-parse it while inspecting the package. Shell metacharacters
+        # remain invalid command syntax.
+        if any(character in value for character in "\r\n|;&<>`"):
+            return [
+                _diagnostic(
+                    "mcp_invalid_command", "stdio command must be one executable token", path
+                )
+            ]
         if not _path_inside_root(root, value):
             return [
                 _diagnostic(
@@ -632,6 +783,10 @@ def _validate_command(root: Path, value: object, path: str) -> list[AgentPluginD
                 )
             ]
         return []
+    if any(char.isspace() for char in value):
+        return [
+            _diagnostic("mcp_invalid_command", "stdio command must be one executable token", path)
+        ]
     if "/" in value or "\\" in value or value.startswith(".") or value.startswith("$"):
         return [
             _diagnostic("mcp_invalid_command", "stdio command must be bare or begin with ./", path)
@@ -804,7 +959,11 @@ def _validate_server(
     )
 
 
-def _load_mcp(root: Path, plugin_schema: str) -> AgentPluginMcp:
+def _load_mcp(
+    root: Path,
+    plugin_schema: str,
+    limits: AgentPluginLimits,
+) -> AgentPluginMcp:
     path = root / "mcp.json"
     if not path.exists() and not path.is_symlink():
         return _empty_mcp("absent")
@@ -832,7 +991,11 @@ def _load_mcp(root: Path, plugin_schema: str) -> AgentPluginMcp:
             ),
         )
 
-    data, read_diagnostic = _read_json(resolved, "mcp.json")
+    data, read_diagnostic = _read_json(
+        resolved,
+        "mcp.json",
+        max_bytes=limits.max_mcp_bytes,
+    )
     if read_diagnostic is not None:
         return AgentPluginMcp("invalid", "mcp.json", diagnostics=(read_diagnostic,))
     if not isinstance(data, dict):
@@ -903,7 +1066,25 @@ def _extension_is_namespace(name: str) -> bool:
 def _load_extensions(
     root: Path,
     manifest_data: dict[str, object],
-) -> tuple[list[AgentPluginExtension], list[str], list[AgentPluginDiagnostic]]:
+) -> tuple[
+    list[AgentPluginExtension],
+    list[str],
+    list[AgentPluginDiagnostic],
+    list[AgentPluginPackageSurface],
+]:
+    return _load_extensions_with_limits(root, manifest_data, DEFAULT_AGENT_PLUGIN_LIMITS)
+
+
+def _load_extensions_with_limits(
+    root: Path,
+    manifest_data: dict[str, object],
+    limits: AgentPluginLimits,
+) -> tuple[
+    list[AgentPluginExtension],
+    list[str],
+    list[AgentPluginDiagnostic],
+    list[AgentPluginPackageSurface],
+]:
     declared = manifest_data.get("extensions")
     declared_names = sorted(declared) if isinstance(declared, dict) else []
     extensions: dict[str, AgentPluginExtension] = {
@@ -911,6 +1092,7 @@ def _load_extensions(
     }
     unknown_surfaces: set[str] = set(declared_names)
     diagnostics: list[AgentPluginDiagnostic] = []
+    package_surfaces: list[AgentPluginPackageSurface] = []
 
     for namespace in declared_names:
         candidate = root / namespace
@@ -947,22 +1129,78 @@ def _load_extensions(
             )
 
     try:
-        top_level = sorted(root.iterdir(), key=lambda item: item.name)
+        top_level, discovery_limited = _bounded_entries(root, limits.max_top_level_entries)
     except OSError:
         return (
             sorted(extensions.values(), key=lambda item: item.namespace),
             sorted(unknown_surfaces),
             [_diagnostic("package_listing_failed", "plugin root could not be listed safely", ".")],
+            package_surfaces,
+        )
+
+    if discovery_limited:
+        overflow_path = "<top-level-entry-limit-exceeded>"
+        unknown_surfaces.add(overflow_path)
+        package_surfaces.append(
+            AgentPluginPackageSurface(overflow_path, "discovery_limit", "unknown")
+        )
+        diagnostics.append(
+            _diagnostic(
+                "package_listing_limit",
+                "plugin root contains more top-level entries than the bounded discovery limit",
+                ".",
+            )
         )
 
     for child in top_level:
+        relative = _relative(root, child)
         if child.name in {"plugin.json", "mcp.json", "skills"}:
+            resolved = _resolve_inside(root, child)
+            expected_directory = child.name == "skills"
+            is_expected_kind = (
+                resolved is not None
+                and resolved.is_dir() == expected_directory
+                and resolved.is_file() == (not expected_directory)
+            )
+            package_surfaces.append(
+                AgentPluginPackageSurface(
+                    relative,
+                    "portable_component",
+                    "present" if is_expected_kind else "invalid",
+                )
+            )
             continue
-        if not child.is_dir() and not child.is_symlink():
+        if child.name in _KNOWN_PACKAGE_METADATA_FILES and not child.is_dir():
+            resolved = _resolve_inside(root, child)
+            status = "known" if resolved is not None and resolved.is_file() else "invalid"
+            package_surfaces.append(AgentPluginPackageSurface(relative, "package_metadata", status))
+            if status == "invalid":
+                unknown_surfaces.add(relative)
+                diagnostics.append(
+                    _diagnostic(
+                        "package_metadata_invalid",
+                        "known package metadata file could not be safely inspected",
+                        relative,
+                    )
+                )
             continue
         if child.name in extensions:
+            resolved = _resolve_inside(root, child)
+            status = "unknown"
+            if resolved is None:
+                status = "invalid"
+                diagnostics.append(
+                    _diagnostic(
+                        "extension_path_outside_plugin_root",
+                        "extension directory resolves outside the plugin root",
+                        relative,
+                    )
+                )
+            elif not resolved.is_dir():
+                status = "invalid"
+            package_surfaces.append(AgentPluginPackageSurface(relative, "client_extension", status))
             continue
-        if _extension_is_namespace(child.name):
+        if _extension_is_namespace(child.name) and (child.is_dir() or child.is_symlink()):
             resolved = _resolve_inside(root, child)
             if resolved is None or not resolved.is_dir():
                 extension_diagnostic = _diagnostic(
@@ -977,16 +1215,25 @@ def _load_extensions(
                     False,
                     diagnostics=(extension_diagnostic,),
                 )
+                package_surfaces.append(
+                    AgentPluginPackageSurface(relative, "client_extension", "invalid")
+                )
+                unknown_surfaces.add(relative)
                 continue
             extensions[child.name] = AgentPluginExtension(child.name, False, True)
             unknown_surfaces.add(child.name)
+            package_surfaces.append(
+                AgentPluginPackageSurface(relative, "client_extension", "unknown")
+            )
         else:
-            unknown_surfaces.add(_relative(root, child))
+            kind = "unknown_package_directory" if child.is_dir() else "unknown_package_file"
+            package_surfaces.append(AgentPluginPackageSurface(relative, kind, "unknown"))
+            unknown_surfaces.add(relative)
             diagnostics.append(
                 _diagnostic(
                     "unknown_package_surface",
-                    "top-level directory is not a portable component",
-                    _relative(root, child),
+                    "top-level package entry is not a portable component or known metadata file",
+                    relative,
                 )
             )
 
@@ -994,6 +1241,7 @@ def _load_extensions(
         sorted(extensions.values(), key=lambda item: item.namespace),
         sorted(unknown_surfaces),
         diagnostics,
+        sorted(package_surfaces, key=lambda item: (item.path, item.kind)),
     )
 
 
@@ -1003,7 +1251,7 @@ def _counts_for_portable_core(
     skills: list[AgentPluginSkill],
     mcp: AgentPluginMcp,
 ) -> AgentPluginCoverageCounts:
-    discovered = reviewed = invalid = skipped = 0
+    discovered = reviewed = invalid = skipped = unknown = 0
     if manifest.status == "valid":
         discovered += 1
         reviewed += 1
@@ -1014,6 +1262,8 @@ def _counts_for_portable_core(
         discovered += 1
         if skills_status == "invalid":
             invalid += 1
+        elif skills_status == "partial":
+            unknown = 1
         else:
             reviewed += 1
         for skill in skills:
@@ -1038,7 +1288,28 @@ def _counts_for_portable_core(
                     skipped += 1
                 else:
                     invalid += 1
-    return AgentPluginCoverageCounts(discovered, reviewed, invalid, skipped, 0)
+    return AgentPluginCoverageCounts(discovered, reviewed, invalid, skipped, unknown)
+
+
+def _counts_for_overall_artifact(
+    portable_counts: AgentPluginCoverageCounts,
+    package_surfaces: list[AgentPluginPackageSurface],
+    unknown_surfaces: list[str],
+) -> AgentPluginCoverageCounts:
+    """Add every non-core package surface without double-counting fixed locations."""
+    extras = [item for item in package_surfaces if item.kind != "portable_component"]
+    represented_paths = {item.path for item in extras}
+    unrepresented_unknown = [item for item in unknown_surfaces if item not in represented_paths]
+    reviewed = sum(item.status == "known" for item in extras)
+    invalid = sum(item.status == "invalid" for item in extras)
+    unknown = sum(item.status == "unknown" for item in extras) + len(unrepresented_unknown)
+    return AgentPluginCoverageCounts(
+        discovered=portable_counts.discovered + len(extras) + len(unrepresented_unknown),
+        reviewed=portable_counts.reviewed + reviewed,
+        invalid=portable_counts.invalid + invalid,
+        skipped=portable_counts.skipped,
+        unknown=portable_counts.unknown + unknown,
+    )
 
 
 def _provenance(
@@ -1048,27 +1319,73 @@ def _provenance(
     skills: list[AgentPluginSkill],
     mcp: AgentPluginMcp,
     extensions: list[AgentPluginExtension],
+    package_surfaces: list[AgentPluginPackageSurface],
     unknown_surfaces: list[str],
+    limits: AgentPluginLimits,
 ) -> AgentPluginProvenance:
-    entries = [AgentPluginProvenanceEntry("manifest", "plugin.json", manifest.status)]
+    manifest_sha256, manifest_size = _file_identity(
+        root,
+        "plugin.json",
+        max_bytes=limits.max_manifest_bytes,
+    )
+    entries = [
+        AgentPluginProvenanceEntry(
+            "manifest",
+            "plugin.json",
+            manifest.status,
+            manifest_sha256,
+            manifest_size,
+        )
+    ]
     if skills_status != "absent":
         entries.append(AgentPluginProvenanceEntry("skills", "skills", skills_status))
-    entries.extend(AgentPluginProvenanceEntry("skill", item.path, item.status) for item in skills)
+    entries.extend(
+        AgentPluginProvenanceEntry(
+            "skill",
+            item.path,
+            item.status,
+            *_file_identity(root, item.path, max_bytes=limits.max_skill_bytes),
+        )
+        for item in skills
+    )
     if mcp.status != "absent":
-        entries.append(AgentPluginProvenanceEntry("mcp", mcp.path, mcp.status))
+        mcp_sha256, mcp_size = _file_identity(
+            root,
+            mcp.path,
+            max_bytes=limits.max_mcp_bytes,
+        )
+        entries.append(
+            AgentPluginProvenanceEntry(
+                "mcp",
+                mcp.path,
+                mcp.status,
+                mcp_sha256,
+                mcp_size,
+            )
+        )
     entries.extend(
         AgentPluginProvenanceEntry("mcp_server", item.path, item.status) for item in mcp.servers
     )
     entries.extend(
         AgentPluginProvenanceEntry("extension", item.namespace, item.status) for item in extensions
     )
+    package_paths = {item.path for item in package_surfaces}
+    entries.extend(
+        AgentPluginProvenanceEntry(
+            "package_surface",
+            item.path,
+            item.status,
+            *_file_identity(root, item.path, max_bytes=limits.max_package_file_bytes),
+        )
+        for item in package_surfaces
+    )
     entries.extend(
         AgentPluginProvenanceEntry("unknown", item, "unknown")
         for item in unknown_surfaces
-        if item not in {entry.path for entry in entries}
+        if item not in package_paths and item not in {entry.path for entry in entries}
     )
     return AgentPluginProvenance(
-        root.as_posix(), tuple(sorted(entries, key=lambda item: (item.path, item.component)))
+        ".", tuple(sorted(entries, key=lambda item: (item.path, item.component)))
     )
 
 
@@ -1076,15 +1393,29 @@ def _rejected_inventory(
     root: Path,
     diagnostics: list[AgentPluginDiagnostic],
     manifest: AgentPluginManifest | None = None,
+    limits: AgentPluginLimits = DEFAULT_AGENT_PLUGIN_LIMITS,
 ) -> AgentPluginInventory:
     manifest = manifest or AgentPluginManifest(
         "invalid", None, None, None, "plugin.json", _sorted_diagnostics(diagnostics)
     )
     empty_counts = AgentPluginCoverageCounts(discovered=1, invalid=1)
     coverage = AgentPluginCoverage("REJECTED", "REJECTED", empty_counts, empty_counts)
+    manifest_sha256, manifest_size = _file_identity(
+        root,
+        "plugin.json",
+        max_bytes=limits.max_manifest_bytes,
+    )
     provenance = AgentPluginProvenance(
-        root.as_posix(),
-        (AgentPluginProvenanceEntry("manifest", "plugin.json", "invalid"),),
+        ".",
+        (
+            AgentPluginProvenanceEntry(
+                "manifest",
+                "plugin.json",
+                "invalid",
+                manifest_sha256,
+                manifest_size,
+            ),
+        ),
     )
     return AgentPluginInventory(
         AGENT_PLUGINS_FORMAT,
@@ -1095,6 +1426,7 @@ def _rejected_inventory(
         "not_applicable",
         _empty_mcp(),
         (),
+        (),
         coverage,
         (),
         _sorted_diagnostics(diagnostics),
@@ -1102,7 +1434,11 @@ def _rejected_inventory(
     )
 
 
-def load_agent_plugin(path: Path | str) -> AgentPluginInventory:
+def load_agent_plugin(
+    path: Path | str,
+    *,
+    limits: AgentPluginLimits = DEFAULT_AGENT_PLUGIN_LIMITS,
+) -> AgentPluginInventory:
     """Load one local Agent Plugins 1.0 directory without executing anything."""
     requested = Path(path).expanduser()
     try:
@@ -1115,6 +1451,7 @@ def load_agent_plugin(path: Path | str) -> AgentPluginInventory:
                     "plugin_root_unreadable", "plugin root could not be resolved safely", "."
                 )
             ],
+            limits=limits,
         )
     if not root.is_dir():
         return _rejected_inventory(
@@ -1124,6 +1461,7 @@ def load_agent_plugin(path: Path | str) -> AgentPluginInventory:
                     "plugin_root_invalid", "Agent Plugin input must be a local directory", "."
                 )
             ],
+            limits=limits,
         )
 
     manifest_path = root / "plugin.json"
@@ -1138,10 +1476,13 @@ def load_agent_plugin(path: Path | str) -> AgentPluginInventory:
                     "plugin.json",
                 )
             ],
+            limits=limits,
         )
     if not resolved_manifest.exists():
         return _rejected_inventory(
-            root, [_diagnostic("manifest_missing", "plugin.json is required", "plugin.json")]
+            root,
+            [_diagnostic("manifest_missing", "plugin.json is required", "plugin.json")],
+            limits=limits,
         )
     if not resolved_manifest.is_file():
         return _rejected_inventory(
@@ -1153,11 +1494,16 @@ def load_agent_plugin(path: Path | str) -> AgentPluginInventory:
                     "plugin.json",
                 )
             ],
+            limits=limits,
         )
 
-    data, read_diagnostic = _read_json(resolved_manifest, "plugin.json")
+    data, read_diagnostic = _read_json(
+        resolved_manifest,
+        "plugin.json",
+        max_bytes=limits.max_manifest_bytes,
+    )
     if read_diagnostic is not None:
-        return _rejected_inventory(root, [read_diagnostic])
+        return _rejected_inventory(root, [read_diagnostic], limits=limits)
     if not isinstance(data, dict):
         return _rejected_inventory(
             root,
@@ -1168,33 +1514,44 @@ def load_agent_plugin(path: Path | str) -> AgentPluginInventory:
                     "plugin.json",
                 )
             ],
+            limits=limits,
         )
 
     manifest, manifest_diagnostics = _validate_manifest(data)
     if manifest.status != "valid":
-        return _rejected_inventory(root, manifest_diagnostics, manifest)
+        return _rejected_inventory(root, manifest_diagnostics, manifest, limits)
 
-    skills, skills_status, skill_diagnostics = _load_skills(root)
-    mcp = _load_mcp(root, manifest.schema or PLUGIN_SCHEMA)
-    extensions, unknown_surfaces, extension_diagnostics = _load_extensions(root, data)
+    skills, skills_status, skill_diagnostics = _load_skills(root, limits)
+    mcp = _load_mcp(root, manifest.schema or PLUGIN_SCHEMA, limits)
+    extensions, unknown_surfaces, extension_diagnostics, package_surfaces = (
+        _load_extensions_with_limits(root, data, limits)
+    )
     diagnostics = (
         manifest_diagnostics + skill_diagnostics + list(mcp.diagnostics) + extension_diagnostics
     )
 
     portable_counts = _counts_for_portable_core(manifest, skills_status, skills, mcp)
-    portable_incomplete = bool(portable_counts.invalid or portable_counts.skipped)
+    portable_incomplete = bool(
+        portable_counts.invalid or portable_counts.skipped or portable_counts.unknown
+    )
     portable_status = "INCOMPLETE" if portable_incomplete else "COMPLETE"
-    overall_counts = AgentPluginCoverageCounts(
-        discovered=portable_counts.discovered + len(unknown_surfaces),
-        reviewed=portable_counts.reviewed,
-        invalid=portable_counts.invalid,
-        skipped=portable_counts.skipped,
-        unknown=len(unknown_surfaces),
+    overall_counts = _counts_for_overall_artifact(
+        portable_counts,
+        package_surfaces,
+        unknown_surfaces,
     )
     overall_status = "INCOMPLETE" if portable_incomplete or unknown_surfaces else "COMPLETE"
     coverage = AgentPluginCoverage(portable_status, overall_status, portable_counts, overall_counts)
     provenance = _provenance(
-        root, manifest, skills_status, skills, mcp, extensions, unknown_surfaces
+        root,
+        manifest,
+        skills_status,
+        skills,
+        mcp,
+        extensions,
+        package_surfaces,
+        unknown_surfaces,
+        limits,
     )
     return AgentPluginInventory(
         AGENT_PLUGINS_FORMAT,
@@ -1205,6 +1562,7 @@ def load_agent_plugin(path: Path | str) -> AgentPluginInventory:
         skills_status,
         mcp,
         tuple(extensions),
+        tuple(package_surfaces),
         coverage,
         tuple(unknown_surfaces),
         _sorted_diagnostics(diagnostics),

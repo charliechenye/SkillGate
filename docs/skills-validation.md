@@ -36,10 +36,13 @@ input path.
 ## What It Checks
 
 - required `name` and `description` frontmatter fields;
-- lowercase slug-style names and matching skill directory names;
-- optional `license` and `compatibility` guidance;
-- `allowed-tools` as a list of strings, including review findings for broad
-  entries such as `*`, `bash`, `shell`, `python`, and `node`;
+- Agent Skills name grammar (1-64 lowercase Unicode alphanumeric characters
+  separated by single hyphens) and matching skill directory names;
+- optional `license`, 1-500 character `compatibility`, and string-to-string
+  `metadata` fields;
+- `allowed-tools` as the spec-defined space-separated string, including review
+  findings for broad entries such as `*`, `bash`, `shell`, `python`, and `node`;
+- unknown frontmatter fields and all required/optional field bounds;
 - local links and script references under `scripts/`, `references/`, and
   `assets/`;
 - executable or script-like files outside the `scripts/` directory.
@@ -61,8 +64,11 @@ directory name is not a reliable source for `SKILL004`.
 
 Text output is designed for a quick author feedback loop. JSON output includes
 `schema_version`, `tool_version`, `root`, `skills`, `findings`, and `summary`,
-with stable finding codes from `SKILL001` through `SKILL009`. ZIP reports add
-the deterministic `archive` manifest described above.
+with stable finding codes from `SKILL001` through `SKILL013`. Findings are
+SkillGate review signals; Agent Plugins inspection also keeps a separate
+specification-conformance result so advisory findings do not decide whether a
+discovered skill conforms to Agent Skills. ZIP reports add the deterministic
+`archive` manifest described above.
 
 ## Limitations
 

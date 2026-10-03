@@ -3,8 +3,7 @@ name: reviewable-demo
 description: Reviewable synthetic skill that fetches a remote template before processing notes.
 license: MIT
 compatibility: local shell with curl
-allowed-tools:
-  - bash
+allowed-tools: bash
 ---
 
 # Reviewable demo skill

@@ -4,9 +4,11 @@ import json
 import zipfile
 from pathlib import Path
 
+import pytest
 from conftest import ROOT, clean_test_dir, runner
 
 from skillgate.cli import app
+from skillgate.skills import validate_skill_file_result
 
 SKILLS_FIXTURES = ROOT / "fixtures" / "skills-validation"
 ARCHIVE_SKILL_FIXTURE = ROOT / "fixtures" / "skills-validation-archives" / "valid-archive"
@@ -42,6 +44,128 @@ def zip_skill_directory(tmp_path: Path, source: Path, name: str = "skill.zip") -
 
 def invoke(path: str, *args: str):
     return runner.invoke(app, ["skills", "validate", str(SKILLS_FIXTURES / path), *args])
+
+
+def write_skill(path: Path, frontmatter: str, body: str = "\nInstructions.\n") -> Path:
+    path.mkdir(parents=True)
+    skill = path / "SKILL.md"
+    skill.write_text(f"---\n{frontmatter}\n---\n{body}", encoding="utf-8")
+    return skill
+
+
+def skill_result(tmp_path: Path, name: str, frontmatter: str):
+    skill_path = write_skill(tmp_path / name, frontmatter)
+    return validate_skill_file_result(skill_path, tmp_path)
+
+
+def test_current_agent_skills_frontmatter_is_conformant(tmp_path: Path) -> None:
+    result = skill_result(
+        tmp_path,
+        "unicode-данные",
+        """name: unicode-данные
+description: A skill with current Agent Skills metadata.
+compatibility: local
+metadata:
+  owner: example
+  version: '1.0'
+allowed-tools: Bash(git:*) Bash(jq:*) Read""",
+    )
+
+    assert result.conformant is True
+    assert result.conformance_diagnostics == ()
+    assert not any(item["code"] == "SKILL006" for item in result.advisory_findings)
+
+
+@pytest.mark.parametrize(
+    ("name", "extra", "code"),
+    [
+        ("a" * 65, "", "skill_name_too_long"),
+        ("Bad-name", "", "skill_invalid_name"),
+        ("bad--name", "", "skill_invalid_name"),
+        ("-bad", "", "skill_invalid_name"),
+        ("bad-", "", "skill_invalid_name"),
+        ("valid-name", "unknown: value", "skill_unknown_frontmatter_field"),
+    ],
+)
+def test_agent_skills_name_and_field_constraints_are_conformance_errors(
+    tmp_path: Path,
+    name: str,
+    extra: str,
+    code: str,
+) -> None:
+    result = skill_result(
+        tmp_path,
+        name,
+        f"name: {name}\ndescription: Valid description\n{extra}",
+    )
+
+    assert result.conformant is False
+    assert code in {item["code"] for item in result.conformance_diagnostics}
+
+
+def test_agent_skills_description_and_compatibility_bounds_are_enforced(tmp_path: Path) -> None:
+    description = skill_result(
+        tmp_path / "description",
+        "valid-name",
+        f"name: valid-name\ndescription: {'x' * 1025}",
+    )
+    compatibility = skill_result(
+        tmp_path / "compatibility",
+        "valid-name",
+        f"name: valid-name\ndescription: Valid\ncompatibility: {'x' * 501}",
+    )
+    valid_compatibility = skill_result(
+        tmp_path / "compatibility-valid",
+        "valid-name",
+        f"name: valid-name\ndescription: Valid\ncompatibility: {'x' * 500}",
+    )
+
+    assert "skill_description_too_long" in {
+        item["code"] for item in description.conformance_diagnostics
+    }
+    assert "skill_invalid_compatibility" in {
+        item["code"] for item in compatibility.conformance_diagnostics
+    }
+    assert valid_compatibility.conformant is True
+
+
+def test_agent_skills_optional_types_and_allowed_tools_are_strict(tmp_path: Path) -> None:
+    invalid = skill_result(
+        tmp_path / "invalid",
+        "valid-name",
+        """name: valid-name
+description: Valid
+license: 3
+metadata:
+  owner: 3
+allowed-tools:
+  - Read""",
+    )
+
+    codes = {item["code"] for item in invalid.conformance_diagnostics}
+    assert {
+        "skill_invalid_license",
+        "skill_invalid_metadata",
+        "skill_invalid_allowed_tools",
+    } <= codes
+    assert {item["code"] for item in invalid.advisory_findings} >= {
+        "SKILL006",
+        "SKILL010",
+        "SKILL011",
+    }
+
+
+def test_agent_skills_directory_name_mismatch_is_not_advisory_only(tmp_path: Path) -> None:
+    result = skill_result(
+        tmp_path,
+        "directory-name",
+        "name: declared-name\ndescription: Valid",
+    )
+
+    assert result.conformant is False
+    assert "skill_directory_name_mismatch" in {
+        item["code"] for item in result.conformance_diagnostics
+    }
 
 
 def test_valid_minimal_skill_supports_direct_file_input() -> None:
