@@ -79,7 +79,8 @@ Static MCP Skills admission is planned for the v0.2 Agent Artifact Admission
 milestone. It will operate on a materialized directory, archive, or captured
 snapshot, preserve origin-plus-URI identity, account for nested and dynamic
 resources, and invalidate approval when the reviewed resource set changes. See
-the [canonical roadmap](../future_steps.md) for the planned contract.
+the [canonical roadmap](../future_steps.md) and its [Agent Artifact Admission
+roadmap](roadmaps/agent-artifact-admission.md) for the planned contract.
 
 ## Reviewer guidance
 

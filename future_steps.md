@@ -2,7 +2,9 @@
 
 This is the canonical product-direction and roadmap document. README pages,
 discovery notes, and recommendation guidance should describe the current
-repository consistently and link here for planned work.
+repository consistently and link here for planned work. Detailed v0.2
+artifact-admission design lives in the subordinate [Agent Artifact Admission
+roadmap](docs/roadmaps/agent-artifact-admission.md).
 
 ## Product direction
 
@@ -11,21 +13,19 @@ before install, merge, or approval. Its core review question remains:
 
 > What new capability surface does this artifact introduce before I trust it?
 
-The product is strongest when it turns an artifact into a reviewable decision:
+The product turns materialized artifacts into reviewable evidence:
 
 - artifact identity and provenance;
-- static capability evidence;
-- capability diff and drift;
+- static capability evidence and capability drift;
 - reviewer-facing findings and approval state;
 - policy-as-code and CI admission control; and
 - explicit no-execution boundaries.
 
-This is a more useful product center than the generic label “AI-agent security
-scanner.” SkillGate may be used as a static security scanner, but it is not
-trying to be a runtime MCP gateway, sandbox, malware verdict engine, LLM-first
-scanner, hosted security platform, generic agent framework, or runtime
-watchdog. Runtime enforcement, isolation, least-privilege credentials, and
-monitoring remain complementary controls.
+SkillGate may be used as a static security scanner, but it is not a runtime MCP
+gateway, sandbox, malware verdict engine, LLM-first scanner, hosted security
+platform, generic agent framework, or runtime watchdog. Runtime enforcement,
+isolation, least-privilege credentials, and monitoring remain complementary
+controls.
 
 ## Current baseline and shipped status
 
@@ -39,9 +39,7 @@ the roadmap current.
 PyPI and npm publication remain deferred; GitHub tags and GitHub Release assets are the
 supported distribution paths for the current release line.
 
-The current repository baseline includes the following capabilities. The
-`Unreleased` changelog entry identifies which recent work is not yet part of
-the `v0.1.3` release:
+The current repository baseline includes:
 
 - local and sparse GitHub static review for Agent Skills, instruction files,
   scripts, MCP metadata, MCP registry metadata, and MCP bundles;
@@ -53,178 +51,45 @@ the `v0.1.3` release:
 - review summaries, SARIF, policy checks, baselines, drift, and provenance;
 - deterministic demos, public scan-report examples, and adoption workflows; and
 - internal semantic artifact inventory, `SA001`/`SA002` analysis, and semantic
-  instruction drift helpers. These semantic helpers are not public CLI,
-  Review Packet, SARIF, policy, or baseline behavior.
+  instruction drift helpers.
 
 MCP Skills and Agent Plugins support are not shipped CLI capabilities today.
-They are the proposed next product milestone below. The roadmap must not make
-the current scanner appear to support them before implementation and evidence
-exist.
+The semantic CLI is not shipped, and runtime MCP inspection is outside the
+product boundary. Planned work must not make any of these appear implemented.
 
-## Roadmap at a glance
+## Milestones at a glance
 
 | Milestone | User problem | Required evidence | Exit criteria |
 | --- | --- | --- | --- |
-| **v0.2 — Agent Artifact Admission** | Review a complete MCP Skills snapshot or Agent Plugin as one approval decision, with identity, provenance, capability delta, and drift. | Conformance fixtures, immutable manifests, representative compound artifacts, and reviewer checks for invalidation and incomplete coverage. | Static snapshots are reviewable without server execution; aggregate output is deterministic; meaningful content/resource changes invalidate approval; unknown and dynamic surfaces are explicit. |
-| **Follow-up — Evidence & Benchmarking** | Establish whether extraction and drift evidence are useful on real public artifacts instead of growing the rule count blindly. | A licensed, provenance-preserving public corpus plus synthetic regression fixtures and repeatable evaluation reports. | Metrics, limitations, false positives, skipped/incomplete scans, and reviewer actionability are published per artifact type; no unsupported accuracy claim remains. |
-| **Parallel — Distribution & Discoverability** | Make high-intent users, maintainers, search engines, and answer engines find original SkillGate evidence. | Reproducible public review reports, compatibility matrices, schemas, capability diffs, and synchronized documentation. | Public reports can be reproduced from immutable sources, linked to machine-readable outputs, and refreshed without weakening the local/no-upload default. |
-| **Later — Evidence-gated semantic review** | Expose semantic instruction concerns and declared-purpose mismatches only if representative evidence shows reviewers can act on them. | The existing semantic corpus plus representative public artifacts, precision/recall where defensible, and actionability review. | Public semantic output has a deliberate schema and migration story; otherwise the internal inventory/drift work remains internal or is narrowed. |
+| **v0.2 — Agent Artifact Admission** | Review compound agent artifacts as one approval decision without losing component membership or provenance. | Deterministic aggregate fixtures, immutable identity evidence, capability deltas, content/capability drift cases, and incomplete-coverage cases. | Static aggregate review is reproducible; meaningful content/resource changes invalidate exact approval; capability changes remain distinct; unknown and dynamic surfaces are explicit. |
+| **v0.2A — Agent Plugins 1.0** | Review a materialized plugin containing skills, MCP configuration, and extensions as one trust artifact. | Valid, malformed, compound, partial, client-extension, provenance, and aggregate-drift fixtures. | A reviewer sees every discovered component, observed lower-bound capabilities, blind spots, and the required policy decision without execution. |
+| **v0.2B — MCP Skills snapshots** | Review a captured MCP Skills resource set without starting or querying a live server. | An approved materialized-input contract, complete/incomplete captures, resource digests and sizes, nested/dynamic cases, and exact-approval invalidation. | Snapshot admission is deterministic and origin-bound; content approval, capability drift, policy, and coverage are separate. |
+| **Follow-up — Evidence & Benchmarking** | Learn whether extraction and drift evidence help reviewers on real public artifacts. | Licensed representative corpus, synthetic regression fixtures, provenance, methodology, and repeatable evaluation reports. | Accuracy claims are limited to defensible evidence; false positives, blind spots, incomplete scans, and reviewer actionability are published. |
+| **Parallel — Distribution & Discoverability** | Let users find and reproduce original SkillGate evidence through familiar installation and technical-search paths. | Reproducible public reports, schemas, compatibility matrices, immutable sources, and synchronized documentation. | Distribution identity is coherent; public evidence is inspectable and refreshable without changing the local/no-upload default. |
+| **Later — Evidence-gated semantic review** | Expose semantic instruction concerns only if reviewers can act on them reliably. | Existing semantic corpus plus representative artifacts, defensible precision/recall, and actionability review. | Public semantic output has a deliberate schema and migration story, or remains internal/advisory. |
 
-## v0.2 — Agent Artifact Admission
+## v0.2 implementation order
 
-### User problem
+The order is part of the roadmap, not an implementation detail:
 
-An artifact increasingly contains more than one independently interesting file:
-a skill, a server configuration, manifests, and supporting resources. Reviewers
-need one trust decision for the artifact they are about to install, not a set of
-unrelated file scans that lose component membership and provenance.
+1. [v0.2A — Agent Plugins 1.0 aggregate admission](docs/roadmaps/agent-artifact-admission.md#v02a--agent-plugins-10-aggregate-admission)
+   comes first because plugins are already materialized compound artifacts.
+2. [v0.2B — MCP Skills static snapshot admission](docs/roadmaps/agent-artifact-admission.md#v02b--mcp-skills-static-snapshot-admission)
+   comes second and requires an explicit static input/capture contract before
+   any parser or adapter is designed.
 
-The v0.2 goal is static admission review for two compound formats while
-preserving the existing local-first, deterministic, no-execution contract.
+The [Agent Artifact Admission roadmap](docs/roadmaps/agent-artifact-admission.md)
+defines the review-layer separation, aggregate identity, provenance,
+partial-coverage semantics, and evidence/exit criteria. It is planning only:
+MCP Skills and Agent Plugins are not implemented by this document.
 
-### A. Static MCP Skills admission review
-
-The stable MCP Skills extension defines a transport binding for Agent Skills;
-it is not an `index.json` convention. The roadmap should follow the published
-[MCP Skills extension](https://skills.extensions.modelcontextprotocol.io/specification/stable/skills),
-identified as `io.modelcontextprotocol/skills`, including:
-
-- `skills/list` as the authoritative catalog operation;
-- `skills/get` for one skill identified by the URI of its `SKILL.md`;
-- ordinary `resources/read`, plus optional `resources/directory/read` when the
-  server declares directory-read support;
-- verbatim `SKILL.md` frontmatter in the skill entry;
-- a complete resource set whose entries contain each resource URI, its raw-byte
-  SHA-256 digest (`sha256:<hex>`), and byte size; and
-- the string `dynamic` when stable resource digests cannot be published.
-
-SkillGate should review a materialized directory, archive, or captured MCP
-snapshot. A snapshot may contain the relevant `skills/list`/`skills/get`
-records and the resource bytes they describe. The adapter must not start an
-arbitrary MCP server, call `skills/list` or `skills/get` against a live server,
-or make runtime MCP behavior part of admission review.
-
-The normalized identity and evidence model must preserve:
-
-- originating server/host identity **and** skill resource URI; URI alone is not
-  a safe identity because different origins may serve the same URI;
-- skill frontmatter and the `SKILL.md` resource as separate, checkable evidence;
-- every declared resource URI, digest, and size, including nested-skill files;
-- the relationship between nested or explicitly referenced/dependent skill
-  surfaces; and
-- names as display labels, not globally unique identifiers. Same-name skills
-  must remain disambiguated by origin and URI.
-
-The static review should verify path containment, manifest completeness,
-frontmatter consistency, digest and size matches, duplicate/colliding
-identities, nested-skill coverage, and declared-versus-materialized resource
-sets. A changed digest, size, frontmatter field, resource membership, nested
-resource, or origin must be visible as meaningful drift and invalidate an
-approval bound to the old snapshot. A `dynamic` resource set cannot receive a
-deterministic content-bound approval; report that limitation explicitly rather
-than treating it as a clean result.
-
-The review output should attach every capability and finding to the origin,
-skill URI, resource URI, and local evidence path where available. It should
-also account for incomplete or skipped resources so a partial snapshot cannot
-look equivalent to a complete review.
-
-### B. Agent Plugins 1.0 aggregate review
-
-The roadmap should target the published [Agent Plugins 1.0
-specification](https://agent-plugins.org/specification). Its portable core is
-conceptually:
-
-```text
-plugin/
-├── plugin.json
-├── skills/
-│   └── .../SKILL.md
-└── mcp.json
-```
-
-`plugin.json` is the required root manifest. `skills/` contains Agent Skills,
-and `mcp.json` contains the portable MCP server configuration. Client-specific
-extension namespaces are part of the package shape but do not acquire invented
-portable semantics from SkillGate.
-
-SkillGate should review the plugin as one aggregate trust artifact:
-
-- **Identity:** normalize the plugin root or archive identity, source URL and
-  immutable revision/digest, the `plugin.json` schema/name/version metadata,
-  and the identities of every discovered component.
-- **Provenance:** retain source path, immutable source identity, file digest,
-  byte size, component membership, and the adapter/version that interpreted
-  each field. Preserve client-extension files as explicit extension evidence
-  or unknown review surfaces rather than silently dropping them.
-- **Normalization:** validate the root manifest and fixed component locations;
-  normalize every skill and its supporting files; normalize every `mcp.json`
-  server entry; and retain raw declaration paths for evidence. Do not execute
-  skill scripts, resolve dependencies, start MCP servers, or load client
-  extensions.
-- **Capability delta:** union and deduplicate observed capabilities across the
-  manifest, all skills, supporting resources, and MCP server declarations while
-  retaining component-level evidence. The primary review object is the plugin
-  delta, not independent approvals for unrelated files:
-
-  ```text
-  Plugin capability delta
-
-  + shell execution
-  + filesystem writes
-  + outbound network access
-  + MCP server
-  + credential reference
-
-  Approval state: new capability surface
-  ```
-
-- **Baseline and drift:** compare the aggregate plugin identity, component
-  membership, skill/resource digests, MCP configuration, and meaningful
-  manifest changes. Additions, removals, or changes must explain which
-  component caused the capability delta. A changed component or aggregate
-  resource set must not inherit approval silently.
-- **Review behavior:** produce one reviewer decision with component evidence,
-  provenance, limitations, and explicit unknowns. A clean skill must not make a
-  separate bundled MCP server disappear from the approval view.
-
-### v0.2 evidence and exit criteria
-
-Before calling v0.2 complete, the repository needs:
-
-- synthetic fixtures for valid, malformed, incomplete, nested, colliding, and
-  dynamic MCP Skills snapshots;
-- Agent Plugins 1.0 fixtures covering skills-only, MCP-only, compound, invalid
-  path, schema/version, and client-extension cases;
-- deterministic identity, provenance, capability, and drift examples that a
-  reviewer can inspect without executing anything;
-- representative compound artifacts to test whether aggregate output is more
-  actionable than separate file results; and
-- documented behavior for skipped files, dynamic resources, unknown extension
-  fields, and missing origin identity.
-
-The milestone exits only when a reviewer can reproduce the aggregate decision
-from the immutable input, understand every new capability and its evidence,
-see why approval was invalidated after meaningful drift, and distinguish
-static admission evidence from runtime MCP behavior. A protocol or package
-claim that cannot be verified from the materialized input remains unknown.
-
-## Follow-up — Evidence & Benchmarking
-
-### User problem
-
-More rules are not evidence that SkillGate makes better admission decisions.
-The project needs to know whether artifact-format extraction, provenance,
-capability deltas, drift, and semantic signals are correct and useful on real
-public inputs.
-
-### Evidence workstream
+## Evidence and benchmarking
 
 Keep two kinds of coverage separate:
 
-1. **Synthetic regression fixtures** provide deterministic correctness checks for
-   known cases, malformed inputs, boundary limits, redaction, and stable output.
-2. **Representative public artifacts** measure real-world usefulness. Every
+1. **Synthetic regression fixtures** provide deterministic checks for known
+   formats, malformed inputs, boundaries, redaction, and stable output.
+2. **Representative public artifacts** measure real-world usefulness. Each
    artifact needs an immutable source identity, license/attribution record,
    scan date, adapter/tool version, and human-reviewed expected evidence where
    labels are required.
@@ -232,74 +97,65 @@ Keep two kinds of coverage separate:
 Evaluation should report, by artifact type and separately for incomplete scans:
 
 - format and contract correctness;
-- capability extraction accuracy and provenance accuracy;
+- capability extraction and provenance accuracy;
 - stable versus noisy drift behavior;
-- true capability-change detection;
-- false positives on benign public artifacts;
+- true capability-change detection and false positives;
 - semantic `SA001`/`SA002` precision and recall only where defensible;
 - reviewer actionability and reviewer agreement; and
-- skipped/incomplete scan accounting, including dynamic or unavailable
-  resources.
+- skipped, invalid, unknown, and incomplete accounting.
 
-The existing 24-case semantic corpus remains valuable synthetic regression
+The existing 24-case semantic corpus remains useful synthetic regression
 coverage. It is not enough evidence for broad real-world semantic scanner
-quality and must not be marketed as such.
+quality and must not be marketed as such. Publish methodology, corpus
+boundaries, known blind spots, per-artifact-type results, thresholds, and exact
+commands before making public accuracy claims.
 
-### Exit criteria
+## Distribution and discoverability
 
-Publish a reproducible report with corpus boundaries, provenance, methodology,
-known blind spots, per-artifact-type results, and the exact command/configuration
-used. Set evaluation thresholds before inspecting results and do not convert
-synthetic scores into unsupported production accuracy claims. A feature exits
-this workstream only when reviewers can reproduce the result and the measured
-false-positive and actionability profile justifies the public surface it would
-enable. Otherwise keep it advisory, internal, or narrow its scope.
+Treat distribution as a parallel workstream, with this explicit sequence:
 
-## Parallel — Distribution and discoverability
+`brand/package identity → Python distribution identity → simple PyPI/uvx installation → Node/npm wrapper decision → broader discoverability`
 
-### Public review corpus / observatory
+The sequence prevents a public package or search push from hardening an
+ambiguous identity. The current repository name, brand, and
+`openevalgate-skillgate` distribution plan remain unchanged in this planning
+round. Do not publish or rename as part of this roadmap cleanup.
 
-Adoption is now a product workstream. Build planning around a reproducible set
-of public review reports for important Agent Skills, Agent Plugins, MCP
-artifacts, MCP Apps, and MCP Skills. This is not a hosted scanner and does not
-change the local command's upload behavior.
+Public review reports and an evidence observatory may later support maintainers,
+benchmarks, search engines, and answer engines. They must preserve immutable
+source identity, scan limits, skipped/incomplete accounting, findings,
+capability deltas, attribution, and redaction. This is not a hosted scanner and
+does not change the local command's upload behavior.
 
-Each report should preserve, where available:
+Keep `llms.txt` as answer-engine orientation, not the primary SEO mechanism.
+Prioritize high-intent technical documentation, compatibility matrices,
+benchmark reports, schemas, public review reports, and example capability
+diffs. Avoid generic content marketing and unsupported “safe” or “detects all
+attacks” claims.
 
-- source URL and immutable commit, archive, or digest identity;
-- scan date, SkillGate version, adapter version, and limits;
-- artifact manifest and skipped/incomplete accounting;
-- observed capabilities, findings, and aggregate capability delta;
-- baseline/drift comparison and approval state;
-- limitations, unknowns, and review notes; and
-- machine-readable output alongside a readable report.
+## Decision gate — brand and package identity
 
-The goal is original, inspectable evidence that helps users and maintainers,
-supports benchmarks, and gives search engines and answer engines something
-technical to cite. Public reports must respect source licenses, attribution,
-redaction, and immutable-input boundaries.
+There is another project using the `SkillGate` name in the same broad
+AI-agent-security space. Resolve the brand/package question before:
 
-### SEO and AEO, grounded in technical evidence
+- a major public v0.2 launch;
+- a PyPI or other public package push; or
+- a major SEO/AEO and broader discoverability push.
 
-Keep `llms.txt`, but treat it as an answer-engine orientation file, not the
-primary SEO mechanism. Focus public documentation and reports on high-intent
-technical topics:
+This gate does not block internal v0.2A Agent Plugins model work. The decision
+should compare:
 
-- Agent Skill security and pre-install Agent Skill review;
-- MCP Skills security and static MCP review;
-- Agent Plugins security and aggregate plugin review;
-- MCP security review;
-- agent capability drift;
-- agent artifact provenance; and
-- agent supply-chain security.
+1. retaining `SkillGate`, preserving recognition while accepting search and
+   package ambiguity;
+2. using `OpenEvalGate SkillGate` / `SkillGate by OpenEvalGate`, adding a
+   differentiator at the cost of presentation complexity; or
+3. renaming while adoption is still relatively small, accepting migration cost
+   for cleaner long-term identity.
 
-The strongest discoverability assets are compatibility matrices, benchmark
-reports, public review reports, schemas, example capability diffs, and protocol
-analysis. Avoid generic content marketing and unsupported “safe” or “detects
-all attacks” claims. Keep the public website, README, `docs/`, `llms.txt`, and
-shipped CLI behavior synchronized.
+Consider GitHub discoverability, search and answer-engine ambiguity,
+Python/npm/package names, website/domain identity, and community recognition.
 
-## Later — Evidence-gated semantic review
+## Later semantic review
 
 The repository already contains an internal bounded semantic inventory,
 `SA001`/`SA002` advisory helpers, and line-movement-stable semantic drift. They
@@ -309,38 +165,13 @@ integration.
 
 Use the detailed [semantic artifact linting roadmap](docs/roadmaps/semantic-artifact-linting.md)
 as a subordinate design record. Its next decision is an evidence gate, not an
-immediate implementation task. Only after that gate should the project consider
-public semantic findings, declared-purpose versus observed-capability versus
-instruction comparisons, or semantic policy controls. Preserve the current
-`SG007` compatibility and the Review Packet schema migration discipline.
-
-## Decision gate — brand and package identity
-
-There is another project using the `SkillGate` name in the same broad
-AI-agent-security space. Do not rename automatically, but resolve this before
-major distribution and discoverability work.
-
-Evaluate three options:
-
-1. **Continue as `SkillGate`.** Preserves repository, documentation, and early
-   community recognition, but leaves search and answer-engine ambiguity.
-2. **Use `OpenEvalGate SkillGate` / `SkillGate by OpenEvalGate`.** Keeps the
-   product name while adding a differentiator; it costs naming complexity and
-   requires consistent repository, website, README, and package presentation.
-3. **Rename while adoption is still relatively small.** Creates the cleanest
-   long-term search and package identity, but requires migration of links,
-   examples, users, and community recognition.
-
-The decision must consider GitHub discoverability, search and answer-engine
-ambiguity, Python/npm/package names, website and domain identity, and long-term
-community recognition. The current repository name, brand, and
-`openevalgate-skillgate` distribution plan remain unchanged in this planning
-round.
+immediate implementation task. Preserve current `SG007` compatibility and
+Review Packet schema migration discipline.
 
 ## Maintenance rules and non-goals
 
-- Keep `future_steps.md` as the canonical direction; link to it instead of
-  copying roadmap prose into every documentation page.
+- Keep this file as the canonical direction; link to it instead of copying
+  roadmap prose into every documentation page.
 - Keep release history in `CHANGELOG.md`; mark work as released only when it is
   actually released.
 - Preserve stable CLI, JSON, SARIF, policy, Review Packet, and rule semantics
@@ -351,9 +182,9 @@ round.
 - Do not start arbitrary MCP servers as the default review path. Runtime MCP
   behavior, runtime enforcement, sandboxing, and watchdogs remain outside this
   product boundary.
-- Do not add an MCP Skills parser, Agent Plugins support, public semantic CLI,
-  benchmark corpus implementation, website, CI behavior, package rename, or
-  release as part of this planning patch.
+- This round adds no MCP Skills parser, Agent Plugins implementation, public
+  semantic CLI, new rule, benchmark corpus implementation, package
+  publication, package rename, website, CI behavior, or release.
 
 This round stops at the planning/documentation patch. Implementation begins
 only after review of the v0.2 contract, evidence requirements, and the brand
