@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -166,6 +167,84 @@ def test_total_byte_limit_preserves_prior_files_and_marks_later_file(tmp_path: P
     assert deploy.capability_scan_status == "incomplete"
 
 
+@pytest.mark.parametrize(
+    ("max_file_value", "remaining_value", "reported_value", "expected_reason"),
+    [
+        (100, 4, 4, "max_total_bytes_per_component"),
+        ("skill", "skill", "max", "max_total_bytes_per_component"),
+        ("skill", 1000, "max", "max_file_bytes"),
+    ],
+)
+def test_raced_skill_file_reads_past_active_budget_without_analyzing_prefix(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    max_file_value: int | str,
+    remaining_value: int | str,
+    reported_value: int | str,
+    expected_reason: str,
+) -> None:
+    root = plugin(tmp_path)
+    write_skill(root, "deploy", "bash " + ("x" * 256))
+    script = root / "skills" / "deploy" / "scripts" / "deploy.py"
+    skill_bytes = (root / "skills" / "deploy" / "SKILL.md").stat().st_size
+    max_file_bytes = skill_bytes if max_file_value == "skill" else max_file_value
+    remaining_bytes = skill_bytes if remaining_value == "skill" else remaining_value
+    reported_size = max_file_bytes if reported_value == "max" else reported_value
+    original_stat = Path.stat
+    original_open = Path.open
+    read_requests: list[int] = []
+
+    def raced_stat(self: Path, *args: object, **kwargs: object):
+        result = original_stat(self, *args, **kwargs)
+        if self == script:
+            return SimpleNamespace(st_mode=result.st_mode, st_size=reported_size)
+        return result
+
+    class TrackedStream:
+        def __init__(self, stream):
+            self.stream = stream
+
+        def __enter__(self):
+            self.stream.__enter__()
+            return self
+
+        def __exit__(self, *args: object):
+            return self.stream.__exit__(*args)
+
+        def read(self, size: int = -1) -> bytes:
+            read_requests.append(size)
+            return self.stream.read(size)
+
+    def tracked_open(self: Path, *args: object, **kwargs: object):
+        stream = original_open(self, *args, **kwargs)
+        return TrackedStream(stream) if self == script else stream
+
+    monkeypatch.setattr(Path, "stat", raced_stat)
+    monkeypatch.setattr(Path, "open", tracked_open)
+
+    review = review_agent_plugin_capabilities(
+        root,
+        capability_limits=AgentPluginCapabilityLimits(
+            max_file_bytes=max_file_bytes,
+            max_total_bytes_per_component=skill_bytes + remaining_bytes,
+        ),
+    )
+    deploy = component(review, "skill", "deploy")
+
+    script_review = next(item for item in deploy.file_reviews if item.path.endswith("deploy.py"))
+    assert read_requests[-1] == min(max_file_bytes, remaining_bytes) + 1
+    assert script_review.status == "limit_exceeded"
+    assert script_review.reason == expected_reason
+    assert not any(item.source_file.endswith("deploy.py") for item in deploy.capabilities)
+    assert not any(
+        evidence.source_file.endswith("deploy.py")
+        for item in review.observed_capabilities
+        for evidence in item.evidence
+    )
+    assert deploy.capability_scan_status == "incomplete"
+    assert review.capability_coverage.portable_core == "INCOMPLETE"
+
+
 def test_references_are_scanned_and_binary_assets_are_accounted_as_blind_spots(
     tmp_path: Path,
 ) -> None:
@@ -282,6 +361,50 @@ def test_skill_does_not_follow_mcp_app_asset_outside_component(tmp_path: Path) -
         and item.path == "skills/deploy/mcp.json"
         for item in deploy.diagnostics
     )
+
+
+@pytest.mark.parametrize(
+    ("uri", "expected_reason"),
+    [
+        ("https://example.com/app.html", "associated_resource_external"),
+        ("file:///tmp/app.html", "associated_resource_outside_plugin"),
+        ("custom://resource", "associated_resource_unsupported"),
+    ],
+)
+def test_skill_unfollowed_associated_resource_branches_are_explicit(
+    tmp_path: Path,
+    uri: str,
+    expected_reason: str,
+) -> None:
+    root = plugin(tmp_path)
+    write_skill(root, "deploy", 'subprocess.run(["deploy"])\n')
+    write_json(
+        root / "skills" / "deploy" / "mcp.json",
+        {
+            "resources": [
+                {
+                    "uri": uri,
+                    "mimeType": "text/html;profile=mcp-app",
+                }
+            ]
+        },
+    )
+
+    review = review_agent_plugin_capabilities(root)
+    deploy = component(review, "skill", "deploy")
+    serialized = json.dumps(agent_plugin_capabilities_to_data(review), sort_keys=True)
+
+    assert any(item.type == "shell_execution" for item in deploy.capabilities)
+    assert deploy.capability_scan_status == "incomplete"
+    assert review.capability_coverage.portable_core == "INCOMPLETE"
+    assert any(item.reason == expected_reason for item in review.blind_spots)
+    assert not any(
+        uri in evidence.source_file
+        for item in review.observed_capabilities
+        for evidence in item.evidence
+    )
+    if uri.startswith("file:"):
+        assert "/tmp/app.html" not in serialized
 
 
 def test_skill_missing_associated_resource_is_incomplete_without_erasing_evidence(

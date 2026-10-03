@@ -710,23 +710,6 @@ def _read_and_analyze_candidate(
     max_file_bytes = max(limits.max_file_bytes, 0)
     max_total_bytes = max(limits.max_total_bytes_per_component, 0)
     remaining_bytes = max_total_bytes - bytes_read
-    if size_bytes > max_file_bytes:
-        return (
-            AgentPluginCapabilityFileReview(
-                candidate.path,
-                _FILE_LIMIT_EXCEEDED,
-                "max_file_bytes",
-                size_bytes,
-            ),
-            bytes_read,
-            (),
-            _diagnostic(
-                "capability_file_limit_exceeded",
-                "a Skill capability file exceeds the bounded per-file byte limit",
-                candidate.path,
-            ),
-            None,
-        )
     if size_bytes > remaining_bytes:
         return (
             AgentPluginCapabilityFileReview(
@@ -744,8 +727,29 @@ def _read_and_analyze_candidate(
             ),
             None,
         )
+    if size_bytes > max_file_bytes:
+        return (
+            AgentPluginCapabilityFileReview(
+                candidate.path,
+                _FILE_LIMIT_EXCEEDED,
+                "max_file_bytes",
+                size_bytes,
+            ),
+            bytes_read,
+            (),
+            _diagnostic(
+                "capability_file_limit_exceeded",
+                "a Skill capability file exceeds the bounded per-file byte limit",
+                candidate.path,
+            ),
+            None,
+        )
 
-    read_limit = min(size_bytes + 1, max_file_bytes + 1, max(remaining_bytes, 0))
+    read_limit = min(
+        size_bytes + 1,
+        max_file_bytes + 1,
+        max(remaining_bytes, 0) + 1,
+    )
     try:
         with candidate.read_path.open("rb", buffering=0) as stream:
             data = stream.read(read_limit)
@@ -769,6 +773,41 @@ def _read_and_analyze_candidate(
 
     consumed = len(data)
     next_bytes_read = bytes_read + consumed
+    # The cumulative component budget wins when one detection read crosses both limits.
+    if len(data) > max(remaining_bytes, 0):
+        return (
+            AgentPluginCapabilityFileReview(
+                candidate.path,
+                _FILE_LIMIT_EXCEEDED,
+                "max_total_bytes_per_component",
+                size_bytes,
+            ),
+            next_bytes_read,
+            (),
+            _diagnostic(
+                "capability_total_bytes_limit_exceeded",
+                "the Skill component exceeded its bounded cumulative byte limit",
+                candidate.path,
+            ),
+            None,
+        )
+    if len(data) > max_file_bytes:
+        return (
+            AgentPluginCapabilityFileReview(
+                candidate.path,
+                _FILE_LIMIT_EXCEEDED,
+                "max_file_bytes",
+                size_bytes,
+            ),
+            next_bytes_read,
+            (),
+            _diagnostic(
+                "capability_file_limit_exceeded",
+                "a Skill capability file exceeds the bounded per-file byte limit",
+                candidate.path,
+            ),
+            None,
+        )
     if len(data) != size_bytes:
         return (
             AgentPluginCapabilityFileReview(
