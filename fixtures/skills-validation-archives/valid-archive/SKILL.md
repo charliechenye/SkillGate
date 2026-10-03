@@ -4,7 +4,7 @@ description: A deterministic packaged skill fixture.
 license: MIT
 compatibility: local markdown workflows
 allowed-tools:
-  - read_file
+  read_file
 ---
 
 # Packaged Skill

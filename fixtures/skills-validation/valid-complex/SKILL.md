@@ -4,8 +4,7 @@ description: A structured skill with narrowly scoped local resources.
 license: MIT
 compatibility: Python 3.11+
 allowed-tools:
-  - read_file
-  - write_file
+  read_file write_file
 ---
 
 # Valid Complex
