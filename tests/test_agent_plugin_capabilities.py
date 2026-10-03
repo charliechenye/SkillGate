@@ -7,10 +7,12 @@ import pytest
 
 import skillgate.agent_plugin_capabilities as capability_module
 from skillgate.agent_plugin_capabilities import (
+    AgentPluginCapabilityLimits,
     agent_plugin_capabilities_to_data,
     review_agent_plugin_capabilities,
 )
 from skillgate.agent_plugins import MCP_SCHEMA, PLUGIN_SCHEMA
+from skillgate.models import Capability
 
 
 def manifest(name: str = "test-plugin", **extra: object) -> dict[str, object]:
@@ -73,6 +75,202 @@ def test_skill_capability_uses_parent_component_and_plugin_relative_source_path(
     assert evidence.component_id == "deploy"
     assert evidence.component_path == "skills/deploy"
     assert evidence.source_file == "skills/deploy/scripts/deploy.py"
+
+
+def test_unreferenced_script_is_inventoried_and_scanned(tmp_path: Path) -> None:
+    root = plugin(tmp_path)
+    write_skill(root, "deploy")
+    hidden = root / "skills" / "deploy" / "scripts" / "hidden.py"
+    hidden.parent.mkdir()
+    hidden.write_text('subprocess.run(["hidden"])\n', encoding="utf-8")
+
+    review = review_agent_plugin_capabilities(root)
+    deploy = component(review, "skill", "deploy")
+
+    assert deploy.capability_scan_status == "reviewed"
+    assert "skills/deploy/scripts/hidden.py" in deploy.scanned_files
+    assert any(
+        capability.source_file == "skills/deploy/scripts/hidden.py"
+        for capability in deploy.capabilities
+    )
+
+
+def test_oversized_script_preserves_other_evidence_and_marks_incomplete(tmp_path: Path) -> None:
+    root = plugin(tmp_path)
+    write_skill(root, "deploy", 'subprocess.run(["small"])\n')
+    oversized = root / "skills" / "deploy" / "scripts" / "oversized.py"
+    oversized.write_text('subprocess.run(["oversized"])\n' + ("x" * 256), encoding="utf-8")
+
+    review = review_agent_plugin_capabilities(
+        root,
+        capability_limits=AgentPluginCapabilityLimits(max_file_bytes=128),
+    )
+    deploy = component(review, "skill", "deploy")
+
+    assert any(item.source_file.endswith("deploy.py") for item in deploy.capabilities)
+    assert not any(item.source_file.endswith("oversized.py") for item in deploy.capabilities)
+    oversized_review = next(
+        item for item in deploy.file_reviews if item.path.endswith("oversized.py")
+    )
+    assert oversized_review.status == "limit_exceeded"
+    assert deploy.capability_scan_status == "incomplete"
+    assert review.capability_coverage.portable_core == "INCOMPLETE"
+
+
+def test_file_count_limit_is_explicit_and_bounded(tmp_path: Path) -> None:
+    root = plugin(tmp_path)
+    write_skill(root, "deploy")
+    scripts = root / "skills" / "deploy" / "scripts"
+    scripts.mkdir()
+    for name in ("a.py", "b.py", "c.py"):
+        (scripts / name).write_text('subprocess.run(["limited"])\n', encoding="utf-8")
+
+    review = review_agent_plugin_capabilities(
+        root,
+        capability_limits=AgentPluginCapabilityLimits(max_files_per_component=2),
+    )
+    deploy = component(review, "skill", "deploy")
+
+    assert deploy.capability_scan_status == "incomplete"
+    assert any(item.status == "limit_exceeded" for item in deploy.file_reviews)
+    assert any(item.code == "capability_file_limit_exceeded" for item in deploy.diagnostics)
+    assert review.capability_coverage.portable_core == "INCOMPLETE"
+
+
+def test_total_byte_limit_preserves_prior_files_and_marks_later_file(tmp_path: Path) -> None:
+    root = plugin(tmp_path)
+    write_skill(root, "deploy")
+    scripts = root / "skills" / "deploy" / "scripts"
+    scripts.mkdir()
+    first = scripts / "a.py"
+    second = scripts / "b.py"
+    first.write_text('subprocess.run(["first"])\n', encoding="utf-8")
+    second.write_text('subprocess.run(["second"])\n', encoding="utf-8")
+    skill_bytes = (root / "skills" / "deploy" / "SKILL.md").stat().st_size
+    total_limit = skill_bytes + first.stat().st_size + 1
+
+    review = review_agent_plugin_capabilities(
+        root,
+        capability_limits=AgentPluginCapabilityLimits(
+            max_file_bytes=1_024,
+            max_total_bytes_per_component=total_limit,
+        ),
+    )
+    deploy = component(review, "skill", "deploy")
+
+    assert any(item.source_file.endswith("a.py") for item in deploy.capabilities)
+    assert not any(item.source_file.endswith("b.py") for item in deploy.capabilities)
+    assert next(item for item in deploy.file_reviews if item.path.endswith("b.py")).status == (
+        "limit_exceeded"
+    )
+    assert deploy.capability_scan_status == "incomplete"
+
+
+def test_references_are_scanned_and_binary_assets_are_accounted_as_blind_spots(
+    tmp_path: Path,
+) -> None:
+    root = plugin(tmp_path)
+    write_skill(root, "deploy")
+    references = root / "skills" / "deploy" / "references"
+    assets = root / "skills" / "deploy" / "assets"
+    references.mkdir()
+    assets.mkdir()
+    (references / "workflow.md").write_text(
+        'Use requests.get("https://reference.example/data")\n', encoding="utf-8"
+    )
+    (assets / "blob.dat").write_bytes(b"\x00\xffbinary")
+
+    review = review_agent_plugin_capabilities(root)
+    deploy = component(review, "skill", "deploy")
+
+    assert (
+        next(item for item in deploy.file_reviews if item.path.endswith("workflow.md")).status
+        == "scanned"
+    )
+    assert any(item.source_file.endswith("references/workflow.md") for item in deploy.capabilities)
+    assert next(item for item in deploy.file_reviews if item.path.endswith("blob.dat")).status == (
+        "unsupported"
+    )
+    assert deploy.capability_scan_status == "incomplete"
+    assert review.capability_coverage.portable_core == "INCOMPLETE"
+
+
+def test_misplaced_supported_script_is_scanned(tmp_path: Path) -> None:
+    root = plugin(tmp_path)
+    write_skill(root, "deploy")
+    helper = root / "skills" / "deploy" / "helper.py"
+    helper.write_text('subprocess.run(["helper"])\n', encoding="utf-8")
+
+    review = review_agent_plugin_capabilities(root)
+    deploy = component(review, "skill", "deploy")
+
+    assert any(item.source_file == "skills/deploy/helper.py" for item in deploy.capabilities)
+    assert deploy.capability_scan_status == "reviewed"
+
+
+def test_skill_capability_source_escape_is_excluded_and_incomplete(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = plugin(tmp_path)
+    write_skill(root, "deploy")
+    real_analyze = capability_module._analyze_file_content
+
+    def add_escape(file):
+        capabilities = real_analyze(file)
+        if file.path == "skills/deploy/SKILL.md":
+            capabilities.append(
+                Capability(
+                    type="shell_execution",
+                    resource=None,
+                    source_file="skills/other/evil.py",
+                    source_line=1,
+                    details={},
+                )
+            )
+        return capabilities
+
+    monkeypatch.setattr(capability_module, "_analyze_file_content", add_escape)
+
+    review = review_agent_plugin_capabilities(root)
+    deploy = component(review, "skill", "deploy")
+
+    assert not any(
+        evidence.source_file == "skills/other/evil.py"
+        for item in review.observed_capabilities
+        for evidence in item.evidence
+    )
+    assert deploy.capability_scan_status == "incomplete"
+    assert any(item.code == "capability_source_outside_component" for item in deploy.diagnostics)
+
+
+def test_skill_does_not_follow_mcp_app_asset_outside_component(tmp_path: Path) -> None:
+    root = plugin(tmp_path)
+    write_skill(root, "deploy")
+    outside = root / "outside.html"
+    outside.write_text('<script>subprocess.run(["outside"])</script>', encoding="utf-8")
+    skill_mcp = root / "skills" / "deploy" / "mcp.json"
+    write_json(
+        skill_mcp,
+        {
+            "resources": [
+                {
+                    "uri": "ui://outside.html",
+                    "mimeType": "text/html;profile=mcp-app",
+                }
+            ]
+        },
+    )
+
+    review = review_agent_plugin_capabilities(root)
+
+    assert not any(
+        evidence.source_file == "outside.html"
+        for item in review.observed_capabilities
+        for evidence in item.evidence
+    )
+    deploy = component(review, "skill", "deploy")
+    assert deploy.capability_scan_status == "reviewed"
 
 
 def test_two_skills_with_same_semantic_capability_keep_two_evidence_records(
@@ -275,14 +473,14 @@ def test_capability_scan_failure_isolated_to_one_skill(
     root = plugin(tmp_path)
     write_skill(root, "good", 'subprocess.run(["echo"])\n', body="Run scripts/good.py.\n")
     write_skill(root, "bad", 'subprocess.run(["bad"])\n', body="Run scripts/bad.py.\n")
-    real_scan_paths = capability_module.scan_paths
+    real_analyze = capability_module._analyze_file_content
 
-    def fail_bad_component(scan_root: Path, paths: list[Path]):
-        if any("skills/bad/" in path.as_posix() for path in paths):
+    def fail_bad_component(file):
+        if "skills/bad/" in file.path:
             raise RuntimeError("simulated scanner failure")
-        return real_scan_paths(scan_root, paths)
+        return real_analyze(file)
 
-    monkeypatch.setattr(capability_module, "scan_paths", fail_bad_component)
+    monkeypatch.setattr(capability_module, "_analyze_file_content", fail_bad_component)
 
     review = review_agent_plugin_capabilities(root)
     good = component(review, "skill", "good")
