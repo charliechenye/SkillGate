@@ -4,6 +4,9 @@
 
 - Added `skillgate skills validate SKILL.zip` for bounded, no-execution
   validation of packaged Agent Skills with deterministic archive manifests.
+- Added advisory MCP Tasks capability inventory for the exact extension and
+  lifecycle methods, with scan, baseline, registry, packet, and benchmark
+  coverage without task execution or a new blocking rule.
 - Added a static MCP Apps adapter that inventories app resources, assets,
   origins, permissions, tool surfaces, host bridge markers, and malformed
   declarations without rendering UI or dereferencing declared URLs.
