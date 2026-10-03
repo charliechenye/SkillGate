@@ -1,0 +1,20 @@
+{
+  "servers": [
+    {
+      "server": {
+        "name": "io.example.tasks",
+        "version": "0.1.0",
+        "supportedVersions": ["2026-07-28"],
+        "capabilities": {
+          "extensions": {
+            "io.modelcontextprotocol/tasks": {}
+          },
+          "tools": [
+            {"name": "tasks/get"},
+            {"name": "tasks/update"}
+          ]
+        }
+      }
+    }
+  ]
+}
