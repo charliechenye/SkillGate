@@ -16,6 +16,7 @@ STARTER = ROOT / "examples" / "preinstall-starter"
 class FakeSparseResult:
     def __init__(self, root: Path) -> None:
         self.root = root
+        self.fetched_paths = ["SKILL.md"]
         self.manifest = {
             "resolved_ref": "main",
             "resolved_commit_sha": "0123456789abcdef0123456789abcdef01234567",

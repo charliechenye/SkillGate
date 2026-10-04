@@ -592,11 +592,13 @@ def _validate_skill(
     root: Path,
     *,
     check_directory_name: bool = True,
+    directory_name: str | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     result = _validate_skill_result(
         skill_path,
         root,
         check_directory_name=check_directory_name,
+        directory_name=directory_name,
     )
     return result.skill, list(result.advisory_findings)
 
@@ -657,7 +659,10 @@ def validate_skill_file_result(
     )
 
 
-def validate_skills(path: Path, *, check_directory_name: bool = True) -> dict[str, Any]:
+def validate_skills(
+    path: Path, *, check_directory_name: bool = True, root_directory_name: str | None = None
+) -> dict[str, Any]:
+    """Validate skills, preserving the source name of a materialized root skill."""
     path = path.expanduser().resolve()
     skill_files = discover_skill_files(path)
     root = path.parent if path.is_file() else path
@@ -670,6 +675,7 @@ def validate_skills(path: Path, *, check_directory_name: bool = True) -> dict[st
             skill_file,
             root,
             check_directory_name=check_directory_name,
+            directory_name=root_directory_name if skill_file.parent == root else None,
         )
         skills.append(skill)
         findings.extend(skill_findings)

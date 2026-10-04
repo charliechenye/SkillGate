@@ -37,6 +37,17 @@ Supported remote files include:
 - `package.json`
 - `pyproject.toml`
 - Referenced local scripts ending in `.sh`, `.bash`, `.py`, `.js`, `.ts`, `.mjs`, `.cjs`, or `.ps1`
+- Markdown files and scripts bundled under a discovered skill directory, even
+  when `SKILL.md` does not name them directly
+
+Supporting files use the same download limits and exclusions as the initial
+selection. Every downloaded file is included in the static scan. Other file
+types remain in the skipped-file manifest; this is not complete coverage of
+arbitrary binaries or formats.
+
+Bare names such as `Next.js` or `skills.sh` are treated as script references
+only when they match a file in the repository. Explicit local paths such as
+`scripts/install.sh` still produce an incomplete-scan error when missing.
 
 ## Scanning A Subdirectory
 
@@ -47,6 +58,10 @@ skillgate github scan https://github.com/OWNER/REPO/tree/main/path/to/skills
 ```
 
 SkillGate materializes the selected subtree as the scan root, so report paths are relative to that subtree. Referenced scripts are followed only when the referenced file stays inside the selected subtree. If the URL includes a branch and `--ref` is also supplied, `--ref` wins.
+
+For `review preinstall`, a root skill is validated against its original
+repository directory name. Temporary directory names do not affect validation,
+and skills discovered below the root retain their own directory-name checks.
 
 ## Reproducible Scan Manifest
 
