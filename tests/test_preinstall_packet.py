@@ -53,6 +53,7 @@ def test_preinstall_packet_markdown_has_decision_sections() -> None:
     assert "## Capability Inventory" in markdown
     assert "## Decision Summary" in markdown
     assert "## Source Manifest" in markdown
+    assert "## Review Coverage" in markdown
     assert "## Findings By Severity" in markdown
     assert "## Reviewer Next Actions" in markdown
     assert "## Limitations" in markdown
@@ -86,6 +87,20 @@ def test_committed_preinstall_schema_matches_export_and_validates_packets() -> N
         scan_repository(FIXTURES / "28-mcp-compatibility-inventory"),
     )
     validator.validate(mcp_packet)
+
+
+def test_preinstall_v2_schema_and_renderer_accept_packets_without_coverage() -> None:
+    legacy = json.loads((SNAPSHOTS / "preinstall_packet.json").read_text(encoding="utf-8"))
+    legacy["metadata"].pop("coverage", None)
+    Draft202012Validator(PREINSTALL_REVIEW_JSON_SCHEMA).validate(legacy)
+    assert "# SkillGate Pre-install Review" in render_preinstall_markdown(legacy)
+
+
+def test_preinstall_packet_without_scan_evidence_requires_review() -> None:
+    built = build_preinstall_packet({"kind": "mcpb", "reference": "bundle.mcpb", "metadata": None})
+    Draft202012Validator(PREINSTALL_REVIEW_JSON_SCHEMA).validate(built)
+    assert built["metadata"]["coverage"]["status"] == "empty"
+    assert built["reviewer"]["decision"] == "review_required"
 
 
 def test_preinstall_packet_exposes_mcp_apps_evidence_and_actions(

@@ -75,7 +75,10 @@ PREINSTALL_REVIEW_JSON_SCHEMA: dict[str, object] = {
                 "skipped_file_count": {"type": "integer", "minimum": 0},
             },
         },
-        "metadata": {"type": "object"},
+        "metadata": {
+            "type": "object",
+            "properties": {"coverage": {"$ref": "#/$defs/coverage"}},
+        },
         "capabilities": {
             "type": "array",
             "items": {
@@ -134,6 +137,19 @@ PREINSTALL_REVIEW_JSON_SCHEMA: dict[str, object] = {
         },
     },
     "$defs": {
+        "coverage": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["status", "scope", "reasons"],
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "enum": ["complete", "incomplete", "empty", "unsupported"],
+                },
+                "scope": {"type": "string"},
+                "reasons": {"type": "array", "items": {"type": "string"}, "uniqueItems": True},
+            },
+        },
         "severityCounts": {
             "type": "object",
             "additionalProperties": {"type": "integer", "minimum": 0},

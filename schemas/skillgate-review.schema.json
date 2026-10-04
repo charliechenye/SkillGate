@@ -1,5 +1,18 @@
 {
   "$defs": {
+    "coverage": {
+      "additionalProperties": false,
+      "properties": {
+        "reasons": {"items": {"type": "string"}, "type": "array", "uniqueItems": true},
+        "scope": {"type": "string"},
+        "status": {
+          "enum": ["complete", "incomplete", "empty", "unsupported"],
+          "type": "string"
+        }
+      },
+      "required": ["status", "scope", "reasons"],
+      "type": "object"
+    },
     "findingList": {
       "items": {
         "additionalProperties": false,
@@ -70,7 +83,10 @@
       "required": ["total", "by_severity", "groups"],
       "type": "object"
     },
-    "metadata": {"type": "object"},
+    "metadata": {
+      "properties": {"coverage": {"$ref": "#/$defs/coverage"}},
+      "type": "object"
+    },
     "packet_digest": {"pattern": "^sha256:[0-9a-f]{64}$", "type": "string"},
     "packet_type": {"const": "preinstall_review"},
     "reviewer": {

@@ -92,12 +92,19 @@
     },
     "total": 4
   },
-  "metadata": {},
-  "packet_digest": "sha256:86ea0dfdcdffea7b08dc95c1b4a91d50c87880a4dbf343d4c0e1322da364977d",
+  "metadata": {
+    "coverage": {
+      "reasons": [],
+      "scope": "Supported static files; standard discovery exclusions apply.",
+      "status": "complete"
+    }
+  },
+  "packet_digest": "sha256:2c5bcccd2b47c17af8b34f3789723eb44c60d990b1a28a0c07e5ccd7e2b762e4",
   "packet_type": "preinstall_review",
   "reviewer": {
     "decision": "review_required",
     "limitations": [
+      "Complete coverage means no reported gaps within supported static discovery; excluded directories, dependencies, external content, and runtime behavior remain outside this review.",
       "This is deterministic static analysis, not a malware verdict or runtime proof.",
       "SkillGate does not execute code, install packages, start servers, or invoke an agent.",
       "Findings identify review signals; they do not establish maintainer intent or exploitability."

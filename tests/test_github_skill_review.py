@@ -131,3 +131,44 @@ def test_github_skill_supporting_files_obey_download_limits(monkeypatch) -> None
         "remote_path": f"{SKILL_PATH}/references/guide.md",
         "reason": "max_files_exceeded",
     }
+
+
+def test_github_preinstall_requires_complete_coverage_only_when_requested(monkeypatch) -> None:
+    files, _fetched = mock_skill_repository(monkeypatch)
+    result = runner.invoke(
+        app, ["review", "preinstall", SOURCE, "--require-complete", "--format", "json"]
+    )
+    assert result.exit_code == 1, result.output
+    payload = json.loads(result.output)
+    assert payload["metadata"]["coverage"]["status"] == "incomplete"
+    assert payload["metadata"]["coverage"]["reasons"] == ["unsupported_file"]
+    assert payload["source_manifest"]["skipped_file_count"] == 2
+
+    del files[f"{SKILL_PATH}/opaque.bin"]
+    result = runner.invoke(
+        app, ["review", "preinstall", SOURCE, "--require-complete", "--format", "json"]
+    )
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["metadata"]["coverage"]["status"] == "complete"
+    assert payload["findings"]["total"] > 0
+    assert payload["source_manifest"]["skipped_file_count"] == 1
+
+
+@pytest.mark.parametrize("unsupported", [False, True])
+def test_github_review_without_supported_files_does_not_claim_no_findings(
+    monkeypatch, unsupported: bool
+) -> None:
+    files, _fetched = mock_skill_repository(monkeypatch)
+    files.clear()
+    if unsupported:
+        files[f"{SKILL_PATH}/plugin.json"] = '{"name":"minimal-plugin"}'
+    result = runner.invoke(
+        app, ["review", "preinstall", SOURCE, "--require-complete", "--format", "json"]
+    )
+    assert result.exit_code == 1, result.output
+    payload = json.loads(result.output)
+    assert payload["metadata"]["coverage"]["status"] == ("unsupported" if unsupported else "empty")
+    assert payload["findings"]["total"] == 0
+    assert payload["reviewer"]["decision"] == "review_required"
+    assert payload["source"]["revision"] == FAKE_COMMIT_SHA
