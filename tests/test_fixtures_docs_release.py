@@ -212,17 +212,19 @@ def test_release_metadata_and_roadmap_are_consistent() -> None:
     release_checklist = (ROOT / "docs" / "release-checklist.md").read_text(encoding="utf-8")
     mcp_apps_docs = ROOT / "docs" / "mcp-apps-static-review.md"
     admission_roadmap = ROOT / "docs" / "roadmaps" / "agent-artifact-admission.md"
-    release_notes = ROOT / "docs" / "release-notes" / "0.1.3.md"
+    release_notes = ROOT / "docs" / "release-notes" / "0.1.4.md"
     admission = admission_roadmap.read_text(encoding="utf-8")
     assert pyproject["project"]["name"] == "openevalgate-skillgate"
     assert pyproject["project"]["authors"] == [{"name": "Chenye Zhu"}]
-    assert pyproject["project"]["version"] == "0.1.3"
+    assert pyproject["project"]["version"] == "0.1.4"
     assert pyproject["project"]["license"] == "MIT"
     assert pyproject["project"]["license-files"] == ["LICENSE"]
     assert "License :: OSI Approved :: MIT License" not in pyproject["project"]["classifiers"]
-    assert __version__ == "0.1.3"
-    assert '"version": "0.1.3"' in (ROOT / "package.json").read_text(encoding="utf-8")
+    assert __version__ == "0.1.4"
+    assert '"version": "0.1.4"' in (ROOT / "package.json").read_text(encoding="utf-8")
     assert "## 0.1.3 - Review evidence foundations and MCP compatibility inventory" in changelog
+    assert "## 0.1.4 - GitHub skill review and release hardening" in changelog
+    assert "Released 2026-10-03." in changelog
     assert "Released 2026-07-29." in changelog
     assert "## 0.1.2 - Guided review workflows" in changelog
     assert "Released 2026-07-09." in changelog
@@ -261,21 +263,21 @@ def test_release_metadata_and_roadmap_are_consistent() -> None:
     assert "Review what agent tooling can do before you install or merge it." in readme
     assert mcp_apps_docs.exists()
     assert "Local scans never dereference" in mcp_apps_docs.read_text(encoding="utf-8")
-    assert "The current stable release is `v0.1.3`." in future_steps
-    assert "For `v0.1.3`, both version commands should print `0.1.3`." in release_checklist
-    assert 'git tag -a v0.1.3 -m "SkillGate v0.1.3"' in release_checklist
-    assert "gh release create v0.1.3" in release_checklist
-    assert 'SKILLGATE_VERSION="v0.1.3"' in release_checklist
-    assert 'git tag -a -f v0 "v0.1.3^{commit}"' in release_checklist
+    assert "The current stable release is `v0.1.4`." in future_steps
+    assert "For `v0.1.4`, both version commands should print `0.1.4`." in release_checklist
+    assert 'git tag -a v0.1.4 -m "SkillGate v0.1.4"' in release_checklist
+    assert "gh release create v0.1.4" in release_checklist
+    assert 'SKILLGATE_VERSION="v0.1.4"' in release_checklist
+    assert 'git tag -a -f v0 "v0.1.4^{commit}"' in release_checklist
     assert '--force-with-lease="refs/tags/v0:$skillgate_old_v0"' in release_checklist
     assert "Review Workflow Smoke Tests" in release_checklist
     assert "only builder and uploader" in release_checklist
     assert "assets from a workstation" in release_checklist
-    assert "Do not run this section for `v0.1.3`" in release_checklist
+    assert "Do not run this section for `v0.1.4`" in release_checklist
     assert "prefer yanking the affected file or version" in release_checklist
     assert release_notes.exists()
-    assert "Review evidence foundations" in release_notes.read_text(encoding="utf-8")
-    assert "--notes-file docs\\release-notes\\0.1.3.md" in release_checklist
+    assert "GitHub skill review fixes" in release_notes.read_text(encoding="utf-8")
+    assert "--notes-file docs\\release-notes\\0.1.4.md" in release_checklist
 
     current_release, released = changelog.split("## 0.1.1", maxsplit=1)
 
@@ -367,7 +369,7 @@ def test_docs_are_main_branch_and_discovery_friendly() -> None:
     assert "skillgate review preinstall SOURCE --json-output skillgate-review.json" in readme
     assert "## Start With Three Direct Scans" in readme
     assert "docs/public-scan-reports/README.md" in readme
-    assert "Current release: `v0.1.3`" in readme
+    assert "Current release: `v0.1.4`" in readme
     assert "Stable compatibility channel: `v0`" in readme
     assert "docs/examples/github-action-minimal.md" in readme
     assert "## Try The Local Demos" in readme

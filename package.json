@@ -1,6 +1,6 @@
 {
   "name": "skillgate",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": true,
   "description": "Thin GitHub-release launcher for the SkillGate Python scanner.",
   "license": "MIT",

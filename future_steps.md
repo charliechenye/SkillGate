@@ -29,12 +29,14 @@ controls.
 
 ## Current baseline and shipped status
 
-The current stable release is `v0.1.3`. It established the pre-install review
-workflow, Review Packet v2, deterministic packet and source-manifest evidence,
-MCP protocol/extension inventory, capability baselines and drift, provenance,
-policy-as-code, and the no-execution product boundary. Historical release
-details remain in `CHANGELOG.md`; do not rewrite release-note history to make
-the roadmap current.
+The current stable release is `v0.1.4`. It improves GitHub skill validation and
+supporting-file coverage, adds advisory MCP Apps and Tasks evidence and bounded
+Agent Skill ZIP validation, and patches development-toolchain dependencies.
+The `v0.1.3` release established Review Packet v2, deterministic packet and
+source-manifest evidence, and MCP protocol/extension inventory. Capability
+baselines and drift, provenance, policy-as-code, and the no-execution boundary
+remain supported. Historical release details remain in `CHANGELOG.md`; do not
+rewrite release-note history to make the roadmap current.
 
 PyPI and npm publication remain deferred; GitHub tags and GitHub Release assets are the
 supported distribution paths for the current release line.
