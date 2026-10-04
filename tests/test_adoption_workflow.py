@@ -102,7 +102,7 @@ def test_mcpb_review_and_explicit_fail_on_are_advisory_then_enforceable(tmp_path
 def test_benchmark_report_and_workflow_keep_pr_sarif_nonblocking() -> None:
     benchmark_root = Path("fixtures/benchmark")
     assert fixture_summary_markdown(benchmark_root, summarize_fixtures(benchmark_root)) == (
-        ROOT / "docs" / "benchmark" / "0.1.3.md"
+        ROOT / "docs" / "benchmark" / "0.1.4.md"
     ).read_text(encoding="utf-8")
 
     workflow = yaml.safe_load(

@@ -9,7 +9,7 @@
 ![No runtime execution](https://img.shields.io/badge/runtime-no%20execution-green)
 ![Policy as code](https://img.shields.io/badge/policy-as%20code-purple)
 
-Current release: `v0.1.3` · Stable compatibility channel: `v0`
+Current release: `v0.1.4` · Stable compatibility channel: `v0`
 
 ![SkillGate social preview: static trust checks for AI-agent skills and MCP configurations](docs/assets/repo_image.png)
 
@@ -205,7 +205,7 @@ Teams that require maximum reproducibility should pin the full commit SHA in
 install commands and GitHub Action references.
 
 GitHub installs require Python 3.11 or newer and `git` on the customer machine.
-PyPI publication is deferred for `0.1.3`. When it is intentionally revisited,
+PyPI publication is deferred for `0.1.4`. When it is intentionally revisited,
 the planned distribution name is `openevalgate-skillgate`:
 
 ```bash
@@ -293,7 +293,7 @@ skillgate github scan https://github.com/phuryn/pm-skills --format json
 skillgate github scan https://github.com/phuryn/pm-skills --manifest-output remote-manifest.json
 ```
 
-Remote scans are static and sparse. SkillGate resolves the requested branch or tag to an immutable commit SHA, fetches GitHub tree metadata at that SHA, downloads only supported agent files plus referenced local scripts, scans a temporary sparse mirror, and deletes it. It never executes remote repository content.
+Remote scans are static and sparse. SkillGate resolves the requested branch or tag to an immutable commit SHA, fetches GitHub tree metadata at that SHA, downloads supported agent files and the Markdown and supported scripts bundled with discovered skills, scans a temporary sparse mirror, and deletes it. Downloads remain bounded by file-count and byte limits. It never executes remote repository content.
 
 JSON output includes `scan_report` and `remote_manifest`. Use `--manifest-output` to save the manifest for text or SARIF scans. The manifest records the source URL, requested ref, resolved commit SHA, downloaded paths, SHA-256 hashes, byte counts, skipped files, and resource limits.
 

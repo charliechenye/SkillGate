@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.1.4 - GitHub skill review and release hardening
+
+Released 2026-10-03.
+
+### Added
+
 - Added `skillgate skills validate SKILL.zip` for bounded, no-execution
   validation of packaged Agent Skills with deterministic archive manifests.
 - Added advisory MCP Tasks capability inventory for the exact extension and
@@ -13,6 +19,29 @@
 - Added MCP Apps evidence to advisory review packets and benchmark coverage
   while preserving schema version `2`, existing rule IDs, and local-only scan
   boundaries.
+
+### Fixed
+
+- Validate a GitHub skill against its original directory name instead of the
+  temporary sparse-mirror directory, avoiding false `SKILL004` findings.
+- Treat bare product names such as `Next.js` and `skills.sh` as local script
+  references only when those files exist. Explicit missing relative paths
+  still fail with source-manifest evidence.
+- Fetch and scan bundled Markdown and supported helper scripts inside
+  discovered GitHub skills, including files not linked from `SKILL.md`, within
+  the existing download limits and excluded-path rules.
+- Patch four development-toolchain security advisories by updating locked
+  `urllib3` to `2.8.0` and `cryptography` to `50.0.2`.
+
+### Changed
+
+- Bumped Python and private Node wrapper metadata to `0.1.4`; GitHub tags and
+  checksummed release assets remain the supported distribution paths.
+- Keep Python, npx, and GitHub Action examples on the shared `v0` compatibility
+  channel. Promote it with an annotated noreply tag and an explicit push lease
+  only after versioned assets and installation paths are verified.
+- Added internal Agent Plugins inventory and aggregate identity helpers.
+  Agent Plugins and MCP Skills remain planned CLI capabilities.
 
 ## 0.1.3 - Review evidence foundations and MCP compatibility inventory
 
