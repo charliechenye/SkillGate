@@ -57,6 +57,8 @@ skillgate review schema --output skillgate-review.schema.json
 
 Coverage appears in `metadata.coverage` as `complete`, `incomplete`, `empty`,
 or `unsupported`. Zero findings with missing coverage requires further review.
+This coverage extension and `--require-complete` are unreleased; they are
+available on the development branch and are not included in `v0.1.4`.
 For an opt-in CI gate, combine coverage and finding thresholds:
 
 ```bash

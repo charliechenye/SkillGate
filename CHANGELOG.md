@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Added
+
+- Add explicit pre-install review coverage and an opt-in `--require-complete`
+  gate, separate from finding severity, while retaining Review Packet v2.
+
+### Fixed
+
+- Require further review for empty, unsupported, or incomplete coverage even
+  when no findings are produced. Account for local discovery omissions, MCPB
+  unscanned members and entry points, and MCP Apps gaps; display zero counts.
+
 ## 0.1.4 - GitHub skill review and release hardening
 
 Released 2026-10-03.
