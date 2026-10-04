@@ -110,12 +110,14 @@ Create the release from the pushed `v0.1.4` tag in the GitHub UI, or use the
 GitHub CLI:
 
 ```powershell
-gh release create v0.1.4 --verify-tag --title "SkillGate v0.1.4" --notes-file docs\release-notes\0.1.4.md
+gh release create v0.1.4 --verify-tag --latest=false --title "SkillGate v0.1.4" --notes-file docs\release-notes\0.1.4.md
 gh run list --workflow release-binaries.yml --limit 5
 ```
 
 The release-published event triggers the release-binary workflow, which is the
-only builder and uploader of standalone assets. If it does not, manually
+only builder and uploader of standalone assets. Keep the previous release as
+`Latest` while these assets are being built, so default Node wrapper installs
+can still download a complete release. If the workflow does not run, manually
 dispatch the workflow against the same tag:
 
 ```powershell
@@ -163,7 +165,7 @@ skillgate rules list
 skillgate review schema --output test-outputs\installed-review.schema.json
 skillgate review preinstall examples\preinstall-starter --json-output test-outputs\installed-review.json
 pipx run --spec "git+https://github.com/charliechenye/SkillGate.git@v0.1.4" skillgate rules list
-$env:SKILLGATE_VERSION="v0.1.4"; npx --yes github:charliechenye/SkillGate#v0.1.4 -- scan .
+$env:SKILLGATE_VERSION="v0.1.4"; npx --yes --allow-git=root github:charliechenye/SkillGate#v0.1.4 -- scan .
 ```
 
 GitHub installs require `git` on the customer machine. For teams that require
@@ -173,6 +175,8 @@ Verify these commands with the tagged installation, not the development
 environment. The installed version must match the tag, and the pre-install
 review must produce a packet with a digest and `schema_version: "2"`. Then
 promote the validated release to the shared `v0` compatibility tag in step 10.
+The per-command `--allow-git=root` option supports npm 12, whose Git dependency
+setting defaults to `none`.
 
 ## 9. Deferred PyPI Publication
 
@@ -210,7 +214,13 @@ public scan reports that mention the affected version.
 ## 10. Move And Verify Stable `v0`
 
 After the `v0.1.4` release assets and install paths are validated, move the
-stable `v0` compatibility tag to that release's commit. Fetch the current tags
+`Latest` release pointer and stable `v0` compatibility tag to the release:
+
+```powershell
+gh release edit v0.1.4 --latest
+```
+
+Move `v0` to that release's commit. Fetch the current tags
 first and record the existing remote `v0` object for the push lease.
 Use an annotated tag with your GitHub noreply tagger email. Check
 `git config --get user.email` before creating the tag. A lightweight tag can
@@ -247,7 +257,7 @@ Then verify the public examples:
 python -m pip install --force-reinstall "git+https://github.com/charliechenye/SkillGate.git@v0"
 skillgate --version
 skillgate review preinstall examples\preinstall-starter --json-output test-outputs\v0-review.json
-npx --yes github:charliechenye/SkillGate#v0 -- scan .
+npx --yes --allow-git=root github:charliechenye/SkillGate#v0 -- scan .
 ```
 
 The installed version should print `0.1.4`, and the review packet must include
