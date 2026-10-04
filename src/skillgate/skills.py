@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import unicodedata
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -15,7 +17,14 @@ from skillgate.models import SEVERITY_ORDER, stable_json
 
 SKILL_SCHEMA_VERSION = "1"
 SKILL_FILE = "SKILL.md"
+# Kept as a compatibility export for callers that imported the old helper. The
+# validator uses _valid_skill_name because Python's regular-expression
+# character classes do not express the spec's lowercase-Unicode constraint
+# precisely enough.
 SKILL_NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+SKILL_FRONTMATTER_FIELDS = frozenset(
+    {"name", "description", "license", "compatibility", "metadata", "allowed-tools"}
+)
 MARKDOWN_LINK_RE = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
 SCRIPT_REFERENCE_RE = re.compile(
     r"(?P<path>(?:\.{1,2}/)?[A-Za-z0-9_./\\-]+"
@@ -57,9 +66,9 @@ FINDING_DOCS = {
     ),
     "SKILL006": (
         "Invalid allowed-tools metadata",
-        "`allowed-tools` must be a list containing only strings.",
+        "`allowed-tools` must be a space-separated string.",
         "medium",
-        "Use a YAML list of narrowly scoped tool names.",
+        "Use a YAML string containing narrowly scoped tool names separated by spaces.",
     ),
     "SKILL007": (
         "Broad allowed tool",
@@ -79,11 +88,45 @@ FINDING_DOCS = {
         "high",
         "Move executable content under `scripts/` or remove the executable bit.",
     ),
+    "SKILL010": (
+        "Invalid optional skill metadata",
+        "Optional Agent Skills fields must use the types and bounds defined by the specification.",
+        "medium",
+        "Fix the type or length of `license` or `compatibility`.",
+    ),
+    "SKILL011": (
+        "Invalid metadata map",
+        "`metadata` must be a mapping whose keys and values are strings.",
+        "medium",
+        "Use string keys and string values under `metadata`.",
+    ),
+    "SKILL012": (
+        "Unknown frontmatter field",
+        "The Agent Skills specification only permits its defined frontmatter fields.",
+        "medium",
+        "Move client-specific data under `metadata` or remove the unknown field.",
+    ),
+    "SKILL013": (
+        "Invalid skill description",
+        "The required skill description must be non-empty and at most 1024 characters.",
+        "medium",
+        "Shorten the description to 1024 characters or fewer.",
+    ),
 }
 
 
 class SkillsValidationError(ValueError):
     """Raised when a skills validation input cannot be read or discovered."""
+
+
+@dataclass(frozen=True)
+class SkillValidationResult:
+    """Separate specification conformance from SkillGate review signals."""
+
+    skill: dict[str, Any]
+    conformant: bool
+    conformance_diagnostics: tuple[dict[str, Any], ...]
+    advisory_findings: tuple[dict[str, Any], ...]
 
 
 def discover_skill_files(path: Path) -> list[Path]:
@@ -149,7 +192,10 @@ def _parse_frontmatter(text: str) -> tuple[dict[str, Any], int | None, str | Non
         return {}, 1, "frontmatter must contain a YAML mapping"
     if not isinstance(data, dict):
         return {}, 1, "frontmatter must contain a YAML mapping"
-    return _json_safe(data), None, None
+    # Keep the parsed values intact for conformance checks. Converting values
+    # to JSON-safe strings here would make invalid YAML types look valid (for
+    # example, a date-valued metadata entry).
+    return data, None, None
 
 
 def _finding(
@@ -200,19 +246,57 @@ def _referenced_paths(content: str) -> list[str]:
     return sorted(path for path in paths if path is not None)
 
 
-def _validate_skill(
+def _conformance_diagnostic(
+    code: str,
+    message: str,
+    *,
+    line: int | None = None,
+    evidence: str | None = None,
+) -> dict[str, Any]:
+    diagnostic: dict[str, Any] = {"code": code, "message": message}
+    if line is not None:
+        diagnostic["line_number"] = line
+    if evidence is not None:
+        diagnostic["evidence"] = evidence
+    return diagnostic
+
+
+def _normalise_skill_name(value: str) -> str:
+    return unicodedata.normalize("NFKC", value.strip())
+
+
+def _valid_skill_name(value: str) -> bool:
+    name = _normalise_skill_name(value)
+    if not 1 <= len(name) <= 64:
+        return False
+    if not name[0].isalnum() or not name[-1].isalnum() or "--" in name:
+        return False
+    if name != name.lower():
+        return False
+    return all(character == "-" or character.isalnum() for character in name)
+
+
+def _validate_skill_result(
     skill_path: Path,
     root: Path,
     *,
     check_directory_name: bool = True,
-) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    directory_name: str | None = None,
+    max_bytes: int | None = None,
+    scan_advisories: bool = True,
+) -> SkillValidationResult:
     try:
+        if max_bytes is not None and skill_path.stat().st_size > max_bytes:
+            raise SkillsValidationError("skill file exceeds the validation size limit")
         content = skill_path.read_text(encoding="utf-8")
+    except SkillsValidationError:
+        raise
     except (OSError, UnicodeError) as exc:
         raise SkillsValidationError(f"unable to read {skill_path}: {exc}") from exc
 
     metadata, frontmatter_line, frontmatter_error = _parse_frontmatter(content)
     findings: list[dict[str, Any]] = []
+    conformance: list[dict[str, Any]] = []
     if frontmatter_error:
         findings.append(
             _finding(
@@ -221,6 +305,49 @@ def _validate_skill(
                 root,
                 line=frontmatter_line,
                 evidence=frontmatter_error,
+            )
+        )
+        conformance.append(
+            _conformance_diagnostic(
+                "skill_frontmatter_invalid",
+                "SKILL.md frontmatter could not be parsed as a YAML mapping",
+                line=frontmatter_line,
+                evidence=frontmatter_error,
+            )
+        )
+    elif not content.startswith("---"):
+        conformance.append(
+            _conformance_diagnostic(
+                "skill_frontmatter_missing",
+                "SKILL.md must start with YAML frontmatter",
+                line=1,
+            )
+        )
+
+    unknown_fields = sorted(
+        (field for field in metadata if field not in SKILL_FRONTMATTER_FIELDS),
+        key=str,
+    )
+    for field in unknown_fields:
+        field_text = str(field)
+        conformance.append(
+            _conformance_diagnostic(
+                "skill_unknown_frontmatter_field",
+                (
+                    f"frontmatter field {field_text!r} is not defined by the "
+                    "Agent Skills specification"
+                ),
+                line=frontmatter_line,
+                evidence=field_text,
+            )
+        )
+        findings.append(
+            _finding(
+                "SKILL012",
+                skill_path,
+                root,
+                line=frontmatter_line,
+                evidence=field_text,
             )
         )
 
@@ -241,50 +368,169 @@ def _validate_skill(
                 evidence=f"missing or invalid: {', '.join(missing)}",
             )
         )
-    if isinstance(name, str) and name.strip() and not SKILL_NAME_RE.fullmatch(name.strip()):
-        findings.append(
-            _finding("SKILL003", skill_path, root, line=frontmatter_line, evidence=name)
+        conformance.append(
+            _conformance_diagnostic(
+                "skill_missing_required_field",
+                "name and description must be non-empty strings",
+                line=frontmatter_line,
+                evidence=", ".join(missing),
+            )
         )
-    if (
-        check_directory_name
-        and isinstance(name, str)
-        and name.strip()
-        and skill_path.parent.name != name.strip()
+
+    normalised_name: str | None = None
+    if isinstance(name, str) and name.strip():
+        normalised_name = _normalise_skill_name(name)
+        if len(normalised_name) > 64:
+            conformance.append(
+                _conformance_diagnostic(
+                    "skill_name_too_long",
+                    "skill name must be at most 64 characters",
+                    line=frontmatter_line,
+                    evidence=str(len(normalised_name)),
+                )
+            )
+        if not _valid_skill_name(name):
+            findings.append(
+                _finding("SKILL003", skill_path, root, line=frontmatter_line, evidence=name)
+            )
+            conformance.append(
+                _conformance_diagnostic(
+                    "skill_invalid_name",
+                    "skill name must use lowercase Unicode letters, numbers, and single hyphens",
+                    line=frontmatter_line,
+                    evidence=name,
+                )
+            )
+        if (
+            check_directory_name
+            and normalised_name
+            and unicodedata.normalize("NFKC", directory_name or skill_path.parent.name)
+            != normalised_name
+        ):
+            findings.append(
+                _finding(
+                    "SKILL004",
+                    skill_path,
+                    root,
+                    line=frontmatter_line,
+                    evidence=(
+                        f"directory={directory_name or skill_path.parent.name}, name={name.strip()}"
+                    ),
+                )
+            )
+            conformance.append(
+                _conformance_diagnostic(
+                    "skill_directory_name_mismatch",
+                    "skill name must match its parent directory name",
+                    line=frontmatter_line,
+                    evidence=(
+                        f"directory={directory_name or skill_path.parent.name}, name={name.strip()}"
+                    ),
+                )
+            )
+
+    if isinstance(description, str):
+        if not description.strip():
+            # The required-field finding above covers the empty case.
+            pass
+        elif len(description) > 1024:
+            conformance.append(
+                _conformance_diagnostic(
+                    "skill_description_too_long",
+                    "skill description must be at most 1024 characters",
+                    line=frontmatter_line,
+                    evidence=str(len(description)),
+                )
+            )
+            findings.append(
+                _finding(
+                    "SKILL013",
+                    skill_path,
+                    root,
+                    line=frontmatter_line,
+                    evidence=str(len(description)),
+                )
+            )
+
+    if "license" in metadata and not isinstance(metadata["license"], str):
+        conformance.append(
+            _conformance_diagnostic(
+                "skill_invalid_license",
+                "license must be a string when provided",
+                line=frontmatter_line,
+            )
+        )
+        findings.append(
+            _finding("SKILL010", skill_path, root, line=frontmatter_line, evidence="license")
+        )
+
+    compatibility = metadata.get("compatibility")
+    if "compatibility" in metadata and (
+        not isinstance(compatibility, str) or not 1 <= len(compatibility) <= 500
     ):
+        conformance.append(
+            _conformance_diagnostic(
+                "skill_invalid_compatibility",
+                "compatibility must be a 1-500 character string when provided",
+                line=frontmatter_line,
+            )
+        )
         findings.append(
             _finding(
-                "SKILL004",
+                "SKILL010",
                 skill_path,
                 root,
                 line=frontmatter_line,
-                evidence=f"directory={skill_path.parent.name}, name={name.strip()}",
+                evidence="compatibility",
             )
         )
-    missing_recommended = [
-        field for field in ("license", "compatibility") if not metadata.get(field)
-    ]
-    for field in missing_recommended:
+
+    frontmatter_metadata = metadata.get("metadata")
+    if "metadata" in metadata and (
+        not isinstance(frontmatter_metadata, dict)
+        or any(
+            not isinstance(key, str) or not isinstance(value, str)
+            for key, value in frontmatter_metadata.items()
+        )
+    ):
+        conformance.append(
+            _conformance_diagnostic(
+                "skill_invalid_metadata",
+                "metadata must be a mapping of string keys to string values",
+                line=frontmatter_line,
+            )
+        )
         findings.append(
-            _finding("SKILL005", skill_path, root, line=frontmatter_line, evidence=field)
+            _finding("SKILL011", skill_path, root, line=frontmatter_line, evidence="metadata")
         )
 
     allowed_tools = metadata.get("allowed-tools")
     if allowed_tools is not None:
-        if not isinstance(allowed_tools, list) or not all(
-            isinstance(tool, str) for tool in allowed_tools
-        ):
+        if not isinstance(allowed_tools, str):
+            conformance.append(
+                _conformance_diagnostic(
+                    "skill_invalid_allowed_tools",
+                    "allowed-tools must be a space-separated string",
+                    line=frontmatter_line,
+                )
+            )
             findings.append(
                 _finding(
                     "SKILL006",
                     skill_path,
                     root,
                     line=frontmatter_line,
-                    evidence="allowed-tools must be a list of strings",
+                    evidence="allowed-tools must be a string",
                 )
             )
+            # Preserve the existing advisory signal for legacy list-shaped
+            # declarations while no longer treating it as spec-conformant.
+            tools = allowed_tools if isinstance(allowed_tools, list) else []
         else:
-            for tool in allowed_tools:
-                if tool.strip().lower() in BROAD_ALLOWED_TOOLS:
+            tools = allowed_tools.split()
+        if isinstance(tools, list):
+            for tool in tools:
+                if isinstance(tool, str) and tool.strip().lower() in BROAD_ALLOWED_TOOLS:
                     findings.append(
                         _finding(
                             "SKILL007",
@@ -295,37 +541,120 @@ def _validate_skill(
                         )
                     )
 
-    for reference in _referenced_paths(content):
-        target = (skill_path.parent / reference).resolve()
-        if not target.is_file():
-            findings.append(_finding("SKILL008", skill_path, root, evidence=reference))
+    if scan_advisories:
+        for reference in _referenced_paths(content):
+            target = (skill_path.parent / reference).resolve()
+            if not target.is_file():
+                findings.append(_finding("SKILL008", skill_path, root, evidence=reference))
 
-    for current, dirnames, filenames in os.walk(skill_path.parent):
-        dirnames[:] = sorted(name for name in dirnames if name not in EXCLUDED_DIRS)
-        for filename in sorted(filenames):
-            candidate = Path(current) / filename
-            relative = candidate.relative_to(skill_path.parent)
-            if relative.parts and relative.parts[0] == "scripts":
-                continue
-            is_script_like = candidate.suffix.lower() in SCRIPT_EXTENSIONS
-            is_executable = bool(candidate.stat().st_mode & 0o111)
-            if is_script_like or is_executable:
-                findings.append(
-                    _finding(
-                        "SKILL009",
-                        skill_path,
-                        root,
-                        evidence=relative.as_posix(),
+        for current, dirnames, filenames in os.walk(skill_path.parent):
+            dirnames[:] = sorted(name for name in dirnames if name not in EXCLUDED_DIRS)
+            for filename in sorted(filenames):
+                candidate = Path(current) / filename
+                relative = candidate.relative_to(skill_path.parent)
+                if relative.parts and relative.parts[0] == "scripts":
+                    continue
+                is_script_like = candidate.suffix.lower() in SCRIPT_EXTENSIONS
+                try:
+                    is_executable = bool(candidate.stat().st_mode & 0o111)
+                except OSError:
+                    is_executable = False
+                if is_script_like or is_executable:
+                    findings.append(
+                        _finding(
+                            "SKILL009",
+                            skill_path,
+                            root,
+                            evidence=relative.as_posix(),
+                        )
                     )
-                )
 
     skill = {
         "path": skill_path.relative_to(root).as_posix(),
         "name": name if isinstance(name, str) else None,
         "description": description if isinstance(description, str) else None,
-        "metadata": metadata,
+        "metadata": _json_safe(metadata),
     }
-    return skill, findings
+    findings.sort(
+        key=lambda item: (item["file_path"], item["line_number"], item["code"], item["id"])
+    )
+    conformance.sort(key=lambda item: (item["code"], str(item.get("evidence", ""))))
+    return SkillValidationResult(
+        skill=skill,
+        conformant=not conformance,
+        conformance_diagnostics=tuple(conformance),
+        advisory_findings=tuple(findings),
+    )
+
+
+def _validate_skill(
+    skill_path: Path,
+    root: Path,
+    *,
+    check_directory_name: bool = True,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    result = _validate_skill_result(
+        skill_path,
+        root,
+        check_directory_name=check_directory_name,
+    )
+    return result.skill, list(result.advisory_findings)
+
+
+def validate_skill_file(
+    skill_path: Path,
+    root: Path,
+    *,
+    check_directory_name: bool = True,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Validate one already-discovered skill file without recursive discovery.
+
+    Agent Plugins has a narrower discovery rule than the general skills
+    validator. This wrapper lets its loader reuse the existing validation
+    logic after it has selected one immediate-child ``SKILL.md`` safely.
+    """
+    resolved_root = root.expanduser().resolve()
+    resolved_skill = skill_path.expanduser().resolve()
+    try:
+        resolved_skill.relative_to(resolved_root)
+    except ValueError as exc:
+        raise SkillsValidationError("skill file resolves outside its validation root") from exc
+    if not resolved_skill.is_file():
+        raise SkillsValidationError(f"skill file is not a regular file: {skill_path}")
+    result = _validate_skill_result(
+        resolved_skill,
+        resolved_root,
+        check_directory_name=check_directory_name,
+    )
+    return result.skill, list(result.advisory_findings)
+
+
+def validate_skill_file_result(
+    skill_path: Path,
+    root: Path,
+    *,
+    check_directory_name: bool = True,
+    directory_name: str | None = None,
+    max_bytes: int | None = None,
+    scan_advisories: bool = True,
+) -> SkillValidationResult:
+    """Return spec conformance and advisory findings for one safe skill file."""
+    resolved_root = root.expanduser().resolve()
+    resolved_skill = skill_path.expanduser().resolve()
+    try:
+        resolved_skill.relative_to(resolved_root)
+    except ValueError as exc:
+        raise SkillsValidationError("skill file resolves outside its validation root") from exc
+    if not resolved_skill.is_file():
+        raise SkillsValidationError(f"skill file is not a regular file: {skill_path}")
+    return _validate_skill_result(
+        resolved_skill,
+        resolved_root,
+        check_directory_name=check_directory_name,
+        directory_name=directory_name,
+        max_bytes=max_bytes,
+        scan_advisories=scan_advisories,
+    )
 
 
 def validate_skills(path: Path, *, check_directory_name: bool = True) -> dict[str, Any]:
