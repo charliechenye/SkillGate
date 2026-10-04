@@ -210,15 +210,19 @@ public scan reports that mention the affected version.
 After the `v0.1.3` release assets and install paths are validated, move the
 stable `v0` compatibility tag to that release's commit. Fetch the current tags
 first and record the existing remote `v0` object for the push lease.
+Use an annotated tag with your GitHub noreply tagger email. Check
+`git config --get user.email` before creating the tag. A lightweight tag can
+trigger `GH007` when the release commit has a private author email, even when
+the current Git email is already noreply.
 
 On macOS or Linux (bash/zsh):
 
 ```bash
 git fetch origin "+refs/tags/v0:refs/tags/v0" "refs/tags/v0.1.3:refs/tags/v0.1.3"
 skillgate_old_v0=$(git rev-parse refs/tags/v0)
-git tag -f v0 "v0.1.3^{commit}"
+git tag -a -f v0 "v0.1.3^{commit}" -m "SkillGate v0.1.3 compatibility channel"
 git push --force-with-lease="refs/tags/v0:$skillgate_old_v0" origin refs/tags/v0:refs/tags/v0
-git ls-remote origin refs/tags/v0 "refs/tags/v0.1.3^{}"
+git ls-remote origin "refs/tags/v0^{}" "refs/tags/v0.1.3^{}"
 ```
 
 On Windows (PowerShell):
@@ -226,9 +230,9 @@ On Windows (PowerShell):
 ```powershell
 git fetch origin "+refs/tags/v0:refs/tags/v0" "refs/tags/v0.1.3:refs/tags/v0.1.3"
 $skillgate_old_v0 = git rev-parse refs/tags/v0
-git tag -f v0 "v0.1.3^{commit}"
+git tag -a -f v0 "v0.1.3^{commit}" -m "SkillGate v0.1.3 compatibility channel"
 git push --force-with-lease="refs/tags/v0:$skillgate_old_v0" origin refs/tags/v0:refs/tags/v0
-git ls-remote origin refs/tags/v0 "refs/tags/v0.1.3^{}"
+git ls-remote origin "refs/tags/v0^{}" "refs/tags/v0.1.3^{}"
 ```
 
 The two remote commit SHAs must match. The push updates only `v0`; the version

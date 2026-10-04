@@ -266,7 +266,7 @@ def test_release_metadata_and_roadmap_are_consistent() -> None:
     assert 'git tag -a v0.1.3 -m "SkillGate v0.1.3"' in release_checklist
     assert "gh release create v0.1.3" in release_checklist
     assert 'SKILLGATE_VERSION="v0.1.3"' in release_checklist
-    assert 'git tag -f v0 "v0.1.3^{commit}"' in release_checklist
+    assert 'git tag -a -f v0 "v0.1.3^{commit}"' in release_checklist
     assert '--force-with-lease="refs/tags/v0:$skillgate_old_v0"' in release_checklist
     assert "Review Workflow Smoke Tests" in release_checklist
     assert "only builder and uploader" in release_checklist
