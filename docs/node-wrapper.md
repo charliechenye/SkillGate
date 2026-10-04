@@ -13,6 +13,17 @@ specifier:
 npx --yes github:charliechenye/SkillGate#v0 -- scan .
 ```
 
+For npm 12, add `--allow-git=root` before the package specifier:
+
+```bash
+npx --yes --allow-git=root github:charliechenye/SkillGate#v0 -- scan .
+```
+
+The [npm Git dependency setting](https://docs.npmjs.com/cli/install/#allow-git)
+defaults to `none` in npm 12, which causes `EALLOWGIT` for the original command.
+The option allows the requested root Git package for this invocation without
+changing global settings. Use it with pinned wrapper refs as well.
+
 Bare `npx skillgate scan .` is intentionally documented as future work because
 it requires an npm package name to be published. The root `package.json` stays
 `"private": true` until that publication strategy is chosen.

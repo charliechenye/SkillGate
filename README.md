@@ -225,6 +225,15 @@ Experimental Node wrapper, after standalone GitHub Release assets are published:
 npx --yes github:charliechenye/SkillGate#v0 -- scan .
 ```
 
+With npm 12, explicitly allow the requested Git package for this invocation:
+
+```bash
+npx --yes --allow-git=root github:charliechenye/SkillGate#v0 -- scan .
+```
+
+The [npm Git dependency setting](https://docs.npmjs.com/cli/install/#allow-git)
+defaults to `none` in npm 12. This command does not change global npm settings.
+
 This GitHub-first `npx` path does not require PyPI or npm registry publication.
 Bare `npx skillgate scan .` remains future work because it requires an npm
 package name and an intentional npm publication strategy. The root npm package
