@@ -10,7 +10,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 from urllib.parse import quote, urlparse
 
@@ -332,33 +332,45 @@ def relevant_remote_paths(items: list[GitHubTreeItem], subpath: str | None = Non
 def referenced_script_paths(source_path: str, content: str, available_paths: set[str]) -> list[str]:
     return sorted(
         reference
-        for reference in referenced_script_candidates(source_path, content)
+        for reference in referenced_script_candidates(source_path, content, available_paths)
         if reference in available_paths
     )
 
 
-def referenced_script_candidates(source_path: str, content: str) -> list[str]:
-    base = Path(source_path).parent
+def referenced_script_candidates(
+    source_path: str, content: str, available_paths: set[str] | None = None
+) -> list[str]:
     references = []
     for match in REFERENCE_RE.finditer(content):
         raw = match.group("path").replace("\\", "/")
         if "://" in raw or raw.startswith("/"):
             continue
-        normalized = (base / raw).as_posix()
-        parts = []
-        for part in normalized.split("/"):
-            if part in {"", "."}:
-                continue
-            if part == "..":
-                if parts:
-                    parts.pop()
-                continue
-            else:
-                parts.append(part)
-        candidate = "/".join(parts)
+        candidate = _normalize_remote_ref(source_path, raw)
+        # Bare names can also be domains or frameworks, such as skills.sh and
+        # Next.js. Require a matching repository file before treating one as a
+        # script reference; explicit relative paths still report missing files.
+        if available_paths is not None and "/" not in raw and candidate not in available_paths:
+            continue
         if Path(candidate).suffix.lower() in SCRIPT_EXTENSIONS:
             references.append(candidate)
     return sorted(set(references))
+
+
+def skill_supporting_paths(items: list[GitHubTreeItem], subpath: str | None) -> list[str]:
+    paths = {
+        PurePosixPath(item.path)
+        for item in items
+        if item.type == "blob"
+        and path_within_subpath(item.path, subpath)
+        and not is_excluded(Path(item.path))
+    }
+    skill_roots = {path.parent for path in paths if path.name == "SKILL.md"}
+    return sorted(
+        path.as_posix()
+        for path in paths
+        if path.suffix.lower() in SCRIPT_EXTENSIONS | {".md"}
+        and any(parent in skill_roots for parent in path.parents)
+    )
 
 
 def _normalize_remote_ref(source_path: str, raw_ref: str) -> str:
@@ -624,7 +636,7 @@ def fetch_github_sparse(
     referenced_paths = set()
     missing_references = set()
     for path, content in fetched_remote.items():
-        for reference in referenced_script_candidates(path, content):
+        for reference in referenced_script_candidates(path, content, available_paths):
             if not path_within_subpath(reference, repo.subpath):
                 add_skipped(manifest, reference, "referenced_script_outside_subtree")
             elif reference not in available_paths:
@@ -649,6 +661,20 @@ def fetch_github_sparse(
                 materialized_path=strip_subpath(path, repo.subpath),
                 content=content,
                 reason="referenced_script",
+            )
+
+    # A skill can delegate through Markdown references or bundle helpers it
+    # never names in SKILL.md. Review those files under the same download limits.
+    for path in skill_supporting_paths(tree, repo.subpath):
+        if path not in fetched_remote:
+            content = fetch_text_with_limits(repo, resolved.commit_sha, path, manifest, limits)
+            fetched_remote[path] = content
+            add_downloaded(
+                manifest,
+                remote_path=path,
+                materialized_path=strip_subpath(path, repo.subpath),
+                content=content,
+                reason="skill_supporting_file",
             )
 
     app_asset_associations, unsupported_app_assets = mcp_app_asset_seed_associations(

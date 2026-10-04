@@ -1,0 +1,12 @@
+findings:
+  - SG001
+  - SG003
+  - SG004
+attribution:
+  sources:
+    - name: Vercel find-skills input shape
+      url: https://github.com/vercel-labs/skills/tree/18f96ea131dab3b0fcc9b27cf7c6f6cbb6174680/skills/find-skills
+    - name: Anthropic PDF bundled helper input shape
+      url: https://github.com/anthropics/skills/tree/8a1541c4a3ffa5a20a5a91de0dcf3f0bab1d1ef4/skills/pdf
+  reduction: Nonverbatim framework/domain prose and skill supporting-file layout; the helper command is authored regression input.
+  retrieved_on: "2026-10-03"

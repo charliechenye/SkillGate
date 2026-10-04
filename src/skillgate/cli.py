@@ -78,7 +78,12 @@ from skillgate.skills import (
     validate_skill_archive,
     validate_skills,
 )
-from skillgate.sources import RemoteScanLimits, SourceError, fetch_github_sparse
+from skillgate.sources import (
+    RemoteScanLimits,
+    SourceError,
+    fetch_github_sparse,
+    parse_github_repo_url,
+)
 
 app = typer.Typer(
     help="Trust checks for AI-agent skills and MCP configurations.",
@@ -192,13 +197,15 @@ def render_scan_command_output(
     return content, failed
 
 
-def _preinstall_skills(path: Path) -> dict[str, object] | None:
+def _preinstall_skills(
+    path: Path, *, root_directory_name: str | None = None
+) -> dict[str, object] | None:
     try:
         if path.is_file() and path.name != "SKILL.md":
             return None
         if not discover_skill_files(path):
             return None
-        return validate_skills(path)
+        return validate_skills(path, root_directory_name=root_directory_name)
     except SkillsValidationError as exc:
         if "no SKILL.md files found" in str(exc):
             return None
@@ -259,8 +266,10 @@ def review_preinstall(
         if _is_github_url(source):
             sparse = fetch_github_sparse(source)
             scan_path = sparse.root
-            scan_report = scan_repository(scan_path, format_aware=True)
-            skills_payload = _preinstall_skills(scan_path)
+            scan_report = scan_paths(scan_path, map(Path, sparse.fetched_paths), format_aware=True)
+            repo = parse_github_repo_url(source)
+            directory_name = Path(repo.subpath).name if repo.subpath else repo.repo
+            skills_payload = _preinstall_skills(scan_path, root_directory_name=directory_name)
             packet = build_preinstall_packet(
                 {
                     "kind": "github",
@@ -723,7 +732,9 @@ def github_scan(
         raise typer.Exit(2)
     try:
         sparse = fetch_github_sparse(url, ref, limits=limits)
-        report = filter_report_by_severity(scan_repository(sparse.root), severity)
+        report = filter_report_by_severity(
+            scan_paths(sparse.root, map(Path, sparse.fetched_paths)), severity
+        )
         if manifest_output:
             write_or_print(stable_json(sparse.manifest), manifest_output, console)
         if output_format == "json":
