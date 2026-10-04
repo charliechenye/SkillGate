@@ -412,8 +412,8 @@ def test_package_json_exposes_github_npx_launcher_without_npm_claim() -> None:
 
     assert package_json["private"] is True
     assert package_json["bin"] == {"skillgate": "npm/bin/skillgate.js"}
-    assert "npx --yes github:charliechenye/SkillGate#v0.1.3 -- scan ." in readme
-    assert "npx --yes github:charliechenye/SkillGate#v0.1.3 -- scan ." in docs
+    assert "npx --yes github:charliechenye/SkillGate#v0 -- scan ." in readme
+    assert "npx --yes github:charliechenye/SkillGate#v0 -- scan ." in docs
     assert "Bare `npx skillgate scan .`" in docs
     assert "Bare `npx skillgate scan .` remains future work" in readme
     assert "```bash\nnpx skillgate scan ." not in readme

@@ -169,9 +169,8 @@ immutable installs, replace `v0.1.3` with the full release commit SHA.
 
 Verify these commands with the tagged installation, not the development
 environment. The installed version must match the tag, and the pre-install
-review must produce a packet with a digest and `schema_version: "2"`. Keep
-README installation examples pinned to a validated version tag when promoting
-a new release; the moving Action compatibility tag is a separate channel.
+review must produce a packet with a digest and `schema_version: "2"`. Then
+promote the validated release to the shared `v0` compatibility tag in step 10.
 
 ## 9. Deferred PyPI Publication
 
@@ -209,20 +208,44 @@ public scan reports that mention the affected version.
 ## 10. Move And Verify Stable `v0`
 
 After the `v0.1.3` release assets and install paths are validated, move the
-stable `v0` compatibility tag:
+stable `v0` compatibility tag to that release's commit. Fetch the current tags
+first and record the existing remote `v0` object for the push lease.
+
+On macOS or Linux (bash/zsh):
+
+```bash
+git fetch origin "+refs/tags/v0:refs/tags/v0" "refs/tags/v0.1.3:refs/tags/v0.1.3"
+skillgate_old_v0=$(git rev-parse refs/tags/v0)
+git tag -f v0 "v0.1.3^{commit}"
+git push --force-with-lease="refs/tags/v0:$skillgate_old_v0" origin refs/tags/v0:refs/tags/v0
+git ls-remote origin refs/tags/v0 "refs/tags/v0.1.3^{}"
+```
+
+On Windows (PowerShell):
 
 ```powershell
-git tag -f v0 v0.1.3
-git push origin v0 --force
-git ls-remote https://github.com/charliechenye/SkillGate.git refs/tags/v0
-git ls-remote https://github.com/charliechenye/SkillGate.git refs/tags/v0.1.3
+git fetch origin "+refs/tags/v0:refs/tags/v0" "refs/tags/v0.1.3:refs/tags/v0.1.3"
+$skillgate_old_v0 = git rev-parse refs/tags/v0
+git tag -f v0 "v0.1.3^{commit}"
+git push --force-with-lease="refs/tags/v0:$skillgate_old_v0" origin refs/tags/v0:refs/tags/v0
+git ls-remote origin refs/tags/v0 "refs/tags/v0.1.3^{}"
 ```
+
+The two remote commit SHAs must match. The push updates only `v0`; the version
+tag stays fixed. If the lease is rejected, fetch again and review the new `v0`
+target before retrying.
 
 Then verify the public examples:
 
 ```powershell
+python -m pip install --force-reinstall "git+https://github.com/charliechenye/SkillGate.git@v0"
+skillgate --version
+skillgate review preinstall examples\preinstall-starter --json-output test-outputs\v0-review.json
 npx --yes github:charliechenye/SkillGate#v0 -- scan .
 ```
+
+The installed version should print `0.1.3`, and the review packet must include
+its digest and `schema_version: "2"`.
 
 In a test repository, verify README and `docs/examples/github-action-minimal.md`
 workflows using `charliechenye/SkillGate@v0`, including:
