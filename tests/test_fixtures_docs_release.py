@@ -266,7 +266,8 @@ def test_release_metadata_and_roadmap_are_consistent() -> None:
     assert 'git tag -a v0.1.3 -m "SkillGate v0.1.3"' in release_checklist
     assert "gh release create v0.1.3" in release_checklist
     assert 'SKILLGATE_VERSION="v0.1.3"' in release_checklist
-    assert "git tag -f v0 v0.1.3" in release_checklist
+    assert 'git tag -a -f v0 "v0.1.3^{commit}"' in release_checklist
+    assert '--force-with-lease="refs/tags/v0:$skillgate_old_v0"' in release_checklist
     assert "Review Workflow Smoke Tests" in release_checklist
     assert "only builder and uploader" in release_checklist
     assert "assets from a workstation" in release_checklist
@@ -366,6 +367,7 @@ def test_docs_are_main_branch_and_discovery_friendly() -> None:
     assert "skillgate review preinstall SOURCE --json-output skillgate-review.json" in readme
     assert "## Start With Three Direct Scans" in readme
     assert "docs/public-scan-reports/README.md" in readme
+    assert "Current release: `v0.1.3`" in readme
     assert "Stable compatibility channel: `v0`" in readme
     assert "docs/examples/github-action-minimal.md" in readme
     assert "## Try The Local Demos" in readme
@@ -373,10 +375,10 @@ def test_docs_are_main_branch_and_discovery_friendly() -> None:
     assert "skillgate demo mcpb --output test-outputs/reviewable-node.mcpb --scan" in readme
     assert "skillgate --version" in readme
     assert "SHA-256: 6948b641f88671717de7142ce075f21f9710621392b115a311eee05831fe5a1c" in readme
-    assert "refs/tags/v0" in readme
+    assert "refs/tags/v0^{}" in readme
     assert 'SkillGate.git@v0"' in readme
     assert "SkillGate.git@v0.1.1" not in readme
-    assert "latest compatible GitHub release tag" in readme
+    assert "Install through the moving `v0` compatibility tag" in readme
     assert "img.shields.io/github/v/release/charliechenye/SkillGate" in readme
     assert "analysis-static" in readme
     assert "runtime-no%20execution" in readme
