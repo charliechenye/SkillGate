@@ -366,17 +366,18 @@ def test_docs_are_main_branch_and_discovery_friendly() -> None:
     assert "skillgate review preinstall SOURCE --json-output skillgate-review.json" in readme
     assert "## Start With Three Direct Scans" in readme
     assert "docs/public-scan-reports/README.md" in readme
-    assert "Stable compatibility channel: `v0`" in readme
+    assert "Current release: `v0.1.3`" in readme
+    assert "Action compatibility channel: `v0`" in readme
     assert "docs/examples/github-action-minimal.md" in readme
     assert "## Try The Local Demos" in readme
     assert "skillgate demo skill --output test-outputs/reviewable-demo --validate --scan" in readme
     assert "skillgate demo mcpb --output test-outputs/reviewable-node.mcpb --scan" in readme
     assert "skillgate --version" in readme
     assert "SHA-256: 6948b641f88671717de7142ce075f21f9710621392b115a311eee05831fe5a1c" in readme
-    assert "refs/tags/v0" in readme
-    assert 'SkillGate.git@v0"' in readme
+    assert "refs/tags/v0.1.3^{}" in readme
+    assert 'SkillGate.git@v0.1.3"' in readme
     assert "SkillGate.git@v0.1.1" not in readme
-    assert "latest compatible GitHub release tag" in readme
+    assert "Install the published `v0.1.3` release" in readme
     assert "img.shields.io/github/v/release/charliechenye/SkillGate" in readme
     assert "analysis-static" in readme
     assert "runtime-no%20execution" in readme

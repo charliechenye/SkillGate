@@ -9,7 +9,7 @@
 ![No runtime execution](https://img.shields.io/badge/runtime-no%20execution-green)
 ![Policy as code](https://img.shields.io/badge/policy-as%20code-purple)
 
-Stable compatibility channel: `v0`
+Current release: `v0.1.3` · Action compatibility channel: `v0`
 
 ![SkillGate social preview: static trust checks for AI-agent skills and MCP configurations](docs/assets/repo_image.png)
 
@@ -37,7 +37,7 @@ Use one advisory command before installing a public skill, approving an MCP
 server, or merging agent-tooling changes:
 
 ```bash
-python -m pip install "git+https://github.com/charliechenye/SkillGate.git@v0"
+python -m pip install "git+https://github.com/charliechenye/SkillGate.git@v0.1.3"
 skillgate review preinstall SOURCE --json-output skillgate-review.json
 ```
 
@@ -165,16 +165,17 @@ For contribution and community paths, see [CONTRIBUTING.md](CONTRIBUTING.md),
 
 ## Install
 
-Install the latest compatible GitHub release tag today:
+Install the published `v0.1.3` release, which includes `review preinstall`:
 
 ```bash
-python -m pip install "git+https://github.com/charliechenye/SkillGate.git@v0"
+python -m pip install "git+https://github.com/charliechenye/SkillGate.git@v0.1.3"
 skillgate --version
 skillgate --help
 ```
 
-`v0` is the moving compatibility tag for the latest compatible published `0.x`
-release. For a concrete release tag, use the latest published version from
+Installation examples use a version tag so the installed commands match this
+guide. The moving `v0` Action compatibility tag is managed separately and can
+point to an older release. Published versions are listed in
 [GitHub Releases](https://github.com/charliechenye/SkillGate/releases/latest).
 
 For a fully immutable install, pin a commit SHA:
@@ -186,7 +187,7 @@ python -m pip install "git+https://github.com/charliechenye/SkillGate.git@FULL_C
 Resolve the exact commit SHA with:
 
 ```bash
-git ls-remote https://github.com/charliechenye/SkillGate.git refs/tags/v0
+git ls-remote https://github.com/charliechenye/SkillGate.git "refs/tags/v0.1.3^{}"
 ```
 
 To inspect the latest release tag without installing:
@@ -216,7 +217,7 @@ uvx openevalgate-skillgate scan .
 Experimental Node wrapper, after standalone GitHub Release assets are published:
 
 ```bash
-npx --yes github:charliechenye/SkillGate#v0 -- scan .
+npx --yes github:charliechenye/SkillGate#v0.1.3 -- scan .
 ```
 
 This GitHub-first `npx` path does not require PyPI or npm registry publication.

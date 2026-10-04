@@ -156,13 +156,22 @@ may use when they require commit or tag pinning:
 
 ```powershell
 python -m pip install --force-reinstall "git+https://github.com/charliechenye/SkillGate.git@v0.1.3"
+skillgate --version
 skillgate rules list
+skillgate review schema --output test-outputs\installed-review.schema.json
+skillgate review preinstall examples\preinstall-starter --json-output test-outputs\installed-review.json
 pipx run --spec "git+https://github.com/charliechenye/SkillGate.git@v0.1.3" skillgate rules list
 $env:SKILLGATE_VERSION="v0.1.3"; npx --yes github:charliechenye/SkillGate#v0.1.3 -- scan .
 ```
 
 GitHub installs require `git` on the customer machine. For teams that require
 immutable installs, replace `v0.1.3` with the full release commit SHA.
+
+Verify these commands with the tagged installation, not the development
+environment. The installed version must match the tag, and the pre-install
+review must produce a packet with a digest and `schema_version: "2"`. Keep
+README installation examples pinned to a validated version tag when promoting
+a new release; the moving Action compatibility tag is a separate channel.
 
 ## 9. Deferred PyPI Publication
 

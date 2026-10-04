@@ -10,7 +10,7 @@ package. Until a package is published to npm, use the explicit GitHub package
 specifier:
 
 ```bash
-npx --yes github:charliechenye/SkillGate#v0 -- scan .
+npx --yes github:charliechenye/SkillGate#v0.1.3 -- scan .
 ```
 
 Bare `npx skillgate scan .` is intentionally documented as future work because
@@ -38,7 +38,7 @@ When `SKILLGATE_VERSION` is set, the wrapper downloads from that release tag
 instead of `latest`:
 
 ```bash
-SKILLGATE_VERSION=v0.1.3 npx --yes github:charliechenye/SkillGate#v0 -- scan .
+SKILLGATE_VERSION=v0.1.3 npx --yes github:charliechenye/SkillGate#v0.1.3 -- scan .
 ```
 
 ## Cache And Verification
