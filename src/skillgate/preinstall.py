@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
 from skillgate import __version__
+from skillgate.discovery import EXCLUDED_DIRS
 from skillgate.inventory import normalized_resource, trust_boundary_for
 from skillgate.mcp_apps import mcp_apps_evidence
 from skillgate.mcp_compatibility import compatibility_evidence
@@ -22,6 +24,7 @@ from skillgate.models import (
 )
 
 PREINSTALL_PACKET_SCHEMA_VERSION = "2"
+COVERAGE_SCOPE = "Supported static files; standard discovery exclusions apply."
 _SECRET_ASSIGNMENT_RE = re.compile(
     r"(?i)(\b(?:token|secret|password|credential|api[_-]?key|access[_-]?key)\b\s*[:=]\s*)([^\s,;]+)"
 )
@@ -143,6 +146,34 @@ def _capability_record(
     }
 
 
+def local_preinstall_metadata(path: Path, report: ScanReport) -> dict[str, Any]:
+    """Account for files omitted by local discovery without reading their contents."""
+    metadata: dict[str, Any] = {"input_type": "file" if path.is_file() else "directory"}
+    if path.is_file():
+        return metadata
+    scanned_paths = {item.path for item in report.scanned_files}
+    skipped_files = []
+
+    def fail_on_walk_error(error: OSError) -> None:
+        raise error
+
+    for dirpath, dirnames, filenames in os.walk(path, onerror=fail_on_walk_error):
+        current = Path(dirpath)
+        dirnames[:] = sorted(name for name in dirnames if name not in EXCLUDED_DIRS)
+        for name in dirnames:
+            directory = current / name
+            if directory.is_symlink():
+                skipped_files.append(
+                    {"path": directory.relative_to(path).as_posix(), "reason": "symlink_directory"}
+                )
+        for filename in sorted(filenames):
+            relative = (current / filename).relative_to(path).as_posix()
+            if relative not in scanned_paths:
+                skipped_files.append({"path": relative, "reason": "not_selected"})
+    metadata["skipped_files"] = sorted(skipped_files, key=lambda item: item["path"])
+    return metadata
+
+
 def _source_manifest(
     report_data: dict[str, Any], source: dict[str, Any], root: str | None
 ) -> dict[str, Any]:
@@ -156,6 +187,15 @@ def _source_manifest(
     skipped_files = []
     if isinstance(metadata, dict) and isinstance(metadata.get("skipped_files"), list):
         skipped_files = _redact_mapping(metadata["skipped_files"], root)
+    if source.get("kind") == "mcpb" and isinstance(metadata, dict):
+        skipped_files.extend(
+            {"path": item["path"], "reason": item.get("skip_reason") or "not_selected"}
+            for item in metadata.get("members", [])
+            if item.get("member_type") != "directory"
+            and item.get("classification") != "manifest"
+            and not item.get("scanned")
+        )
+    skipped_files.sort(key=stable_json)
     manifest_payload = {"scanned_files": scanned_files, "skipped_files": skipped_files}
     manifest_digest = hashlib.sha256(stable_json(manifest_payload).encode("utf-8")).hexdigest()
     return {
@@ -164,6 +204,44 @@ def _source_manifest(
         "scanned_file_count": len(scanned_files),
         "skipped_file_count": len(skipped_files),
     }
+
+
+def _review_coverage(
+    manifest: dict[str, Any], source: dict[str, Any], apps: dict[str, Any] | None
+) -> dict[str, Any]:
+    scanned_files = manifest["scanned_files"]
+    unsupported_files = [
+        item
+        for item in scanned_files
+        if item.get("file_type") == "agent_file" or Path(item["path"]).name == "plugin.json"
+    ]
+    # Generic text matching does not provide format-aware coverage of a plugin
+    # manifest or an unrecognized file type, even when it produces findings.
+    reasons = set()
+    if unsupported_files:
+        reasons.add("unsupported_file_type")
+    source_metadata = source.get("metadata")
+    if source.get("kind") == "mcpb" and isinstance(source_metadata, dict):
+        entry_point = source_metadata.get("manifest", {}).get("entry_point")
+        if entry_point and entry_point not in {item["path"] for item in scanned_files}:
+            reasons.add("unscanned_entry_point")
+    for item in manifest["skipped_files"]:
+        reason = item.get("reason") or "not_selected"
+        if reason not in {"excluded_path", "dependency or build content excluded"}:
+            reasons.add(reason)
+    for asset in (apps or {}).get("assets", []):
+        if asset.get("skipped_reason"):
+            reasons.add(asset["skipped_reason"])
+    for declaration in (apps or {}).get("unknown_declarations", []):
+        reasons.add(declaration.get("reason") or "unknown_mcp_app_declaration")
+    if not scanned_files:
+        reasons.add("no_scannable_files")
+        status = "unsupported" if manifest["skipped_file_count"] else "empty"
+    elif len(unsupported_files) == len(scanned_files):
+        status = "unsupported"
+    else:
+        status = "incomplete" if reasons else "complete"
+    return {"status": status, "scope": COVERAGE_SCOPE, "reasons": sorted(reasons)}
 
 
 def _packet_digest(packet: dict[str, Any]) -> str:
@@ -207,6 +285,9 @@ def build_preinstall_packet(
     )
     if apps is not None:
         packet_metadata["mcp_apps"] = apps
+    source_manifest = _source_manifest(report_data, source, root)
+    coverage = _review_coverage(source_manifest, source, apps)
+    packet_metadata["coverage"] = coverage
     findings = [_finding_record(item, root) for item in report_data.get("findings", [])]
     skill_findings = []
     if skills_payload:
@@ -232,7 +313,11 @@ def build_preinstall_packet(
         "Use `skillgate check` or `skillgate diff` when this review becomes "
         "an enforcement decision.",
     ]
-    if not all_findings:
+    if coverage["status"] != "complete":
+        next_actions.insert(
+            0, "Resolve coverage gaps or review the omitted content before installation."
+        )
+    elif not all_findings:
         next_actions.insert(
             0, "No static findings were produced; continue with normal maintainer review."
         )
@@ -258,6 +343,9 @@ def build_preinstall_packet(
         if any(item.get("skipped_reason") for item in apps["assets"]):
             next_actions.insert(1, "Review MCP Apps assets whose static content was skipped.")
     limitations = [
+        "Complete coverage means no reported gaps within supported static discovery; "
+        "excluded directories, dependencies, external content, and runtime behavior "
+        "remain outside this review.",
         "This is deterministic static analysis, not a malware verdict or runtime proof.",
         "SkillGate does not execute code, install packages, start servers, or invoke an agent.",
         "Findings identify review signals; they do not establish maintainer intent "
@@ -268,7 +356,7 @@ def build_preinstall_packet(
         "schema_version": PREINSTALL_PACKET_SCHEMA_VERSION,
         "tool_version": __version__,
         "source": _source_record(source, root),
-        "source_manifest": _source_manifest(report_data, source, root),
+        "source_manifest": source_manifest,
         "metadata": _redact_mapping(packet_metadata, root),
         "capabilities": [
             _capability_record(item, root) for item in report_data.get("capabilities", [])
@@ -287,7 +375,11 @@ def build_preinstall_packet(
             "findings": skill_findings,
         },
         "reviewer": {
-            "decision": "review_required" if all_findings else "no_findings",
+            "decision": (
+                "review_required"
+                if all_findings or coverage["status"] != "complete"
+                else "no_findings"
+            ),
             "next_actions": next_actions,
             "limitations": limitations,
             "no_execution": True,
@@ -308,7 +400,11 @@ def _table(headers: list[str], rows: list[list[Any]]) -> list[str]:
         return ["None."]
     lines = ["| " + " | ".join(headers) + " |", "| " + " | ".join("---" for _ in headers) + " |"]
     for row in rows:
-        lines.append("| " + " | ".join(str(item or "").replace("|", "\\|") for item in row) + " |")
+        lines.append(
+            "| "
+            + " | ".join(str("" if item is None else item).replace("|", "\\|") for item in row)
+            + " |"
+        )
     return lines
 
 
@@ -325,6 +421,7 @@ def render_preinstall_markdown(packet: dict[str, Any]) -> str:
     source_manifest = packet["source_manifest"]
     findings = packet["findings"]
     severity_counts = findings["by_severity"]
+    coverage = packet["metadata"].get("coverage")
     lines = [
         "# SkillGate Pre-install Review",
         "",
@@ -367,6 +464,30 @@ def render_preinstall_markdown(packet: dict[str, Any]) -> str:
             )
         ),
         "",
+        *(
+            [
+                "## Review Coverage",
+                "",
+                f"- Status: **{coverage['status']}**",
+                f"- Scope: {coverage['scope']}",
+                *[f"- Reason: `{reason}`" for reason in coverage["reasons"]],
+                "",
+                *(
+                    _table(
+                        ["Skipped path", "Reason"],
+                        [
+                            [item.get("path") or item.get("remote_path"), item.get("reason")]
+                            for item in source_manifest["skipped_files"]
+                        ],
+                    )
+                    if source_manifest["skipped_files"]
+                    else ["No skipped-file records."]
+                ),
+                "",
+            ]
+            if coverage
+            else []
+        ),
         "## Capability Inventory",
         *(
             _table(

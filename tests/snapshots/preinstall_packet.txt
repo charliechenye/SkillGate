@@ -4,19 +4,26 @@
 - Kind: `local`
 - Decision: **review_required**
 - Tool version: `0.1.4`
-- Packet digest: `sha256:86ea0dfdcdffea7b08dc95c1b4a91d50c87880a4dbf343d4c0e1322da364977d`
+- Packet digest: `sha256:2c5bcccd2b47c17af8b34f3789723eb44c60d990b1a28a0c07e5ccd7e2b762e4`
 
 ## Decision Summary
 
 | Finding count | Informational | Low | Medium | High | Critical |
 | --- | --- | --- | --- | --- | --- |
-| 4 |  |  | 2 | 2 |  |
+| 4 | 0 | 0 | 2 | 2 | 0 |
 
 ## Source Manifest
 
 | Scanned files | Skipped files | Manifest digest |
 | --- | --- | --- |
-| 2 |  | sha256:0eb89c8c886458a936e01e052fac7639fa6882f2792703a9fdaf38aea7b70df9 |
+| 2 | 0 | sha256:0eb89c8c886458a936e01e052fac7639fa6882f2792703a9fdaf38aea7b70df9 |
+
+## Review Coverage
+
+- Status: **complete**
+- Scope: Supported static files; standard discovery exclusions apply.
+
+No skipped-file records.
 
 ## Capability Inventory
 | Capability | Resource | Trust boundary | Source |
@@ -45,6 +52,7 @@ None.
 - Use `skillgate check` or `skillgate diff` when this review becomes an enforcement decision.
 
 ## Limitations
+- Complete coverage means no reported gaps within supported static discovery; excluded directories, dependencies, external content, and runtime behavior remain outside this review.
 - This is deterministic static analysis, not a malware verdict or runtime proof.
 - SkillGate does not execute code, install packages, start servers, or invoke an agent.
 - Findings identify review signals; they do not establish maintainer intent or exploitability.

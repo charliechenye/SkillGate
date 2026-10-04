@@ -43,8 +43,8 @@ skillgate review preinstall SOURCE --json-output skillgate-review.json
 
 `SOURCE` can be a local path, a public GitHub repository or subtree URL, or a
 local `.mcpb` bundle. The review packet is advisory by default and explains the
-source identity, observed capabilities, findings, Agent Skills validation
-results, reviewer next actions, and limitations.
+source identity, review coverage, observed capabilities, findings, Agent Skills
+validation results, reviewer next actions, and limitations.
 
 The JSON packet includes a deterministic packet digest, scanned-file manifest,
 skipped-file accounting, and redacted evidence. The packet contract is published
@@ -54,6 +54,20 @@ and can be printed with:
 ```bash
 skillgate review schema --output skillgate-review.schema.json
 ```
+
+Coverage appears in `metadata.coverage` as `complete`, `incomplete`, `empty`,
+or `unsupported`. Zero findings with missing coverage requires further review.
+For an opt-in CI gate, combine coverage and finding thresholds:
+
+```bash
+skillgate review preinstall SOURCE --require-complete --fail-on high \
+  --json-output skillgate-review.json
+```
+
+`complete` means no reported gaps within the supported static discovery scope;
+it does not prove safety. See
+[coverage and exit codes](docs/adoption.md#review-coverage-and-exit-codes) for
+exclusions and skipped-file handling.
 
 After the first useful review, adopt the next gate that matches the team:
 

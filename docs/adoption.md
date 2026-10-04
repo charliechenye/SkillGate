@@ -28,6 +28,56 @@ skillgate review preinstall SOURCE --format json --output skillgate-review.json
 skillgate review schema --output skillgate-review.schema.json
 ```
 
+### Review Coverage And Exit Codes
+
+The packet's `metadata.coverage` records a status, scope, and deterministic
+reason list. Markdown includes the same coverage status and skipped paths.
+Finding counts and review coverage are separate:
+
+| Coverage | Meaning |
+| --- | --- |
+| `complete` | At least one supported file was scanned, with no reported gaps within the static discovery scope. |
+| `incomplete` | Supported content was scanned, but files, declared MCP Apps assets, or declarations could not be fully reviewed. |
+| `empty` | No files were selected for source scanning and no skipped files were reported. |
+| `unsupported` | Files were present but no supported source coverage was obtained, or an explicitly supplied file has an unrecognized type or is a plugin manifest. |
+
+Local directories list files omitted by discovery without reading their
+contents. GitHub reviews use their skipped-file manifest. MCPB reviews list
+unscanned members; the separately parsed `manifest.json` is not counted as a
+skipped member. Native executables and nested archives remain review gaps.
+Explicitly supplied unrecognized files and `plugin.json` may still produce
+generic text findings; that does not provide format-aware or aggregate review.
+
+Standard discovery exclusions such as `.git`, `node_modules`, `.venv`, `dist`,
+and `build` define the review scope and do not alone make coverage incomplete.
+Local discovery prunes those directories; GitHub and MCPB manifests retain
+their excluded-file records. Declared MCP Apps assets that are skipped still
+count as gaps, including assets under excluded paths. Dependencies, external
+content, and runtime behavior remain unreviewed. A declared MCPB entry point
+that was not scanned also counts as a gap, even under an excluded path.
+`complete` is not a safety verdict or proof that all capabilities were extracted.
+
+Unscanned files outside those exclusions count as gaps even when they look
+like documentation or package metadata. Review the skipped-path list; selecting
+a narrower source changes the scope and does not approve omitted content.
+
+An empty, unsupported, or incomplete packet uses `review_required` even with
+zero findings. Default execution stays advisory. CI can opt into both checks:
+
+```bash
+skillgate review preinstall SOURCE --require-complete --fail-on high \
+  --output skillgate-review.md --json-output skillgate-review.json
+```
+
+- Exit `0`: the requested gates passed, or no gate was requested.
+- Exit `1`: `--require-complete` rejected coverage, or `--fail-on` rejected findings.
+  The review packet is still written, including when `--format json` is used.
+- Exit `2`: source, download, archive, or processing errors prevented a packet.
+
+`--fail-on` continues to check only finding severity. Review Packet v2 keeps
+its existing decision values and schema version; coverage is an optional
+metadata extension, so older v2 packets remain valid.
+
 ## 2. Pull Request Review
 
 Use review summaries when maintainers need readable artifacts in CI:

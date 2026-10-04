@@ -46,6 +46,7 @@ from skillgate.policy_schema import POLICY_JSON_SCHEMA
 from skillgate.policy_templates import POLICY_PROFILES, policy_template_yaml
 from skillgate.preinstall import (
     build_preinstall_packet,
+    local_preinstall_metadata,
     preinstall_packet_json,
     render_preinstall_markdown,
 )
@@ -245,6 +246,12 @@ def review_preinstall(
             help="Exit 1 when scan or validation findings reach this severity.",
         ),
     ] = None,
+    require_complete: Annotated[
+        bool,
+        typer.Option(
+            "--require-complete", help="Exit 1 unless static review coverage is complete."
+        ),
+    ] = False,
     output: Annotated[
         Path | None,
         typer.Option("--output", "-o", help="Write the primary review packet."),
@@ -309,7 +316,7 @@ def review_preinstall(
                         "kind": "local",
                         "reference": str(path),
                         "path": str(path),
-                        "metadata": {"input_type": "directory" if path.is_dir() else "file"},
+                        "metadata": local_preinstall_metadata(path, scan_report),
                     },
                     scan_report,
                     _preinstall_skills(path),
@@ -332,10 +339,14 @@ def review_preinstall(
     if json_output:
         write_or_print(json_content, json_output, console)
     content = json_content if output_format == "json" else render_preinstall_markdown(packet)
-    if _preinstall_failed(packet, fail_on) and output_format == "markdown":
+    findings_failed = _preinstall_failed(packet, fail_on)
+    coverage_failed = require_complete and packet["metadata"]["coverage"]["status"] != "complete"
+    if findings_failed and output_format == "markdown":
         content += f"\nReview threshold failed: findings at or above `{fail_on}`.\n"
+    if coverage_failed and output_format == "markdown":
+        content += "\nReview coverage failed: resolve empty, unsupported, or incomplete coverage.\n"
     write_or_print(content, output, console)
-    raise typer.Exit(1 if _preinstall_failed(packet, fail_on) else 0)
+    raise typer.Exit(1 if findings_failed or coverage_failed else 0)
 
 
 @review_app.command("schema")

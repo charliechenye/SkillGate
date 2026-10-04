@@ -63,6 +63,19 @@ For `review preinstall`, a root skill is validated against its original
 repository directory name. Temporary directory names do not affect validation,
 and skills discovered below the root retain their own directory-name checks.
 
+The unified packet also distinguishes zero findings from missing review
+coverage. Add `--require-complete` to reject unreviewed files or declared asset
+gaps while retaining the packet:
+
+```bash
+skillgate review preinstall https://github.com/OWNER/REPO/tree/main/path/to/skills \
+  --require-complete --fail-on high --json-output skillgate-review.json
+```
+
+Standard excluded paths do not alone fail this coverage gate. Other skipped
+files do, including unsupported files. See the
+[coverage contract and exit codes](adoption.md#review-coverage-and-exit-codes).
+
 ## Reproducible Scan Manifest
 
 `skillgate github scan --format json` returns an object with `scan_report` and
