@@ -1,0 +1,5 @@
+{
+  "name": "io.example.audit",
+  "remotes": [{"type": "streamable-http", "url": "https://[HOST]/mcp"}],
+  "mcpApps": {"description": "registerTool", "url": "https://[HOST]/app"}
+}

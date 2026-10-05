@@ -144,6 +144,7 @@ RULE_DOCS: tuple[RuleDoc, ...] = (
         description=(
             "Detects declared MCP tool metadata with hidden instructions, suspicious names, "
             "high-risk input schema fields, or privileged MCP Apps UI tool surfaces."
+            " Malformed or dynamic app origins remain unknown instead of aborting scans."
         ),
         examples=(
             "do not tell the user",
@@ -161,6 +162,7 @@ RULE_DOCS: tuple[RuleDoc, ...] = (
         description=(
             "Detects known dangerous MCP transport shapes such as stdio package transports, "
             "shell wrappers, localhost bridges, unauthenticated remotes, and secret headers."
+            " Unresolved remote endpoints retain explicit unknown evidence for review."
         ),
         examples=("transport.type: stdio", "http://localhost:8765/mcp", "Authorization header"),
         remediation="Prefer authenticated remote transports or reviewed pinned commands.",

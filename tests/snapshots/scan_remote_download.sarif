@@ -429,7 +429,7 @@
             },
             {
               "fullDescription": {
-                "text": "Detects declared MCP tool metadata with hidden instructions, suspicious names, high-risk input schema fields, or privileged MCP Apps UI tool surfaces."
+                "text": "Detects declared MCP tool metadata with hidden instructions, suspicious names, high-risk input schema fields, or privileged MCP Apps UI tool surfaces. Malformed or dynamic app origins remain unknown instead of aborting scans."
               },
               "id": "SG011",
               "name": "SG011",
@@ -446,7 +446,7 @@
             },
             {
               "fullDescription": {
-                "text": "Detects known dangerous MCP transport shapes such as stdio package transports, shell wrappers, localhost bridges, unauthenticated remotes, and secret headers."
+                "text": "Detects known dangerous MCP transport shapes such as stdio package transports, shell wrappers, localhost bridges, unauthenticated remotes, and secret headers. Unresolved remote endpoints retain explicit unknown evidence for review."
               },
               "id": "SG012",
               "name": "SG012",
