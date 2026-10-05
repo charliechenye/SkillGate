@@ -4,9 +4,9 @@
 
 ### Fixed
 
-- Create missing output directories for `review summary` Markdown and JSON
-  files, including GitHub Action summary outputs. In `v0.1.5`, create nested
-  summary output directories before invoking the command or Action.
+- Create missing output directories through the common report writer, including
+  pre-install Markdown/JSON packets, scan reports, schemas, and review summaries.
+  In `v0.1.5`, create nested output directories before invoking these commands.
 
 ## 0.1.5 - Explicit review coverage
 

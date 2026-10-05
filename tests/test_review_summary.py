@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from conftest import FIXTURES, clean_test_dir, runner
 
 from skillgate import __version__
@@ -12,25 +13,24 @@ from skillgate.identity import finding_fingerprint
 from skillgate.scan import scan_repository
 
 
-def test_review_summary_creates_missing_markdown_and_json_directories(tmp_path: Path) -> None:
+@pytest.mark.parametrize("outputs", ["markdown", "json", "both"])
+def test_review_summary_creates_missing_markdown_and_json_directories(
+    tmp_path: Path, outputs: str
+) -> None:
     markdown = tmp_path / "summaries" / "review.md"
     json_output = tmp_path / "packets" / "review.json"
-    result = runner.invoke(
-        app,
-        [
-            "review",
-            "summary",
-            str(FIXTURES / "01-safe-documentation-skill"),
-            "--output",
-            str(markdown),
-            "--json-output",
-            str(json_output),
-        ],
-    )
+    args = ["review", "summary", str(FIXTURES / "01-safe-documentation-skill")]
+    if outputs in {"markdown", "both"}:
+        args.extend(["--output", str(markdown)])
+    if outputs in {"json", "both"}:
+        args.extend(["--json-output", str(json_output)])
+    result = runner.invoke(app, args)
 
     assert result.exit_code == 0, result.output
-    assert markdown.read_text().startswith("# SkillGate Review Summary")
-    assert json.loads(json_output.read_text())["tool_version"] == __version__
+    if outputs in {"markdown", "both"}:
+        assert markdown.read_text().startswith("# SkillGate Review Summary")
+    if outputs in {"json", "both"}:
+        assert json.loads(json_output.read_text())["tool_version"] == __version__
 
 
 def test_review_summary_markdown_and_json_with_baseline_and_policy() -> None:

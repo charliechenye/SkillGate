@@ -146,6 +146,7 @@ def render_diff(report: DiffReport, output_format: str) -> str:
 
 def write_or_print(content: str, output: Path | None, console: Console | None = None) -> None:
     if output:
+        output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(content, encoding="utf-8")
     else:
         if console is not None:

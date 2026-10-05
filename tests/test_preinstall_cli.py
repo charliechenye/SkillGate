@@ -36,7 +36,7 @@ def test_preinstall_local_review_validates_discovered_skills() -> None:
 
 
 def test_preinstall_fail_on_includes_skill_findings_and_writes_sidecar(tmp_path) -> None:
-    json_output = tmp_path / "review.json"
+    json_output = tmp_path / "packets" / "nested" / "review.json"
     result = runner.invoke(
         app,
         [
@@ -52,6 +52,23 @@ def test_preinstall_fail_on_includes_skill_findings_and_writes_sidecar(tmp_path)
     assert result.exit_code == 1
     assert "Review threshold failed" in result.output
     assert json.loads(json_output.read_text(encoding="utf-8"))["findings"]["total"] >= 1
+
+
+@pytest.mark.parametrize("outputs", ["markdown", "json", "both"])
+def test_preinstall_creates_missing_output_directories(tmp_path: Path, outputs: str) -> None:
+    markdown = tmp_path / "summaries" / "nested" / "review.md"
+    sidecar = tmp_path / "packets" / "nested" / "review.json"
+    args = ["review", "preinstall", str(COVERAGE_FIXTURES / "clean")]
+    if outputs in {"markdown", "both"}:
+        args.extend(["--output", str(markdown)])
+    if outputs in {"json", "both"}:
+        args.extend(["--json-output", str(sidecar)])
+    result = runner.invoke(app, args)
+    assert result.exit_code == 0, result.output
+    if outputs in {"markdown", "both"}:
+        assert "SkillGate" in markdown.read_text()
+    if outputs in {"json", "both"}:
+        assert json.loads(sidecar.read_text())["metadata"]["coverage"]["status"] == "complete"
 
 
 def test_preinstall_mcpb_review_uses_bundle_metadata(tmp_path) -> None:
