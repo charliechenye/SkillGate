@@ -41,6 +41,82 @@ def _is_secret_assignment_name(name: str) -> bool:
     return any(part in SECRET_NAME_PARTS for part in name.upper().split("_"))
 
 
+def _command_substitution_end(text: str, start: int, kind: str) -> int:
+    """Find the end of a command substitution with a bounded context stack."""
+    contexts: list[tuple[str, str, int]] = [(kind, "unquoted", 1)]
+    index = start + (2 if kind == "paren" else 1)
+    while index < len(text):
+        context_kind, state, depth = contexts[-1]
+        character = text[index]
+
+        if state == "single":
+            if character == "'":
+                contexts[-1] = (context_kind, "unquoted", depth)
+            index += 1
+            continue
+
+        if state == "double":
+            if character == "\\":
+                index = min(index + 2, len(text))
+                continue
+            if character == '"':
+                contexts[-1] = (context_kind, "unquoted", depth)
+                index += 1
+                continue
+            if character == "$" and text.startswith("$(", index):
+                contexts.append(("paren", "unquoted", 1))
+                index += 2
+                continue
+            if character == "`":
+                contexts.append(("backtick", "unquoted", 1))
+                index += 1
+                continue
+            index += 1
+            continue
+
+        if character == "\\":
+            index = min(index + 2, len(text))
+            continue
+        if character == "'":
+            contexts[-1] = (context_kind, "single", depth)
+            index += 1
+            continue
+        if character == '"':
+            contexts[-1] = (context_kind, "double", depth)
+            index += 1
+            continue
+        if character == "$" and text.startswith("$(", index):
+            contexts.append(("paren", "unquoted", 1))
+            index += 2
+            continue
+        if context_kind == "backtick" and character == "`":
+            contexts.pop()
+            index += 1
+            if not contexts:
+                return index
+            continue
+        if character == "`":
+            contexts.append(("backtick", "unquoted", 1))
+            index += 1
+            continue
+        if context_kind == "paren" and character == "(":
+            contexts[-1] = (context_kind, state, depth + 1)
+            index += 1
+            continue
+        if context_kind == "paren" and character == ")":
+            if depth > 1:
+                contexts[-1] = (context_kind, state, depth - 1)
+                index += 1
+                continue
+            contexts.pop()
+            index += 1
+            if not contexts:
+                return index
+            continue
+        index += 1
+    return len(text)
+
+
 def _assignment_value_end(text: str, start: int) -> int | None:
     if start >= len(text):
         return None
@@ -59,6 +135,12 @@ def _assignment_value_end(text: str, start: int) -> int | None:
                     return len(text)
                 index += 2
                 continue
+            if character == "$" and text.startswith("$(", index):
+                index = _command_substitution_end(text, index, "paren")
+                continue
+            if character == "`":
+                index = _command_substitution_end(text, index, "backtick")
+                continue
             if character == "'":
                 state = "single"
             elif character == '"':
@@ -71,6 +153,12 @@ def _assignment_value_end(text: str, start: int) -> int | None:
                 if index + 1 >= len(text):
                     return len(text)
                 index += 2
+                continue
+            if character == "$" and text.startswith("$(", index):
+                index = _command_substitution_end(text, index, "paren")
+                continue
+            if character == "`":
+                index = _command_substitution_end(text, index, "backtick")
                 continue
             if character == '"':
                 state = "unquoted"

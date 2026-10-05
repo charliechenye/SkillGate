@@ -70,6 +70,17 @@ def test_nested_capability_details_are_redacted_without_changing_shape() -> None
         ("TOKEN='abc def'ghi curl", "TOKEN=<redacted> curl"),
         ("TOKEN=abc'def ghi' curl", "TOKEN=<redacted> curl"),
         ('TOKEN="abc def"ghi curl', "TOKEN=<redacted> curl"),
+        ('TOKEN=$(printf "abc def") curl', "TOKEN=<redacted> curl"),
+        (r"TOKEN=$(printf abc\ def) curl", "TOKEN=<redacted> curl"),
+        (
+            "TOKEN=$(printf \"$(printf 'abc def')\") curl",
+            "TOKEN=<redacted> curl",
+        ),
+        ('TOKEN=`printf "abc def"` curl', "TOKEN=<redacted> curl"),
+        ('TOKEN=prefix$(printf "abc def")suffix curl', "TOKEN=<redacted> curl"),
+        ('TOKEN="$(printf abc)"suffix curl', "TOKEN=<redacted> curl"),
+        ('TOKEN="$(printf "abc def")"suffix curl', "TOKEN=<redacted> curl"),
+        ('TOKEN=${FOO:-$(printf "abc def")} curl', "TOKEN=<redacted> curl"),
         (
             'GITHUB_TOKEN="abc def" curl https://example.invalid/data',
             "GITHUB_TOKEN=<redacted> curl https://example.invalid/data",
@@ -85,6 +96,10 @@ def test_nested_capability_details_are_redacted_without_changing_shape() -> None
         ),
         ("TOKEN=abc|curl https://example.invalid", "TOKEN=<redacted>|curl https://example.invalid"),
         ("TOKEN=abc&curl https://example.invalid", "TOKEN=<redacted>&curl https://example.invalid"),
+        ("TOKEN=$(printf abc);curl", "TOKEN=<redacted>;curl"),
+        ("TOKEN=$(printf abc)&&curl", "TOKEN=<redacted>&&curl"),
+        ("TOKEN=`printf abc`|curl", "TOKEN=<redacted>|curl"),
+        ("TOKEN=$(printf abc)>file", "TOKEN=<redacted>>file"),
         ("TOKEN=abc>file", "TOKEN=<redacted>>file"),
         ("TOKEN=abc>>file", "TOKEN=<redacted>>>file"),
         ("TOKEN=abc<file", "TOKEN=<redacted><file"),
@@ -105,8 +120,16 @@ def test_secret_assignment_redaction_handles_escaped_quotes() -> None:
     assert capability.details["command"] == "TOKEN=<redacted> curl https://example.invalid/data"
 
 
-@pytest.mark.parametrize("command", ['TOKEN="abc def', "TOKEN='abc def"])
-def test_unterminated_secret_quotes_are_redacted_without_crashing(command: str) -> None:
+@pytest.mark.parametrize(
+    "command",
+    [
+        'TOKEN="abc def',
+        "TOKEN='abc def",
+        'TOKEN=$(printf "abc def"',
+        'TOKEN=`printf "abc def"',
+    ],
+)
+def test_unterminated_secret_values_are_redacted_without_crashing(command: str) -> None:
     capability = make_capability("shell_execution", "helper.sh", 1, command=command)
 
     assert capability.details["command"] == "TOKEN=<redacted>"
