@@ -1,13 +1,36 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from conftest import FIXTURES, clean_test_dir, runner
 
+from skillgate import __version__
 from skillgate.baseline import create_baseline, save_baseline
 from skillgate.cli import app
 from skillgate.identity import finding_fingerprint
 from skillgate.scan import scan_repository
+
+
+def test_review_summary_creates_missing_markdown_and_json_directories(tmp_path: Path) -> None:
+    markdown = tmp_path / "summaries" / "review.md"
+    json_output = tmp_path / "packets" / "review.json"
+    result = runner.invoke(
+        app,
+        [
+            "review",
+            "summary",
+            str(FIXTURES / "01-safe-documentation-skill"),
+            "--output",
+            str(markdown),
+            "--json-output",
+            str(json_output),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert markdown.read_text().startswith("# SkillGate Review Summary")
+    assert json.loads(json_output.read_text())["tool_version"] == __version__
 
 
 def test_review_summary_markdown_and_json_with_baseline_and_policy() -> None:
