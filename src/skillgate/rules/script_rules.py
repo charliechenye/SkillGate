@@ -442,53 +442,59 @@ def extract_write_targets(
     return list(dict.fromkeys(targets))
 
 
+def python_shell_strings(text: str) -> list[tuple[int, int, str]]:
+    try:
+        tree = ast.parse(textwrap.dedent(text))
+    except (SyntaxError, ValueError, RecursionError):
+        return []
+    commands = []
+    for call in ast.walk(tree):
+        if not isinstance(call, ast.Call):
+            continue
+        name = (
+            call.func.attr if isinstance(call.func, ast.Attribute) else getattr(call.func, "id", "")
+        )
+        if name not in {
+            "run",
+            "call",
+            "check_call",
+            "check_output",
+            "Popen",
+            "system",
+            "getoutput",
+            "getstatusoutput",
+        }:
+            continue
+        shell = next((item.value for item in call.keywords if item.arg == "shell"), None)
+        uses_shell = name in {"system", "getoutput", "getstatusoutput"} or (
+            shell is not None and not (isinstance(shell, ast.Constant) and not shell.value)
+        )
+        argument = (
+            call.args[0]
+            if call.args
+            else next((item.value for item in call.keywords if item.arg == "args"), None)
+        )
+        if argument is None:
+            continue
+        call_commands = []
+        command = _python_command_string(argument)
+        if command is not None:
+            if uses_shell:
+                call_commands.append(command)
+        elif isinstance(argument, ast.List | ast.Tuple):
+            argv = [_python_command_string(item) for item in argument.elts]
+            if argv and uses_shell and argv[0]:
+                call_commands.append(argv[0])
+            call_commands.extend(_explicit_shell_command(argv))
+        commands.extend(
+            (call.lineno, call.end_lineno or call.lineno, command) for command in call_commands
+        )
+    return commands
+
+
 def process_shell_strings(text: str, suffix: str) -> list[str]:
     if suffix == ".py":
-        try:
-            tree = ast.parse(textwrap.dedent(text))
-        except (SyntaxError, ValueError, RecursionError):
-            return []
-        commands = []
-        for call in ast.walk(tree):
-            if not isinstance(call, ast.Call):
-                continue
-            name = (
-                call.func.attr
-                if isinstance(call.func, ast.Attribute)
-                else getattr(call.func, "id", "")
-            )
-            if name not in {
-                "run",
-                "call",
-                "check_call",
-                "check_output",
-                "Popen",
-                "system",
-                "getoutput",
-                "getstatusoutput",
-            }:
-                continue
-            shell = next((item.value for item in call.keywords if item.arg == "shell"), None)
-            uses_shell = name in {"system", "getoutput", "getstatusoutput"} or (
-                shell is not None and not (isinstance(shell, ast.Constant) and not shell.value)
-            )
-            argument = (
-                call.args[0]
-                if call.args
-                else next((item.value for item in call.keywords if item.arg == "args"), None)
-            )
-            if argument is None:
-                continue
-            command = _python_command_string(argument)
-            if command is not None:
-                if uses_shell:
-                    commands.append(command)
-            elif isinstance(argument, ast.List | ast.Tuple):
-                argv = [_python_command_string(item) for item in argument.elts]
-                if argv and uses_shell and argv[0]:
-                    commands.append(argv[0])
-                commands.extend(_explicit_shell_command(argv))
-        return commands
+        return [command for _start, _end, command in python_shell_strings(text)]
     commands = []
     for call in PROCESS_CALL_RE.finditer(text):
         literal = SHELL_STRING_RE.match(
@@ -956,10 +962,24 @@ class FilesystemWriteRule:
                 if not any(REDIRECT_TARGET_RE.search(command) for command in commands):
                     continue
             views.append((section, offset + span.start_line, span.text, span.evidence))
+        for offset, section in sections:
+            if PurePosixPath(section.path).suffix.lower() != ".py":
+                continue
+            lines = section.text.splitlines()
+            for start, end, command in python_shell_strings(section.text):
+                if end > start and not file.format_aware:
+                    continue
+                evidence = "\n".join(lines[start - 1 : end])
+                shell_section = FileContent(section.path + ".sh", "script", command)
+                views.append((shell_section, offset + start, command, evidence))
+        seen: set[tuple[int, str | None]] = set()
         for section, number, text, evidence in views:
             for target in extract_write_targets(
                 section, text, markdown=file.file_type == "markdown"
             ):
+                if (number, target) in seen:
+                    continue
+                seen.add((number, target))
                 result.findings.append(
                     make_finding(
                         rule_id=self.rule_id,

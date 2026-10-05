@@ -4,20 +4,20 @@
 
 - Scanner version: `0.1.5`
 - Fixture root: `fixtures/benchmark`
-- Fixtures: 39
-- Passed: 39
+- Fixtures: 40
+- Passed: 40
 - Failed: 0
 
 ## Rule Coverage
 
 | Rule | Expected fixtures | Actual fixtures | Coverage status |
 | --- | ---: | ---: | --- |
-| SG001 | 8 | 8 | covered |
+| SG001 | 9 | 9 | covered |
 | SG002 | 2 | 2 | covered |
 | SG003 | 27 | 27 | covered |
 | SG004 | 2 | 2 | covered |
 | SG005 | 7 | 7 | covered |
-| SG006 | 9 | 9 | covered |
+| SG006 | 10 | 10 | covered |
 | SG007 | 3 | 3 | covered |
 | SG008 | 1 | 1 | covered |
 | SG009 | 12 | 12 | covered |
@@ -70,6 +70,7 @@
 | `36-xml-parser-alias` | **pass** | `SG003` | `SG003` | no |
 | `37-python-write-modes` | **pass** | `SG006` | `SG006` | no |
 | `38-file-target-binding` | **pass** | `SG006` | `SG006` | no |
+| `39-python-shell-context` | **pass** | `SG001, SG006` | `SG001, SG006` | no |
 | `40-network-connection-peers` | **pass** | `SG003` | `SG003` | no |
 
 ## Reproduce
