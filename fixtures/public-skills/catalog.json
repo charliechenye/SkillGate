@@ -31,7 +31,28 @@
             "source_line": 31
           }
         ],
-        "absent_evidence": []
+        "absent_evidence": [
+          {
+            "type": "filesystem_write",
+            "source_file": "SKILL.md",
+            "source_line": 100
+          },
+          {
+            "type": "filesystem_write",
+            "source_file": "SKILL.md",
+            "source_line": 27
+          },
+          {
+            "type": "filesystem_write",
+            "source_file": "SKILL.md",
+            "source_line": 28
+          },
+          {
+            "type": "filesystem_write",
+            "source_file": "SKILL.md",
+            "source_line": 56
+          }
+        ]
       }
     },
     {
@@ -223,7 +244,23 @@
             "source_line": 280
           }
         ],
-        "absent_evidence": []
+        "absent_evidence": [
+          {
+            "type": "filesystem_write",
+            "resource": "max",
+            "source_file": "templates/generator_template.js"
+          },
+          {
+            "type": "filesystem_write",
+            "source_file": "SKILL.md",
+            "source_line": 315
+          },
+          {
+            "type": "filesystem_write",
+            "source_file": "SKILL.md",
+            "source_line": 317
+          }
+        ]
       }
     },
     {
@@ -287,7 +324,13 @@
             "source_line": 10
           }
         ],
-        "absent_evidence": []
+        "absent_evidence": [
+          {
+            "type": "filesystem_write",
+            "source_file": "examples/console_logging.py",
+            "source_line": 15
+          }
+        ]
       }
     },
     {
@@ -850,15 +893,25 @@
           {
             "type": "shell_execution",
             "resource": null,
-            "source_file": "SKILL.md",
-            "source_line": 39
+            "source_file": "scripts/accept_changes.py",
+            "source_line": 68
           }
         ],
         "absent_evidence": [
           {
+            "type": "filesystem_write",
+            "source_file": "scripts/comment.py",
+            "source_line": 129
+          },
+          {
             "type": "network_egress",
             "source_file": "scripts/comment.py",
             "source_line": 43
+          },
+          {
+            "type": "shell_execution",
+            "source_file": "SKILL.md",
+            "source_line": 39
           },
           {
             "type": "network_egress",

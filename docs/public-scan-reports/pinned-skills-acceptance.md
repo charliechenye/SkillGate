@@ -1,8 +1,9 @@
 # Pinned Public Skill Acceptance
 
-Recorded October 4, 2026 with scanner version `0.1.5`. All checks were replayed
-in the release environment. This report records acceptance behavior; it does
-not measure detection accuracy.
+Recorded October 4, 2026 with scanner version `0.1.5`. The first table preserves
+the published release's results. The development replay below uses unreleased
+rule fixes; its package version string is still `0.1.5`. This report records
+acceptance behavior; it does not measure detection accuracy.
 
 The [catalog](../../fixtures/public-skills/catalog.json) contains ten immutable
 skill inputs from two publishers. Each records a license location and digest,
@@ -55,25 +56,73 @@ the current conservative contract; the evaluator does not silently exempt them.
   caused a missing-file error. Script references now require the complete
   extension. Real missing script paths still fail with source evidence.
 
-## Known Noise Requiring Follow-Up
+## Six Noise Regressions Fixed In Development
 
 Codex inspected these concrete cases; independent reviewer labels and a
 representative precision/recall corpus have not been collected.
 
-| Evidence location | Current signal | Why it needs work |
+| Evidence location | Published v0.1.5 signal | Development correction |
 | --- | --- | --- |
-| `algorithmic-art/templates/generator_template.js:155` | Filesystem write with resource `max` | A numeric comparison is treated as redirection. |
-| `webapp-testing/examples/console_logging.py:15` | Filesystem write | Appending to an in-memory list does not write a file. |
-| `docx/scripts/comment.py:129` | Filesystem write | Appending an identifier to a list is not a filesystem operation. |
-| `docx/scripts/comment.py:43` | Network egress to `schemas.microsoft.com` | An XML namespace identifier does not establish a network request. |
-| `find-skills/SKILL.md:100` | Filesystem write with resource `-g` | An installation option is reported as a concrete path. |
-| `pdf/scripts/fill_fillable_fields.py:35` | Network egress with unknown resource | Error-message prose is treated as network evidence. |
+| `algorithmic-art/templates/generator_template.js:155` | Filesystem write with resource `max` | Source comparisons and return annotations are distinguished from shell command strings. |
+| `webapp-testing/examples/console_logging.py:15` | Filesystem write | Collection `.append()` methods do not supply write evidence. |
+| `docx/scripts/comment.py:129` | Filesystem write | Appending an identifier to a list does not supply write evidence. |
+| `docx/scripts/comment.py:43` | Network egress to `schemas.microsoft.com` | Namespace map literals have explicit XML consumers; variable names alone cannot suppress endpoints. |
+| `find-skills/SKILL.md:100` | Filesystem write with resource `-g` | Markdown angle-bracket placeholders are distinguished from redirection. |
+| `pdf/scripts/fill_fillable_fields.py:35` | Network egress with unknown resource | The English word `got` requires client call syntax to supply network evidence. |
 
 These observations are not vulnerability reports about the upstream projects.
-They justify the next narrow rule work: suppress source-language comparisons
-and in-memory collection operations, distinguish identifier URLs from request
-contexts, and leave uncertain write paths unknown. Each change needs an authored
-regression and rule documentation; this acceptance PR does not retune rules.
+The original six `expected.absent_evidence` probes each match the published
+scanner and are absent with the development rules. The catalog now contains
+fourteen negative probes, including inline installer placeholders, HTML markup,
+XML relationship types, XML xmlns attributes, and Markdown fence delimiters.
+The former shell-positive probe at `docx/SKILL.md:39` was a fence delimiter;
+it is replaced by the real `subprocess.run` invocation at
+`docx/scripts/accept_changes.py:68` and retained as a negative probe.
+Selected positive evidence must still match. Authored benchmark fixtures
+`32-capability-noise-negative`, `33-capability-syntax-positive`, and
+`34-request-target-and-redirect` cover both physical-line and format-aware
+scanning. They retain real requests and writes, adjacent input/output redirects,
+process API aliases, and unknown targets. Policy regressions verify that header
+URLs, namespace variable names, and dynamic targets cannot bypass allowlists.
+The [development fixture report](../benchmark/unreleased.md) records all 34
+authored benchmark cases; the published version's 31-case report is retained.
+
+## Unreleased Development Replay
+
+Replayed locally on October 4, 2026 from the previously fetched immutable
+sources and licenses, with unchanged source and file digests. Ten of ten
+acceptance checks passed, including all fourteen negative probes, selected
+positive probes, repeat scans, and local/sparse-input parity. This replay did
+not perform new network fetches or execute sample code. Coverage remains 70
+scanned and 59 skipped files: one complete input and nine incomplete inputs.
+
+| Sample | Published v0.1.5 findings | Development findings |
+| --- | --- | --- |
+| `vercel-find-skills` | 6 | 3 |
+| `anthropic-frontend-design` | 2 | 2 |
+| `anthropic-brand-guidelines` | 0 | 0 |
+| `anthropic-theme-factory` | 0 | 0 |
+| `anthropic-algorithmic-art` | 6 | 2 |
+| `anthropic-webapp-testing` | 25 | 20 |
+| `anthropic-mcp-builder` | 173 | 36 |
+| `anthropic-skill-creator` | 238 | 90 |
+| `anthropic-pdf` | 82 | 25 |
+| `anthropic-docx` | 340 | 68 |
+| **Total** | **872** | **246** |
+
+These are output counts, not independently adjudicated false-positive counts.
+Overlapping logical spans contribute to the reduction. The concrete regressions
+above are covered. XML namespace constants with unsupported or ambiguous
+consumers still produce network signals; this is preferable to hiding real
+endpoints based on their variable names. Broad write/append instruction wording
+can still produce signals. Suppressing installer placeholders does not inventory
+every installation side effect. Counts may rise when a conservative fix restores
+previously suppressed evidence or reports multiple destinations separately.
+
+The common output-directory fix is also in development. Regressions cover
+pre-install packets, summaries, scan JSON/SARIF, and schema output, including
+sidecar reports when a review gate fails. Published `v0.1.5` and `v0` still
+require callers to create nested output directories before invocation.
 
 ## Limits And Next Product Check
 

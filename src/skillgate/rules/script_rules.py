@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import ast
 import re
 import shlex
+import textwrap
 from collections import Counter
 from pathlib import PurePosixPath
 from urllib.parse import urlparse
@@ -46,11 +48,11 @@ SECRET_RE = re.compile(
     r"~/.ssh/|~/.aws/|(?:^|[\s'\"/])\.env(?:$|[\s'\"/]))"
 )
 WRITE_RE = re.compile(
-    r"(?i)(?:\b(?:write|append|overwrite)\b|open\s*\([^)]*['\"][wa]['\"]|"
+    r"(?i)(?:\b(?:write|overwrite)\b|(?<![.\w])append\b(?!\s*\()|"
+    r"open\s*\([^)]*['\"][wa]['\"]|"
     r"Path\s*\([^)]*\)\.write_(?:text|bytes)\s*\(|"
     r"fs\.(?:promises\.)?(?:writeFile|appendFile|createWriteStream)|"
-    r"\b(?:Out-File|Set-Content|Add-Content|New-Item)\b|\btee\b|"
-    r"cat\s+>\s*([^\s]+)|>\s*([A-Za-z0-9_./-]+))"
+    r"\b(?:Out-File|Set-Content|Add-Content|New-Item)\b|\btee\b)"
 )
 PY_OPEN_TARGET_RE = re.compile(
     r"""open\s*\(\s*['"](?P<target>[^'"]+)['"]\s*,\s*['"][^'"]*[wa][^'"]*['"]"""
@@ -63,9 +65,15 @@ NODE_FS_TARGET_RE = re.compile(
     r"""\(\s*['"](?P<target>[^'"]+)['"]"""
 )
 TEE_TARGET_RE = re.compile(r"""(?i)\btee(?:\s+-a)?\s+(?P<target>[^\s|;&]+)""")
-REDIRECT_TARGET_RE = re.compile(r"""(?<![0-9])>\s*(?P<target>[A-Za-z0-9_./-]+)""")
-CAT_REDIRECT_TARGET_RE = re.compile(r"""(?i)cat\s+>\s*(?P<target>[^\s|;&]+)""")
+REDIRECT_TARGET_RE = re.compile(
+    r"""(?<![<=>])>{1,2}(?![=>])\s*(?P<target>"[^"\n]*"|'[^'\n]*'|`[^`\n]*`|[^\s|;&<>`]+)"""
+)
 SHELL_STRING_RE = re.compile(r"""(['"`])(?P<command>(?:\\.|(?!\1)[^\\\n])*)\1""")
+PROCESS_CALL_RE = re.compile(
+    r"\b(?:exec|execSync|spawn|spawnSync|run|call|check_call|check_output|Popen|system)\s*\("
+)
+ANGLE_PLACEHOLDER_RE = re.compile(r"<[^<>\s]+>")
+SOURCE_LANGUAGE_SUFFIXES = {".py", ".js", ".ts", ".mjs", ".cjs", ".html", ".xml"}
 POWERSHELL_WRITE_TARGET_RE = re.compile(
     r"""(?ix)\b(?:Out-File|Set-Content|Add-Content|New-Item)\b"""
     r""".*?-(?:FilePath|Path)\s+['"]?(?P<target>[A-Za-z0-9_./\\:-]+)['"]?"""
@@ -360,15 +368,156 @@ def extract_write_target(line: str, fallback_match: re.Match[str]) -> str | None
         PY_OPEN_TARGET_RE,
         PATH_WRITE_TARGET_RE,
         NODE_FS_TARGET_RE,
-        CAT_REDIRECT_TARGET_RE,
-        POWERSHELL_WRITE_TARGET_RE,
-        TEE_TARGET_RE,
-        REDIRECT_TARGET_RE,
     ]:
         match = pattern.search(line)
         if match:
             return match.group("target").strip("'\"")
-    return next((group for group in fallback_match.groups() if group), None)
+    match = POWERSHELL_WRITE_TARGET_RE.search(line) or TEE_TARGET_RE.search(line) or fallback_match
+    target = match.groupdict().get("target")
+    if not target or target.startswith("-") or any(char in target for char in "$%{}*`"):
+        return None
+    return target.strip("'\"")
+
+
+def write_match(file: FileContent, text: str, *, markdown: bool = False) -> re.Match[str] | None:
+    match = WRITE_RE.search(text)
+    if match:
+        return match
+    candidates = [text]
+    if PurePosixPath(file.path).suffix.lower() in SOURCE_LANGUAGE_SUFFIXES:
+        candidates = process_shell_strings(text, PurePosixPath(file.path).suffix.lower())
+    for candidate in candidates:
+        placeholders = (
+            list(ANGLE_PLACEHOLDER_RE.finditer(candidate))
+            if markdown or file.file_type == "markdown"
+            else []
+        )
+        for match in REDIRECT_TARGET_RE.finditer(candidate):
+            if any(
+                item.start() <= match.start() < item.end()
+                and (item.start() == 0 or candidate[item.start() - 1].isspace())
+                and (
+                    not candidate[item.end() :].strip()
+                    or candidate[item.end() :].lstrip().startswith("-")
+                    or candidate[item.end() :].startswith(("`", "]"))
+                )
+                and re.search(r"\b(?:npx|npm|pnpm|yarn|uvx|skills)\b", candidate[: item.start()])
+                for item in placeholders
+            ):
+                continue
+            return match
+    return None
+
+
+def process_shell_strings(text: str, suffix: str) -> list[str]:
+    if suffix == ".py":
+        try:
+            tree = ast.parse(textwrap.dedent(text))
+        except (SyntaxError, ValueError, RecursionError):
+            return []
+        commands = []
+        for call in ast.walk(tree):
+            if not isinstance(call, ast.Call):
+                continue
+            name = (
+                call.func.attr
+                if isinstance(call.func, ast.Attribute)
+                else getattr(call.func, "id", "")
+            )
+            if name not in {
+                "run",
+                "call",
+                "check_call",
+                "check_output",
+                "Popen",
+                "system",
+                "getoutput",
+                "getstatusoutput",
+            }:
+                continue
+            shell = next((item.value for item in call.keywords if item.arg == "shell"), None)
+            uses_shell = name in {"system", "getoutput", "getstatusoutput"} or (
+                shell is not None and not (isinstance(shell, ast.Constant) and not shell.value)
+            )
+            argument = (
+                call.args[0]
+                if call.args
+                else next((item.value for item in call.keywords if item.arg == "args"), None)
+            )
+            if argument is None:
+                continue
+            command = _python_command_string(argument)
+            if command is not None:
+                if uses_shell:
+                    commands.append(command)
+            elif isinstance(argument, ast.List | ast.Tuple):
+                argv = [_python_command_string(item) for item in argument.elts]
+                if argv and uses_shell and argv[0]:
+                    commands.append(argv[0])
+                commands.extend(_explicit_shell_command(argv))
+        return commands
+    commands = []
+    for call in PROCESS_CALL_RE.finditer(text):
+        literal = SHELL_STRING_RE.match(
+            text, call.end() + len(text[call.end() :]) - len(text[call.end() :].lstrip())
+        )
+        if not literal:
+            continue
+        name = call[0].split("(")[0].strip()
+        if name in {"exec", "execSync", "system"}:
+            commands.append(literal["command"])
+        elif name in {"spawn", "spawnSync"}:
+            if re.search(r"\bshell\s*:\s*true\b", text[literal.end() :]):
+                # Node joins argv into the shell command when shell=true.
+                args = re.match(r"\s*,\s*\[(?P<argv>.*?)\]", text[literal.end() :], re.DOTALL)
+                commands.append(literal["command"])
+                if args:
+                    commands.extend(
+                        item["command"] for item in SHELL_STRING_RE.finditer(args["argv"])
+                    )
+            argv = [literal["command"]] + [
+                item["command"] for item in SHELL_STRING_RE.finditer(text[literal.end() :])
+            ]
+            commands.extend(_explicit_shell_command(argv))
+    return commands
+
+
+def _python_command_string(node: ast.AST, depth: int = 0) -> str | None:
+    if depth >= 32:
+        return None
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.JoinedStr):
+        return "".join(
+            value.value if isinstance(value, ast.Constant) else "${unknown}"
+            for value in node.values
+        )
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add | ast.Mod):
+        left = _python_command_string(node.left, depth + 1)
+        if left is not None:
+            if isinstance(node.op, ast.Mod):
+                return left
+            right = _python_command_string(node.right, depth + 1)
+            return left + ("${unknown}" if right is None else right)
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "format"
+    ):
+        return _python_command_string(node.func.value, depth + 1)
+    return None
+
+
+def _explicit_shell_command(argv: list[str | None]) -> list[str]:
+    if not argv or not argv[0]:
+        return []
+    executable = PurePosixPath(argv[0].replace("\\", "/")).name.lower()
+    if executable not in {"bash", "sh", "zsh", "cmd", "cmd.exe", "powershell", "pwsh"}:
+        return []
+    for index, argument in enumerate(argv[:-1]):
+        if argument in {"-c", "-lc", "/c", "-Command", "-command"} and argv[index + 1]:
+            return [argv[index + 1]]
+    return []
 
 
 def normalize_file_target(value: str) -> str:
@@ -421,7 +570,13 @@ class ShellExecutionRule:
 
     def analyze(self, file: FileContent) -> RuleResult:
         result = RuleResult()
-        for number, line, _match in line_matches(file.text, SHELL_RE):
+        sections = script_sections(file)
+        physical = [
+            (offset + number, line, match)
+            for offset, section in sections
+            for number, line, match in line_matches(section.text, SHELL_RE)
+        ]
+        for number, line, _match in physical:
             severity: Severity = (
                 "high" if DESTRUCTIVE_RE.search(line) or REMOTE_EXEC_RE.search(line) else "medium"
             )
@@ -441,7 +596,8 @@ class ShellExecutionRule:
             result.capabilities.append(
                 make_capability("shell_execution", file.path, number, command=line.strip())
             )
-        for span, _match in logical_matches(file, SHELL_RE):
+        logical = logical_matches(file, SHELL_RE)
+        for span, _match in logical:
             severity: Severity = (
                 "high"
                 if DESTRUCTIVE_RE.search(span.text) or REMOTE_EXEC_RE.search(span.text)
@@ -747,7 +903,16 @@ class FilesystemWriteRule:
 
     def analyze(self, file: FileContent) -> RuleResult:
         result = RuleResult()
-        for number, line, match in line_matches(file.text, WRITE_RE):
+        sections = script_sections(file)
+        physical = [
+            (section, offset + number, line)
+            for offset, section in sections
+            for number, line in enumerate(section.text.splitlines(), start=1)
+        ]
+        for section, number, line in physical:
+            match = write_match(section, line, markdown=file.file_type == "markdown")
+            if not match:
+                continue
             target = extract_write_target(line, match)
             result.findings.append(
                 make_finding(
@@ -767,7 +932,22 @@ class FilesystemWriteRule:
                     "filesystem_write", file.path, number, resource=target, command=line.strip()
                 )
             )
-        for span, match in logical_matches(file, WRITE_RE):
+        spans = [
+            (offset, section, span)
+            for offset, section in sections
+            if file.format_aware
+            for span in iter_logical_spans(section.text, section.file_type)
+        ]
+        for offset, section, span in spans:
+            if file.file_type == "markdown" and section.file_type == "script":
+                # Fences did not previously add logical source spans. Add only
+                # shell strings here; prose-like argv data must not gain writes.
+                commands = process_shell_strings(span.text, PurePosixPath(section.path).suffix)
+                if not any(REDIRECT_TARGET_RE.search(command) for command in commands):
+                    continue
+            match = write_match(section, span.text, markdown=file.file_type == "markdown")
+            if not match:
+                continue
             target = extract_write_target(span.text, match)
             result.findings.append(
                 make_finding(
@@ -777,7 +957,7 @@ class FilesystemWriteRule:
                     severity="medium",
                     capability="filesystem_write",
                     file_path=file.path,
-                    line_number=span.start_line,
+                    line_number=offset + span.start_line,
                     evidence=f"Target: {target}" if target else span.evidence,
                     remediation="Constrain writes to policy-approved paths.",
                 )
@@ -786,7 +966,7 @@ class FilesystemWriteRule:
                 make_capability(
                     "filesystem_write",
                     file.path,
-                    span.start_line,
+                    offset + span.start_line,
                     resource=target,
                     command=span.evidence.strip(),
                 )

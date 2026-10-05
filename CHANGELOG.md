@@ -7,11 +7,17 @@
 - Create missing output directories through the common report writer, including
   pre-install Markdown/JSON packets, scan reports, schemas, and review summaries.
   In `v0.1.5`, create nested output directories before invoking these commands.
+- Reduce `SG003`/`SG006` noise from collection appends, source comparisons,
+  installer placeholders, Markdown blockquotes and language fences, XML
+  identifiers with explicit XML consumers, and ordinary `got` prose. Retain
+  request calls, adjacent input/output redirects, and actual shell commands;
+  distinguish literal process argv from shell command strings.
 - Bind network hosts to request destinations instead of header/body URLs. Report
   multiple literal destinations separately; keep dynamic and malformed URLs
   unknown without aborting review. Variable names alone never suppress URLs.
-- Reduce `SG003` noise from XML identifiers with explicit XML consumers and
-  ordinary `got` prose. Retain request calls and uncertain consumers.
+- Add positive/negative benchmark fixtures, policy bypass regressions, and
+  fourteen absent-evidence probes to pinned public skill acceptance checks.
+  Replace a shell-fence positive probe with an actual process API invocation.
 
 ## 0.1.5 - Explicit review coverage
 

@@ -22,7 +22,10 @@ RULE_DOCS: tuple[RuleDoc, ...] = (
         title="Shell execution detected",
         severity="medium",
         capability="shell_execution",
-        description="Detects shell commands and process execution APIs in agent files.",
+        description=(
+            "Detects shell commands and process execution APIs in agent files. "
+            "Markdown code-fence delimiters are not execution evidence."
+        ),
         examples=("bash ./setup.sh", "subprocess.run(...)", "child_process.exec(...)"),
         remediation="Review shell execution and require explicit policy approval.",
     ),
@@ -78,7 +81,15 @@ RULE_DOCS: tuple[RuleDoc, ...] = (
         title="Filesystem write capability detected",
         severity="medium",
         capability="filesystem_write",
-        description="Detects likely filesystem writes in scripts and instructions.",
+        description=(
+            "Detects likely filesystem writes in scripts and instructions. "
+            "Collection append methods, source comparisons, Markdown blockquote markers, "
+            "and installer argument placeholders are not write evidence. Fenced code uses "
+            "its declared language. Python and JavaScript/TypeScript redirects require "
+            "shell command strings, including explicit shell executables; ordinary argv "
+            "data is not redirection. Adjacent input/output redirects remain visible. "
+            "Uncertain shell targets stay unknown; literal file API paths are preserved."
+        ),
         examples=("open('file', 'w')", "fs.writeFile(...)", "cat > output.txt"),
         remediation="Constrain writes to policy-approved paths.",
     ),

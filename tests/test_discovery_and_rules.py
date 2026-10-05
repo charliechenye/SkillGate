@@ -226,7 +226,7 @@ def test_richer_filesystem_write_extraction() -> None:
                 "from pathlib import Path",
                 "open('generated/open.txt', 'w')",
                 "Path('generated/path.txt').write_text('ok')",
-                "print('ok') > generated/redirect.txt",
+                "subprocess.run('echo ok > generated/redirect.txt', shell=True)",
             ]
         ),
         encoding="utf-8",

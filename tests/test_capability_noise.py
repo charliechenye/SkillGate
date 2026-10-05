@@ -4,7 +4,7 @@ import pytest
 from conftest import FIXTURES
 
 from skillgate.rules.base import FileContent
-from skillgate.rules.script_rules import NetworkEgressRule
+from skillgate.rules.script_rules import FilesystemWriteRule, NetworkEgressRule
 from skillgate.scan import scan_repository
 
 
@@ -16,6 +16,87 @@ def test_collection_comparison_namespace_and_placeholder_syntax_stays_clean(
 
     assert report.findings == []
     assert report.capabilities == []
+
+
+@pytest.mark.parametrize("format_aware", [False, True])
+def test_real_requests_writes_and_embedded_shell_redirects_remain_visible(
+    format_aware: bool,
+) -> None:
+    report = scan_repository(FIXTURES / "33-capability-syntax-positive", format_aware=format_aware)
+    assert {item.rule_id for item in report.findings} == {"SG001", "SG003", "SG006"}
+    hosts = {item.resource for item in report.capabilities if item.type == "network_egress"}
+    writes = {item.resource for item in report.capabilities if item.type == "filesystem_write"}
+
+    assert {"xml.example.invalid", "api.example.invalid", None} <= hosts
+    assert {
+        "generated/output.txt",
+        "generated/path.txt",
+        "generated/shell.txt",
+        "generated/append.txt",
+        "generated/node.txt",
+        "generated/template.txt",
+        "generated/history.txt",
+        "generated/errors.txt",
+        None,
+    } <= writes
+    assert "$OUTPUT" not in writes
+
+
+@pytest.mark.parametrize("suffix", ["py", "js", "ts", "mjs", "cjs"])
+def test_process_call_does_not_turn_source_comparison_into_redirect(suffix: str) -> None:
+    file = FileContent(
+        path=f"helper.{suffix}",
+        file_type="script",
+        text='if (count > limit) subprocess.run(["echo", "hello"])',
+        format_aware=True,
+    )
+
+    assert FilesystemWriteRule().analyze(file).capabilities == []
+
+
+def test_multiline_process_command_keeps_redirect_target() -> None:
+    file = FileContent(
+        path="helper.py",
+        file_type="script",
+        text='subprocess.run(\n    "printf hello > generated/hello.txt",\n    shell=True,\n)\n',
+        format_aware=True,
+    )
+    result = FilesystemWriteRule().analyze(file)
+
+    assert {item.resource for item in result.capabilities} == {"generated/hello.txt"}
+    assert result.findings[0].line_number == 1
+
+
+@pytest.mark.parametrize(
+    ("path", "text"),
+    [
+        ("helper.py", 'run("printf hello > generated/hello.txt", shell=True)'),
+        ("helper.js", 'exec("printf hello > generated/hello.txt")'),
+    ],
+)
+def test_imported_process_calls_keep_redirects(path: str, text: str) -> None:
+    file = FileContent(path=path, file_type="script", text=text)
+
+    assert FilesystemWriteRule().analyze(file).capabilities[0].resource == "generated/hello.txt"
+
+
+@pytest.mark.parametrize("target", ["$OUTPUT", "${OUTPUT}", "-g", "/tmp/*.txt", "`lookup`"])
+def test_uncertain_redirect_targets_remain_unknown(target: str) -> None:
+    file = FileContent(path="helper.sh", file_type="script", text=f"printf hello > {target}\n")
+    result = FilesystemWriteRule().analyze(file)
+
+    assert len(result.capabilities) == 1
+    assert result.capabilities[0].resource is None
+
+
+def test_quoted_redirect_filename_is_preserved() -> None:
+    file = FileContent(
+        path="helper.sh", file_type="script", text='printf hello > "generated/hello world.txt"\n'
+    )
+
+    assert (
+        FilesystemWriteRule().analyze(file).capabilities[0].resource == "generated/hello world.txt"
+    )
 
 
 @pytest.mark.parametrize("assignment", ["NS", "XML_NAMESPACES", "nsmap: dict[str, str]"])
@@ -77,6 +158,26 @@ def test_got_method_extracts_literal_host_without_protocol() -> None:
     assert NetworkEgressRule().analyze(file).capabilities[0].resource == "api.example.invalid"
 
 
+@pytest.mark.parametrize(
+    "target", ["generated/$literal.txt", "generated/100%.txt", "generated/*.txt"]
+)
+def test_file_api_literal_paths_are_preserved(target: str) -> None:
+    file = FileContent(
+        path="helper.py", file_type="script", text=f"Path('{target}').write_text('result')\n"
+    )
+
+    assert FilesystemWriteRule().analyze(file).capabilities[0].resource == target
+
+
+@pytest.mark.parametrize(
+    "text", ["values.append(1)", "values. append(1)", "values.\n    append(1)"]
+)
+def test_collection_append_spacing_does_not_create_write_signal(text: str) -> None:
+    file = FileContent(path="helper.py", file_type="script", text=text, format_aware=True)
+
+    assert FilesystemWriteRule().analyze(file).capabilities == []
+
+
 def test_malformed_python_retains_network_evidence() -> None:
     file = FileContent(
         path="helper.py",
@@ -85,6 +186,70 @@ def test_malformed_python_retains_network_evidence() -> None:
     )
 
     assert NetworkEgressRule().analyze(file).capabilities[0].resource == "xml.example.invalid"
+
+
+@pytest.mark.parametrize("format_aware", [False, True])
+def test_request_targets_and_adjacent_redirections_survive_noise_filters(
+    format_aware: bool,
+) -> None:
+    report = scan_repository(FIXTURES / "34-request-target-and-redirect", format_aware=format_aware)
+    assert {item.rule_id for item in report.findings} == {"SG003", "SG006"}
+    hosts = {item.resource for item in report.capabilities if item.type == "network_egress"}
+    assert hosts == {"upload.example.invalid", None}
+    assert {item.resource for item in report.capabilities if item.type == "filesystem_write"} == {
+        "output.txt"
+    }
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        'subprocess.run(["echo", "value > limit"])',
+        'subprocess.run("echo value > limit")',
+        'subprocess.run(["echo", "value > limit"], shell=False)',
+        'subprocess.run(["echo", "value > limit"], shell=True)',
+        'child_process.spawn("echo", ["value > limit"])',
+    ],
+)
+def test_literal_process_arguments_are_not_shell_redirects(call: str) -> None:
+    suffix = "js" if call.startswith("child_process") else "py"
+    file = FileContent(path=f"helper.{suffix}", file_type="script", text=call, format_aware=True)
+    assert FilesystemWriteRule().analyze(file).capabilities == []
+
+
+@pytest.mark.parametrize(
+    ("suffix", "call"),
+    [
+        ("py", 'subprocess.run(["bash", "-c", "echo hello > out.txt"])'),
+        ("py", 'os.system("echo hello > out.txt")'),
+        ("py", 'subprocess.run("echo hello > out.txt", shell=use_shell)'),
+        ("js", 'child_process.spawn("bash", ["-c", "echo hello > out.txt"])'),
+        ("js", "child_process.execSync(`echo hello > out.txt`)"),
+        ("js", 'child_process.spawn("echo", ["hello > out.txt"], {shell: true})'),
+    ],
+)
+def test_actual_shell_invocations_keep_redirects(suffix: str, call: str) -> None:
+    result = FilesystemWriteRule().analyze(
+        FileContent(path=f"helper.{suffix}", file_type="script", text=call)
+    )
+    assert {item.resource for item in result.capabilities} == {"out.txt"}
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        'f"echo hello > {output}"',
+        '"echo hello > " + output',
+        '"echo hello > %s" % output',
+        '"echo hello > {}".format(output)',
+    ],
+)
+def test_dynamic_shell_redirect_strings_keep_unknown_write(expression: str) -> None:
+    text = f"subprocess.run({expression}, shell=True)"
+    result = FilesystemWriteRule().analyze(
+        FileContent(path="helper.py", file_type="script", text=text)
+    )
+    assert {item.resource for item in result.capabilities} == {None}
 
 
 def test_xml_identifier_analysis_is_bounded_and_retains_uncertain_evidence() -> None:
@@ -226,3 +391,33 @@ def test_unterminated_escaped_shell_string_keeps_unknown_network_evidence() -> N
 
     assert len(result.capabilities) == 1
     assert result.capabilities[0].resource is None
+
+
+@pytest.mark.parametrize("format_aware", [False, True])
+def test_markdown_language_fences_quotes_and_real_commands(format_aware: bool) -> None:
+    text = (
+        "> Script paths below are examples.\n"
+        "```python\ndef size() -> int:\n    return 1\n```\n"
+        '```python\nsubprocess.run(["echo", "value > limit"])\n```\n'
+        '```python\nsubprocess.run(\n    "echo hello > out.txt",\n    shell=True,\n)\n```\n'
+        "> cat <input.txt>quoted-output.txt\n"
+        "```bash\ncat <input.txt>shell-output.txt\n```\n"
+    )
+    file = FileContent(path="SKILL.md", file_type="markdown", text=text, format_aware=format_aware)
+    writes = {item.resource for item in FilesystemWriteRule().analyze(file).capabilities}
+    assert writes == (
+        {"out.txt", "quoted-output.txt", "shell-output.txt"}
+        if format_aware
+        else {"quoted-output.txt", "shell-output.txt"}
+    )
+
+
+def test_indented_and_inline_markdown_redirects_keep_real_targets() -> None:
+    text = "> Example commands:\n\n    > empty.txt\n\nRun `cat <input.txt>inline.txt`.\n"
+    result = FilesystemWriteRule().analyze(
+        FileContent(path="SKILL.md", file_type="markdown", text=text)
+    )
+    assert {(item.source_line, item.resource) for item in result.capabilities} == {
+        (3, "empty.txt"),
+        (5, "inline.txt"),
+    }
