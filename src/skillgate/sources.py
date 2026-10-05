@@ -10,12 +10,18 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Any
 from urllib.parse import quote, urlparse
 
 from skillgate import __version__
-from skillgate.discovery import REFERENCE_RE, SCRIPT_EXTENSIONS, is_excluded, is_relevant_path
+from skillgate.discovery import (
+    REFERENCE_RE,
+    SCRIPT_EXTENSIONS,
+    is_excluded,
+    is_relevant_path,
+    supporting_skill_paths,
+)
 from skillgate.mcp_app_assets import _asset_kind, _refs_from_text, _strip_ref_suffix
 from skillgate.mcp_apps import inventory_from_json_text
 from skillgate.models import SCHEMA_VERSION
@@ -357,19 +363,10 @@ def referenced_script_candidates(
 
 
 def skill_supporting_paths(items: list[GitHubTreeItem], subpath: str | None) -> list[str]:
-    paths = {
-        PurePosixPath(item.path)
+    return supporting_skill_paths(
+        item.path
         for item in items
-        if item.type == "blob"
-        and path_within_subpath(item.path, subpath)
-        and not is_excluded(Path(item.path))
-    }
-    skill_roots = {path.parent for path in paths if path.name == "SKILL.md"}
-    return sorted(
-        path.as_posix()
-        for path in paths
-        if path.suffix.lower() in SCRIPT_EXTENSIONS | {".md"}
-        and any(parent in skill_roots for parent in path.parents)
+        if item.type == "blob" and path_within_subpath(item.path, subpath)
     )
 
 

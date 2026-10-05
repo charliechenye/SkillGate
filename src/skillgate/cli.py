@@ -15,6 +15,7 @@ from skillgate.demo import (
     build_demo_mcpb,
     build_demo_skill,
 )
+from skillgate.discovery import discover_preinstall_paths
 from skillgate.fixtures import (
     FixtureSummaryError,
     fixture_summary_markdown,
@@ -309,7 +310,7 @@ def review_preinstall(
                 scan_report = (
                     scan_paths(path.parent, [path], format_aware=True)
                     if path.is_file()
-                    else scan_repository(path, format_aware=True)
+                    else scan_paths(path, discover_preinstall_paths(path), format_aware=True)
                 )
                 packet = build_preinstall_packet(
                     {

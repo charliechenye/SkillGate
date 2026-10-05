@@ -44,7 +44,9 @@ Finding counts and review coverage are separate:
 | `empty` | No files were selected for source scanning and no skipped files were reported. |
 | `unsupported` | Files were present but no supported source coverage was obtained, or an explicitly supplied file has an unrecognized type or is a plugin manifest. |
 
-Local directories list files omitted by discovery without reading their
+Local and GitHub pre-install reviews include bundled Markdown and supported
+scripts below discovered `SKILL.md` directories, even when unlinked. Local
+directories list files omitted by discovery without reading their
 contents. GitHub reviews use their skipped-file manifest. MCPB reviews list
 unscanned members; the separately parsed `manifest.json` is not counted as a
 skipped member. Native executables and nested archives remain review gaps.
