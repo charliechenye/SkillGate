@@ -29,9 +29,14 @@ controls.
 
 ## Current baseline and shipped status
 
-The current stable release is `v0.1.4`. It improves GitHub skill validation and
-supporting-file coverage, adds advisory MCP Apps and Tasks evidence and bounded
-Agent Skill ZIP validation, and patches development-toolchain dependencies.
+The current stable release is `v0.1.5`. It adds explicit pre-install coverage
+and an opt-in completeness gate, aligns local and GitHub skill supporting-file
+selection, and fixes truncated script references. Ten pinned public skill
+samples provide repeatable acceptance checks and document known rule noise;
+independent human adjudication and three maintainer pilots remain pending.
+The `v0.1.4` release improved GitHub skill validation and supporting-file
+coverage, added advisory MCP Apps and Tasks evidence and bounded
+Agent Skill ZIP validation, and patched development-toolchain dependencies.
 The `v0.1.3` release established Review Packet v2, deterministic packet and
 source-manifest evidence, and MCP protocol/extension inventory. Capability
 baselines and drift, provenance, policy-as-code, and the no-execution boundary

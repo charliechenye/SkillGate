@@ -1,6 +1,6 @@
 # SkillGate Release Checklist
 
-Use this checklist to publish and validate `v0.1.4`. Run commands from a clean
+Use this checklist to publish and validate `v0.1.5`. Run commands from a clean
 `main` branch unless a step says otherwise.
 
 ## Maintainer Responsibilities
@@ -9,7 +9,7 @@ Pushing tags, creating the GitHub Release, moving the stable `v0` tag, and
 validating GitHub Actions require maintainer credentials and approval. GitHub
 Actions is the only builder and uploader of standalone release assets. Do not
 build or upload release assets from a workstation. PyPI and npm publication are
-deferred for `v0.1.4`.
+deferred for `v0.1.5`.
 
 ## 1. Preflight
 
@@ -22,19 +22,19 @@ uv run python -c "import tomllib, pathlib; print(tomllib.loads(pathlib.Path('pyp
 uv run python -c "from skillgate import __version__; print(__version__)"
 ```
 
-For `v0.1.4`, both version commands should print `0.1.4`.
+For `v0.1.5`, both version commands should print `0.1.5`.
 
 Confirm release notes and release-prep state:
 
 ```powershell
-Select-String -Path CHANGELOG.md -Pattern "## 0.1.4 - GitHub skill review and release hardening"
-Test-Path docs\release-notes\0.1.4.md
+Select-String -Path CHANGELOG.md -Pattern "## 0.1.5 - Explicit review coverage"
+Test-Path docs\release-notes\0.1.5.md
 Select-String -Path docs\sessions\README.md -Pattern "SkillGate Review Sessions"
 Select-String -Path .github\workflows\release-binaries.yml -Pattern "needs.resolve-tag.outputs.release_tag"
 ```
 
-Before tagging, confirm the `0.1.4` changelog section has the final release
-date, `2026-10-03`. The curated GitHub notes live in `docs/release-notes/0.1.4.md`.
+Before tagging, confirm the `0.1.5` changelog section has the final release
+date, `2026-10-04`. The curated GitHub notes live in `docs/release-notes/0.1.5.md`.
 
 ## 2. Tests And Static Checks
 
@@ -87,7 +87,7 @@ builds the wheel, runs Twine checks, verifies `py.typed`, installs the wheel in
 a clean environment, and exercises the starter review workflow. Confirm that
 job passes for the exact release commit before tagging.
 
-## 5. Create The `v0.1.4` Tag
+## 5. Create The `v0.1.5` Tag
 
 Make sure local `main` has the exact commit you intend to release:
 
@@ -96,8 +96,8 @@ git switch main
 git pull --ff-only
 git status --short
 git config --get user.email
-git tag -a v0.1.4 -m "SkillGate v0.1.4"
-git push origin v0.1.4
+git tag -a v0.1.5 -m "SkillGate v0.1.5"
+git push origin v0.1.5
 ```
 
 Create the annotated release tag with your GitHub noreply tagger email.
@@ -106,11 +106,11 @@ are validated.
 
 ## 6. Create The GitHub Release
 
-Create the release from the pushed `v0.1.4` tag in the GitHub UI, or use the
+Create the release from the pushed `v0.1.5` tag in the GitHub UI, or use the
 GitHub CLI:
 
 ```powershell
-gh release create v0.1.4 --verify-tag --latest=false --title "SkillGate v0.1.4" --notes-file docs\release-notes\0.1.4.md
+gh release create v0.1.5 --verify-tag --latest=false --title "SkillGate v0.1.5: Explicit Review Coverage" --notes-file docs\release-notes\0.1.5.md
 gh run list --workflow release-binaries.yml --limit 5
 ```
 
@@ -121,7 +121,7 @@ can still download a complete release. If the workflow does not run, manually
 dispatch the workflow against the same tag:
 
 ```powershell
-gh workflow run release-binaries.yml -f tag=v0.1.4
+gh workflow run release-binaries.yml -f tag=v0.1.5
 gh run watch
 ```
 
@@ -136,9 +136,9 @@ The `darwin-x64` matrix entry should use the current Intel macOS runner label
 After the workflow completes, verify the uploaded assets:
 
 ```powershell
-gh release view v0.1.4 --json tagName,assets
-gh release download v0.1.4 -p skillgate-release.json -D test-outputs\release-v0.1.4
-Get-Content test-outputs\release-v0.1.4\skillgate-release.json
+gh release view v0.1.5 --json tagName,assets
+gh release download v0.1.5 -p skillgate-release.json -D test-outputs\release-v0.1.5
+Get-Content test-outputs\release-v0.1.5\skillgate-release.json
 ```
 
 The release should include:
@@ -150,7 +150,7 @@ The release should include:
 - `skillgate-darwin-arm64`
 - `skillgate-win32-x64.exe`
 
-The manifest should record `v0.1.4`, SHA-256 hashes, and positive `size_bytes`
+The manifest should record `v0.1.5`, SHA-256 hashes, and positive `size_bytes`
 values for every platform asset.
 
 ## 8. Verify GitHub Install Paths
@@ -159,17 +159,17 @@ Before moving `v0`, verify tagged GitHub installs through the paths customers
 may use when they require commit or tag pinning:
 
 ```powershell
-python -m pip install --force-reinstall "git+https://github.com/charliechenye/SkillGate.git@v0.1.4"
+python -m pip install --force-reinstall "git+https://github.com/charliechenye/SkillGate.git@v0.1.5"
 skillgate --version
 skillgate rules list
 skillgate review schema --output test-outputs\installed-review.schema.json
 skillgate review preinstall examples\preinstall-starter --json-output test-outputs\installed-review.json
-pipx run --spec "git+https://github.com/charliechenye/SkillGate.git@v0.1.4" skillgate rules list
-$env:SKILLGATE_VERSION="v0.1.4"; npx --yes --allow-git=root github:charliechenye/SkillGate#v0.1.4 -- scan .
+pipx run --spec "git+https://github.com/charliechenye/SkillGate.git@v0.1.5" skillgate rules list
+$env:SKILLGATE_VERSION="v0.1.5"; npx --yes --allow-git=root github:charliechenye/SkillGate#v0.1.5 -- scan .
 ```
 
 GitHub installs require `git` on the customer machine. For teams that require
-immutable installs, replace `v0.1.4` with the full release commit SHA.
+immutable installs, replace `v0.1.5` with the full release commit SHA.
 
 Verify these commands with the tagged installation, not the development
 environment. The installed version must match the tag, and the pre-install
@@ -180,7 +180,7 @@ setting defaults to `none`.
 
 ## 9. Deferred PyPI Publication
 
-Do not run this section for `v0.1.4`. GitHub tag installs and GitHub Release
+Do not run this section for `v0.1.5`. GitHub tag installs and GitHub Release
 assets are the supported distribution paths for this release. Keep these notes
 for a later, explicitly approved PyPI publication.
 
@@ -213,11 +213,11 @@ public scan reports that mention the affected version.
 
 ## 10. Move And Verify Stable `v0`
 
-After the `v0.1.4` release assets and install paths are validated, move the
+After the `v0.1.5` release assets and install paths are validated, move the
 `Latest` release pointer and stable `v0` compatibility tag to the release:
 
 ```powershell
-gh release edit v0.1.4 --latest
+gh release edit v0.1.5 --latest
 ```
 
 Move `v0` to that release's commit. Fetch the current tags
@@ -230,21 +230,21 @@ the current Git email is already noreply.
 On macOS or Linux (bash/zsh):
 
 ```bash
-git fetch origin "+refs/tags/v0:refs/tags/v0" "refs/tags/v0.1.4:refs/tags/v0.1.4"
+git fetch origin "+refs/tags/v0:refs/tags/v0" "refs/tags/v0.1.5:refs/tags/v0.1.5"
 skillgate_old_v0=$(git rev-parse refs/tags/v0)
-git tag -a -f v0 "v0.1.4^{commit}" -m "SkillGate v0.1.4 compatibility channel"
+git tag -a -f v0 "v0.1.5^{commit}" -m "SkillGate v0.1.5 compatibility channel"
 git push --force-with-lease="refs/tags/v0:$skillgate_old_v0" origin refs/tags/v0:refs/tags/v0
-git ls-remote origin "refs/tags/v0^{}" "refs/tags/v0.1.4^{}"
+git ls-remote origin "refs/tags/v0^{}" "refs/tags/v0.1.5^{}"
 ```
 
 On Windows (PowerShell):
 
 ```powershell
-git fetch origin "+refs/tags/v0:refs/tags/v0" "refs/tags/v0.1.4:refs/tags/v0.1.4"
+git fetch origin "+refs/tags/v0:refs/tags/v0" "refs/tags/v0.1.5:refs/tags/v0.1.5"
 $skillgate_old_v0 = git rev-parse refs/tags/v0
-git tag -a -f v0 "v0.1.4^{commit}" -m "SkillGate v0.1.4 compatibility channel"
+git tag -a -f v0 "v0.1.5^{commit}" -m "SkillGate v0.1.5 compatibility channel"
 git push --force-with-lease="refs/tags/v0:$skillgate_old_v0" origin refs/tags/v0:refs/tags/v0
-git ls-remote origin "refs/tags/v0^{}" "refs/tags/v0.1.4^{}"
+git ls-remote origin "refs/tags/v0^{}" "refs/tags/v0.1.5^{}"
 ```
 
 The two remote commit SHAs must match. The push updates only `v0`; the version
@@ -260,7 +260,7 @@ skillgate review preinstall examples\preinstall-starter --json-output test-outpu
 npx --yes --allow-git=root github:charliechenye/SkillGate#v0 -- scan .
 ```
 
-The installed version should print `0.1.4`, and the review packet must include
+The installed version should print `0.1.5`, and the review packet must include
 its digest and `schema_version: "2"`.
 
 In a test repository, verify README and `docs/examples/github-action-minimal.md`
@@ -299,7 +299,7 @@ Only then update README and `docs/node-wrapper.md` to promote bare
 
 Also verify:
 
-- GitHub shows the `v0.1.4` release and the `v0` tag.
+- GitHub shows the `v0.1.5` release and the `v0` tag.
 - README Action examples use `charliechenye/SkillGate@v0`.
 - README install instructions accurately distinguish the current GitHub-tag path
   from the PyPI `pipx install openevalgate-skillgate` path after publication.

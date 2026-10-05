@@ -1,8 +1,8 @@
 # Pinned Public Skill Acceptance
 
-Recorded October 4, 2026. Scanner metadata: `0.1.4` with the unreleased
-coverage, local/GitHub parity, and complete-filename fixes. This report records
-acceptance behavior, not a stable-release accuracy claim.
+Recorded October 4, 2026 with scanner version `0.1.5`. All checks were replayed
+in the release environment. This report records acceptance behavior; it does
+not measure detection accuracy.
 
 The [catalog](../../fixtures/public-skills/catalog.json) contains ten immutable
 skill inputs from two publishers. Each records a license location and digest,

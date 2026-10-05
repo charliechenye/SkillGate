@@ -5,7 +5,7 @@ maintainer already owns or intends to review. Participants have not been
 recruited. The owner must choose recipients and authorize invitations before
 any messages are sent.
 
-Allow 20 minutes per session. After `v0.1.5` is published, start with:
+Allow 20 minutes per session. Install `v0.1.5` and start with:
 
 ```bash
 python -m pip install "git+https://github.com/charliechenye/SkillGate.git@v0.1.5"
