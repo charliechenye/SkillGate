@@ -8,6 +8,56 @@ from collections import defaultdict
 
 XMLNS_RE = re.compile(r"\bxmlns(?::[\w.-]+)?\s*=\s*['\"]https?://[^'\"\s<>]+['\"]")
 URI_RE = re.compile(r"https?://[^\s]+\Z")
+XML_PARSERS = {
+    "xml.dom.minidom.parseString",
+    "xml.etree.ElementTree.fromstring",
+    "xml.etree.ElementTree.XML",
+    "xml.etree.ElementTree.register_namespace",
+    "lxml.etree.fromstring",
+    "lxml.etree.XML",
+    "lxml.etree.register_namespace",
+    "defusedxml.minidom.parseString",
+    "defusedxml.ElementTree.fromstring",
+    "defusedxml.ElementTree.XML",
+}
+
+
+def _dotted_name(node: ast.AST) -> str:
+    parts = []
+    while isinstance(node, ast.Attribute):
+        parts.append(node.attr)
+        node = node.value
+    if not isinstance(node, ast.Name):
+        return ""
+    return ".".join([node.id, *reversed(parts)])
+
+
+def _import_bindings(tree: ast.AST) -> dict[str, str]:
+    bindings: dict[str, set[str | None]] = defaultdict(set)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                local = alias.asname or alias.name.split(".")[0]
+                bindings[local].add(alias.name if alias.asname else local)
+        elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
+            for alias in node.names:
+                bindings[alias.asname or alias.name].add(f"{node.module}.{alias.name}")
+        elif isinstance(node, ast.Name | ast.Attribute) and isinstance(
+            node.ctx, ast.Store | ast.Del
+        ):
+            local = _dotted_name(node).split(".")[0]
+            bindings[local].add(None)
+        elif isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            bindings[node.name].add(None)
+        elif isinstance(node, ast.arg):
+            bindings[node.arg].add(None)
+        elif isinstance(node, ast.ExceptHandler) and node.name:
+            bindings[node.name].add(None)
+    return {
+        name: next(iter(paths))
+        for name, paths in bindings.items()
+        if len(paths) == 1 and None not in paths
+    }
 
 
 def without_xml_identifiers(text: str) -> str:
@@ -16,6 +66,13 @@ def without_xml_identifiers(text: str) -> str:
     except (SyntaxError, ValueError, RecursionError):
         return text
     parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
+    imports = _import_bindings(tree)
+
+    def is_xml_parser(node: ast.AST) -> bool:
+        name, dot, suffix = _dotted_name(node).partition(".")
+        imported = imports.get(name)
+        return imported is not None and imported + dot + suffix in XML_PARSERS
+
     loads: dict[str, list[ast.Name]] = defaultdict(list)
     for node in ast.walk(tree):
         if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
@@ -92,10 +149,7 @@ def without_xml_identifiers(text: str) -> str:
                 if isinstance(parent.func, ast.Attribute)
                 else getattr(parent.func, "id", "")
             )
-            if (
-                name in {"parseString", "fromstring", "XML", "register_namespace"}
-                and node in parent.args
-            ):
+            if is_xml_parser(parent.func) and node in parent.args:
                 return True
             if name == "setAttribute" and len(parent.args) == 2 and node is parent.args[1]:
                 attribute = parent.args[0]

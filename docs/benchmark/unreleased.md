@@ -4,8 +4,8 @@
 
 - Scanner version: `0.1.5`
 - Fixture root: `fixtures/benchmark`
-- Fixtures: 35
-- Passed: 35
+- Fixtures: 36
+- Passed: 36
 - Failed: 0
 
 ## Rule Coverage
@@ -14,7 +14,7 @@
 | --- | ---: | ---: | --- |
 | SG001 | 7 | 7 | covered |
 | SG002 | 2 | 2 | covered |
-| SG003 | 25 | 25 | covered |
+| SG003 | 26 | 26 | covered |
 | SG004 | 2 | 2 | covered |
 | SG005 | 7 | 7 | covered |
 | SG006 | 5 | 5 | covered |
@@ -67,6 +67,7 @@
 | `33-capability-syntax-positive` | **pass** | `SG003` | `SG003` | no |
 | `34-request-target-and-redirect` | **pass** | `SG003` | `SG003` | no |
 | `35-command-secret-redaction` | **pass** | `SG003, SG005` | `SG003, SG005` | no |
+| `36-xml-parser-alias` | **pass** | `SG003` | `SG003` | no |
 
 ## Reproduce
 

@@ -46,7 +46,8 @@ RULE_DOCS: tuple[RuleDoc, ...] = (
             "Request destinations take precedence over header and body URLs; multiple "
             "literal destinations are reported separately. Invalid or dynamic targets stay "
             "unknown. Python XML namespace and relationship identifiers require explicit "
-            "XML consumers; variable names alone never suppress URLs. XML xmlns attributes "
+            "XML consumers; parser functions must have unambiguous XML library imports. "
+            "Variable names alone never suppress URLs. XML xmlns attributes "
             "are identifiers. Ambiguous consumers and unparseable Python retain evidence."
         ),
         examples=("curl https://example.com", "requests.get(...)", "fetch(...)"),
