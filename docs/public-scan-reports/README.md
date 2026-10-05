@@ -10,6 +10,7 @@ maintainer shipped a vulnerability.
 
 Reports:
 
+- [Pinned public skill acceptance: ten immutable inputs](pinned-skills-acceptance.md)
 - [Clean documentation skill](clean-documentation-skill.md)
 - [Remote download review item](remote-download-review-item.md)
 - [Reviewable MCPB demo bundle](mcpb-reviewable-node.md)

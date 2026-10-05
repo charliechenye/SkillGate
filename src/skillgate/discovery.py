@@ -54,6 +54,7 @@ SEMANTIC_CONFIG_NAMES = {
 MCP_REGISTRY_NAMES = {"mcp-registry.json", "mcp-server.json", "server.json"}
 REFERENCE_RE = re.compile(
     r"""(?P<path>(?:\.{1,2}/)?[A-Za-z0-9_./\\-]+\.(?:sh|bash|py|js|ts|mjs|cjs|ps1))"""
+    r"(?![A-Za-z0-9_-]|\.[A-Za-z0-9])"
 )
 WRAPPED_REFERENCE_RE = re.compile(r"(?P<separator>[\\/])(?:[ \t]*\\)?[ \t]*\r?\n[ \t]*")
 REFERENCE_DIRS = ("scripts", "references", "assets")

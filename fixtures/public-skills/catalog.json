@@ -1,0 +1,850 @@
+{
+  "schema_version": 1,
+  "recorded_on": "2026-10-04",
+  "review_method": "Codex static source inspection; independent human adjudication pending",
+  "samples": [
+    {
+      "id": "vercel-find-skills",
+      "source_url": "https://github.com/vercel-labs/skills/tree/18f96ea131dab3b0fcc9b27cf7c6f6cbb6174680/skills/find-skills",
+      "license": {
+        "sha256": "661142e53c313d2bb5e1b055f5c0a39001450ff1b5e27b89dc4bc7de9a6352ca",
+        "id": "MIT",
+        "path": "LICENSE"
+      },
+      "review_note": "CLI instructions and public skill-directory URLs; flag arguments are not filesystem paths.",
+      "expected": {
+        "files": [
+          {
+            "path": "SKILL.md",
+            "sha256": "c00eeea0e13e74fe4a9d84ba0a8542205a1b736d65f13134fe1a6647eb14976f",
+            "size_bytes": 5472
+          }
+        ],
+        "skipped_files": [],
+        "coverage": "complete",
+        "validation_rule_ids": [],
+        "evidence": [
+          {
+            "type": "network_egress",
+            "resource": "skills.sh",
+            "source_file": "SKILL.md",
+            "source_line": 31
+          }
+        ]
+      }
+    },
+    {
+      "id": "anthropic-frontend-design",
+      "source_url": "https://github.com/anthropics/skills/tree/8a1541c4a3ffa5a20a5a91de0dcf3f0bab1d1ef4/skills/frontend-design",
+      "license": {
+        "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
+        "id": "Apache-2.0",
+        "path": "skills/frontend-design/LICENSE.txt"
+      },
+      "review_note": "Instruction-only design skill; generic writing advice can be noisy filesystem evidence.",
+      "expected": {
+        "files": [
+          {
+            "path": "SKILL.md",
+            "sha256": "d91970639e9f5c37682ac7ab60094d35f1c7c1f38d731bd56396563aee10c1d3",
+            "size_bytes": 9390
+          }
+        ],
+        "skipped_files": [
+          {
+            "path": "LICENSE.txt",
+            "reason": "unsupported_file"
+          }
+        ],
+        "coverage": "incomplete",
+        "validation_rule_ids": [],
+        "evidence": [
+          {
+            "type": "filesystem_write",
+            "resource": null,
+            "source_file": "SKILL.md",
+            "source_line": 53
+          }
+        ]
+      }
+    },
+    {
+      "id": "anthropic-brand-guidelines",
+      "source_url": "https://github.com/anthropics/skills/tree/8a1541c4a3ffa5a20a5a91de0dcf3f0bab1d1ef4/skills/brand-guidelines",
+      "license": {
+        "sha256": "bc6b3af2f331cbc7fb0da1344efb2cbe5877a31498b4d70dbc7000f3405a1362",
+        "id": "Apache-2.0",
+        "path": "skills/brand-guidelines/LICENSE.txt"
+      },
+      "review_note": "Instruction-only branding control with zero scanner findings.",
+      "expected": {
+        "files": [
+          {
+            "path": "SKILL.md",
+            "sha256": "1120b3769e2985cefb3d25be981b1f914abeba57ae079b83c20c666c164fa9fe",
+            "size_bytes": 2235
+          }
+        ],
+        "skipped_files": [
+          {
+            "path": "LICENSE.txt",
+            "reason": "unsupported_file"
+          }
+        ],
+        "coverage": "incomplete",
+        "validation_rule_ids": [],
+        "evidence": []
+      }
+    },
+    {
+      "id": "anthropic-theme-factory",
+      "source_url": "https://github.com/anthropics/skills/tree/8a1541c4a3ffa5a20a5a91de0dcf3f0bab1d1ef4/skills/theme-factory",
+      "license": {
+        "sha256": "bc6b3af2f331cbc7fb0da1344efb2cbe5877a31498b4d70dbc7000f3405a1362",
+        "id": "Apache-2.0",
+        "path": "skills/theme-factory/LICENSE.txt"
+      },
+      "review_note": "Unlinked Markdown references; PDF preview remains outside static coverage.",
+      "expected": {
+        "files": [
+          {
+            "path": "SKILL.md",
+            "sha256": "c35893e221e28895c52143cc11bf30e41a44817796b39d4b15727dadc9796552",
+            "size_bytes": 3124
+          },
+          {
+            "path": "themes/arctic-frost.md",
+            "sha256": "868a75a8fb5b2a61d0f0ab87c437fe632d3cbab6371c418f06aa2816ac109ae0",
+            "size_bytes": 544
+          },
+          {
+            "path": "themes/botanical-garden.md",
+            "sha256": "222cb8e7496abc9b75b29453c809fb9839e7e4b01fa45deecdd896b38d087765",
+            "size_bytes": 519
+          },
+          {
+            "path": "themes/desert-rose.md",
+            "sha256": "bd065b8629be3b64655183927e248e3d892a27b8d184b009cfba89c96102744f",
+            "size_bytes": 496
+          },
+          {
+            "path": "themes/forest-canopy.md",
+            "sha256": "ecb722efa24688e808b5bf323c334ca2349e989cfddd72ce8400ce5d4c4bd3e7",
+            "size_bytes": 506
+          },
+          {
+            "path": "themes/golden-hour.md",
+            "sha256": "3444a00df971d3c2f06b665e21a2e9eb5d7d7d6f6281f2758773b8345776a139",
+            "size_bytes": 528
+          },
+          {
+            "path": "themes/midnight-galaxy.md",
+            "sha256": "0e134c4c0324df41e34ac314269aa6829cd378cf3c304b31858d0cd158d2f944",
+            "size_bytes": 513
+          },
+          {
+            "path": "themes/modern-minimalist.md",
+            "sha256": "b8bc572b75948d4df69c401af703b9262ed6820a3ceb270da30a529e92763614",
+            "size_bytes": 549
+          },
+          {
+            "path": "themes/ocean-depths.md",
+            "sha256": "a7ad8eec85341dbfcb2665da827a4b6a4baee08ab3335ac02421f18e6b46b2e2",
+            "size_bytes": 555
+          },
+          {
+            "path": "themes/sunset-boulevard.md",
+            "sha256": "658af11ab04be4923692571081ffb42a428141ae537703117b9236d9f8ee22a3",
+            "size_bytes": 558
+          },
+          {
+            "path": "themes/tech-innovation.md",
+            "sha256": "183648163026dd5eeba3df5effa335b55ba333c3ee1fe215278605e55f40a52a",
+            "size_bytes": 547
+          }
+        ],
+        "skipped_files": [
+          {
+            "path": "LICENSE.txt",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "theme-showcase.pdf",
+            "reason": "unsupported_file"
+          }
+        ],
+        "coverage": "incomplete",
+        "validation_rule_ids": [],
+        "evidence": []
+      }
+    },
+    {
+      "id": "anthropic-algorithmic-art",
+      "source_url": "https://github.com/anthropics/skills/tree/8a1541c4a3ffa5a20a5a91de0dcf3f0bab1d1ef4/skills/algorithmic-art",
+      "license": {
+        "sha256": "bc6b3af2f331cbc7fb0da1344efb2cbe5877a31498b4d70dbc7000f3405a1362",
+        "id": "Apache-2.0",
+        "path": "skills/algorithmic-art/LICENSE.txt"
+      },
+      "review_note": "Bundled JavaScript and an external script URL; greater-than comparisons are known write-signal noise.",
+      "expected": {
+        "files": [
+          {
+            "path": "SKILL.md",
+            "sha256": "3bc4092c09804853186524c826bc0621b940bb6122c05b84496dff95388e6eef",
+            "size_bytes": 19769
+          },
+          {
+            "path": "templates/generator_template.js",
+            "sha256": "9ee0f1da52ef8f7bbfde1917123654880890d43f2d388642d71eab6dd78f94c4",
+            "size_bytes": 7826
+          }
+        ],
+        "skipped_files": [
+          {
+            "path": "LICENSE.txt",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "templates/viewer.html",
+            "reason": "unsupported_file"
+          }
+        ],
+        "coverage": "incomplete",
+        "validation_rule_ids": [
+          "SKILL009"
+        ],
+        "evidence": [
+          {
+            "type": "network_egress",
+            "resource": "cdnjs.cloudflare.com",
+            "source_file": "SKILL.md",
+            "source_line": 280
+          }
+        ]
+      }
+    },
+    {
+      "id": "anthropic-webapp-testing",
+      "source_url": "https://github.com/anthropics/skills/tree/8a1541c4a3ffa5a20a5a91de0dcf3f0bab1d1ef4/skills/webapp-testing",
+      "license": {
+        "sha256": "bc6b3af2f331cbc7fb0da1344efb2cbe5877a31498b4d70dbc7000f3405a1362",
+        "id": "Apache-2.0",
+        "path": "skills/webapp-testing/LICENSE.txt"
+      },
+      "review_note": "Bundled browser examples and shell-based server helper; list append operations are known write-signal noise.",
+      "expected": {
+        "files": [
+          {
+            "path": "SKILL.md",
+            "sha256": "51b7349e77ec63b7744a6f63647e7566a0b4d2e301121cc10e8c2113af6556a2",
+            "size_bytes": 3913
+          },
+          {
+            "path": "examples/console_logging.py",
+            "sha256": "ea46877289acb82da7e7ce59d0bc37c8977cd57e2a006d0c88d7a1c625bf95da",
+            "size_bytes": 1027
+          },
+          {
+            "path": "examples/element_discovery.py",
+            "sha256": "d63c89604a22f8845d724e95dda45db49b1bf57c25ce0a83afbb7b8da3d402f0",
+            "size_bytes": 1463
+          },
+          {
+            "path": "examples/static_html_automation.py",
+            "sha256": "9d533aafb875ee3ab8b8ebf8f5b9003ac8d999da3d09b285cce252e623140064",
+            "size_bytes": 953
+          },
+          {
+            "path": "scripts/with_server.py",
+            "sha256": "b0dcf4918935b795f4eda9821579b9902119235ff4447f687a30286e7d0925fd",
+            "size_bytes": 3693
+          }
+        ],
+        "skipped_files": [
+          {
+            "path": "LICENSE.txt",
+            "reason": "unsupported_file"
+          }
+        ],
+        "coverage": "incomplete",
+        "validation_rule_ids": [
+          "SKILL009"
+        ],
+        "evidence": [
+          {
+            "type": "shell_execution",
+            "resource": null,
+            "source_file": "scripts/with_server.py",
+            "source_line": 68
+          },
+          {
+            "type": "network_egress",
+            "resource": "localhost",
+            "source_file": "examples/element_discovery.py",
+            "source_line": 10
+          }
+        ]
+      }
+    },
+    {
+      "id": "anthropic-mcp-builder",
+      "source_url": "https://github.com/anthropics/skills/tree/8a1541c4a3ffa5a20a5a91de0dcf3f0bab1d1ef4/skills/mcp-builder",
+      "license": {
+        "sha256": "bc6b3af2f331cbc7fb0da1344efb2cbe5877a31498b4d70dbc7000f3405a1362",
+        "id": "Apache-2.0",
+        "path": "skills/mcp-builder/LICENSE.txt"
+      },
+      "review_note": "Reference code with network, secret, and cleanup examples; package and XML files remain coverage gaps.",
+      "expected": {
+        "files": [
+          {
+            "path": "SKILL.md",
+            "sha256": "0f4592dcb53cf2b5d6b7febee6b4152018b565551a1c29e3c612f57b218ab295",
+            "size_bytes": 9092
+          },
+          {
+            "path": "reference/evaluation.md",
+            "sha256": "8c99479f8a2d22a636c38e274537aac3610879e26f34e0709825077c4576f427",
+            "size_bytes": 21663
+          },
+          {
+            "path": "reference/mcp_best_practices.md",
+            "sha256": "80fb4369a349447cf18ecdd7494fe7938b6065377e9f08c077cec411093a3007",
+            "size_bytes": 7330
+          },
+          {
+            "path": "reference/node_mcp_server.md",
+            "sha256": "c3ba35a4f599dd53be9c6555ae72c19a7bf412cd5426576c2c08d42755482c66",
+            "size_bytes": 28550
+          },
+          {
+            "path": "reference/python_mcp_server.md",
+            "sha256": "2da52f77e675191014ca2e146a4b95aa04d0ca7dd7e2b100322df15ade685e80",
+            "size_bytes": 25099
+          },
+          {
+            "path": "scripts/connections.py",
+            "sha256": "9403668a2041568772082a8b334122c1f88daf0541fb393af4522d0094a47a6e",
+            "size_bytes": 4875
+          },
+          {
+            "path": "scripts/evaluation.py",
+            "sha256": "49ed1d17cdce5da101b210197740713f49b935c29d4f339542a14b132658e6f7",
+            "size_bytes": 12579
+          }
+        ],
+        "skipped_files": [
+          {
+            "path": "LICENSE.txt",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "scripts/example_evaluation.xml",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "scripts/requirements.txt",
+            "reason": "unsupported_file"
+          }
+        ],
+        "coverage": "incomplete",
+        "validation_rule_ids": [],
+        "evidence": [
+          {
+            "type": "destructive_action",
+            "resource": null,
+            "source_file": "reference/node_mcp_server.md",
+            "source_line": 541
+          }
+        ]
+      }
+    },
+    {
+      "id": "anthropic-skill-creator",
+      "source_url": "https://github.com/anthropics/skills/tree/8a1541c4a3ffa5a20a5a91de0dcf3f0bab1d1ef4/skills/skill-creator",
+      "license": {
+        "sha256": "bc6b3af2f331cbc7fb0da1344efb2cbe5877a31498b4d70dbc7000f3405a1362",
+        "id": "Apache-2.0",
+        "path": "skills/skill-creator/LICENSE.txt"
+      },
+      "review_note": "Nested helpers, API-key references, and generated JSON filenames; HTML assets remain coverage gaps.",
+      "expected": {
+        "files": [
+          {
+            "path": "SKILL.md",
+            "sha256": "dcd4803e61e913e6fc27294184cd3a71f09f5e924ff20c8a9a20173e7b3c2bcf",
+            "size_bytes": 33168
+          },
+          {
+            "path": "agents/analyzer.md",
+            "sha256": "bf68f4cac5a56c673a928c2e6d619586c5b93ea364026ab37547772cb45a663a",
+            "size_bytes": 10376
+          },
+          {
+            "path": "agents/comparator.md",
+            "sha256": "fe1fc9787c495d864c5d6eada47396478572325fde1b33a96d78bf4b849b7a3e",
+            "size_bytes": 7287
+          },
+          {
+            "path": "agents/grader.md",
+            "sha256": "57134da0c1a4eea33fbd74a1c9c44aa814f07d6bc64de303edb586f941e5d21a",
+            "size_bytes": 9049
+          },
+          {
+            "path": "eval-viewer/generate_review.py",
+            "sha256": "fc9d1b9243fe5ab6012ebd579bd76d0035de1b79fd3b969de114defab26478fb",
+            "size_bytes": 16365
+          },
+          {
+            "path": "references/schemas.md",
+            "sha256": "8e8876180a8989b406a4d3edddf875b04cdfd5805cc8616686d552b11ce4455f",
+            "size_bytes": 12061
+          },
+          {
+            "path": "scripts/__init__.py",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "size_bytes": 0
+          },
+          {
+            "path": "scripts/aggregate_benchmark.py",
+            "sha256": "123ef128ea5ccc01a4b1ac212ef5567f21e9c13d3d240609780beeb3200c49aa",
+            "size_bytes": 14386
+          },
+          {
+            "path": "scripts/generate_report.py",
+            "sha256": "13df7118a3c50c83c4c3250a606d5f2b20b25a3d44cbc392b3d669ec75281453",
+            "size_bytes": 12847
+          },
+          {
+            "path": "scripts/improve_description.py",
+            "sha256": "87d864570220b699fac52da309d2d6efdb060647bfebc74f768128e646accf80",
+            "size_bytes": 11116
+          },
+          {
+            "path": "scripts/package_skill.py",
+            "sha256": "1a33059b0db1ef73375d46d513e5ea81369d2e8838c970597b0d52ddef8d1c0f",
+            "size_bytes": 4234
+          },
+          {
+            "path": "scripts/quick_validate.py",
+            "sha256": "67cf5703402013936c8fb75ad6a1afecd8841d45cc5e606b634eb05825fde365",
+            "size_bytes": 3972
+          },
+          {
+            "path": "scripts/run_eval.py",
+            "sha256": "43e3b8f80dbf69c343967ba77e268fae991d9fa3ed68b32a0ff02532cd48657f",
+            "size_bytes": 11464
+          },
+          {
+            "path": "scripts/run_loop.py",
+            "sha256": "7bd6f674203168520517eec94c55f493c0d154339b061b4d7c0f0dad187d0f21",
+            "size_bytes": 13605
+          },
+          {
+            "path": "scripts/utils.py",
+            "sha256": "3af8ae62c40c73ab712207436a0d9a981e845f25c5a7040229eb189cc8e45bb1",
+            "size_bytes": 1661
+          }
+        ],
+        "skipped_files": [
+          {
+            "path": "LICENSE.txt",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "assets/eval_review.html",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "eval-viewer/viewer.html",
+            "reason": "unsupported_file"
+          }
+        ],
+        "coverage": "incomplete",
+        "validation_rule_ids": [
+          "SKILL009"
+        ],
+        "evidence": [
+          {
+            "type": "secret_access",
+            "resource": "ANTHROPIC_API_KEY",
+            "source_file": "scripts/improve_description.py",
+            "source_line": 5
+          }
+        ]
+      }
+    },
+    {
+      "id": "anthropic-pdf",
+      "source_url": "https://github.com/anthropics/skills/tree/8a1541c4a3ffa5a20a5a91de0dcf3f0bab1d1ef4/skills/pdf",
+      "license": {
+        "sha256": "79f6d8f5b427252fa3b1c11ecdbdb6bf610b944f7530b4de78f770f38741cfaa",
+        "id": "LicenseRef-Anthropic-Document-Skills",
+        "path": "skills/pdf/LICENSE.txt"
+      },
+      "review_note": "Delegation through two Markdown references and eight Python helpers; list append and error text are known noisy signals.",
+      "expected": {
+        "files": [
+          {
+            "path": "SKILL.md",
+            "sha256": "9f78b8359fbd4943ad260a7a1e436e5a96503406d6c34e99f69223d647d85b9c",
+            "size_bytes": 8072
+          },
+          {
+            "path": "forms.md",
+            "sha256": "9530b3f57034792e0242a3abfe8b3c296466329551916f2ff6c5a70db78f7e44",
+            "size_bytes": 11854
+          },
+          {
+            "path": "reference.md",
+            "sha256": "03a5f964f8abecbbe156f363356e927e864d7ee964f1012c84ee1bfc8acbeb95",
+            "size_bytes": 16692
+          },
+          {
+            "path": "scripts/check_bounding_boxes.py",
+            "sha256": "0ced522402dd7b3c82a0be9518cf4e485fa9cc0467d7beab6ddb04cb36fcc3e1",
+            "size_bytes": 2774
+          },
+          {
+            "path": "scripts/check_fillable_fields.py",
+            "sha256": "1fe10b9980a5493c9bbec8c20630c603eaa475b45403751c08f26738736647b8",
+            "size_bytes": 268
+          },
+          {
+            "path": "scripts/convert_pdf_to_images.py",
+            "sha256": "7f58e292a67e18a8ff000d30bad2469389546731f7e8a698cc1d0aed001ea15d",
+            "size_bytes": 1008
+          },
+          {
+            "path": "scripts/create_validation_image.py",
+            "sha256": "8fa9fd7962c9f940045b81cf6b991e7c1057c1838e3f9cc6d305007a222ffebf",
+            "size_bytes": 1258
+          },
+          {
+            "path": "scripts/extract_form_field_info.py",
+            "sha256": "bb235b36f497bbb1c7c6821cecf527bbba7213520de11219da99f7b13a38c109",
+            "size_bytes": 4300
+          },
+          {
+            "path": "scripts/extract_form_structure.py",
+            "sha256": "6814e3fe8f78c2b16d766c132b5a727ff7a31b71d76a7d46bd6e40fe50bc97c5",
+            "size_bytes": 3945
+          },
+          {
+            "path": "scripts/fill_fillable_fields.py",
+            "sha256": "d140872c2e92e41b1e05370ae8d270c5b7f5ebdf55d9905f03bc974a9c708ff5",
+            "size_bytes": 3819
+          },
+          {
+            "path": "scripts/fill_pdf_form_with_annotations.py",
+            "sha256": "8a56e063a49ed53c0b0e1d312ecf8023af76816ed139486ec3b539873de202fd",
+            "size_bytes": 3235
+          }
+        ],
+        "skipped_files": [
+          {
+            "path": "LICENSE.txt",
+            "reason": "unsupported_file"
+          }
+        ],
+        "coverage": "incomplete",
+        "validation_rule_ids": [],
+        "evidence": [
+          {
+            "type": "filesystem_write",
+            "resource": null,
+            "source_file": "SKILL.md",
+            "source_line": 43
+          }
+        ]
+      }
+    },
+    {
+      "id": "anthropic-docx",
+      "source_url": "https://github.com/anthropics/skills/tree/8a1541c4a3ffa5a20a5a91de0dcf3f0bab1d1ef4/skills/docx",
+      "license": {
+        "sha256": "79f6d8f5b427252fa3b1c11ecdbdb6bf610b944f7530b4de78f770f38741cfaa",
+        "id": "LicenseRef-Anthropic-Document-Skills",
+        "path": "skills/docx/LICENSE.txt"
+      },
+      "review_note": "Large helper tree and XML schemas; XML namespace URLs and list append operations are known noisy signals.",
+      "expected": {
+        "files": [
+          {
+            "path": "SKILL.md",
+            "sha256": "8017469ea95fb7d28225c62daf8e2f3492a7b516fc64c18c28977cbf8980b7fe",
+            "size_bytes": 6911
+          },
+          {
+            "path": "scripts/__init__.py",
+            "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+            "size_bytes": 1
+          },
+          {
+            "path": "scripts/accept_changes.py",
+            "sha256": "0c991d2bc7304a1248e9f3bf9b1498f0b6e76641fc457e7cbd73c99b4eef3a74",
+            "size_bytes": 4051
+          },
+          {
+            "path": "scripts/comment.py",
+            "sha256": "37d116e5f56bb142b208c6c6a4bbcf960495abf470ddb7c6675ccfac864ba3d7",
+            "size_bytes": 14054
+          },
+          {
+            "path": "scripts/merge_runs.py",
+            "sha256": "3ab367fd7fba4647943d0aa5e65203b15458551410f5ffc821d902616a4b9f40",
+            "size_bytes": 9398
+          },
+          {
+            "path": "scripts/office/helpers/__init__.py",
+            "sha256": "678e42456d9e10923c8b9a93691cdd993de3433448a184fa72a0c31f4ae086d5",
+            "size_bytes": 3358
+          },
+          {
+            "path": "scripts/office/helpers/pptx_chart.py",
+            "sha256": "47ac266f7d39d11ede6bb0d1f3a19d801394fd2964636f1b48beb701f1832964",
+            "size_bytes": 5862
+          },
+          {
+            "path": "scripts/office/helpers/pptx_slide.py",
+            "sha256": "7b9f69b4a5bd6a2d9eabf9e0e3e796d7a421373145f6a8cd11f60b7ba2d6a5d0",
+            "size_bytes": 1675
+          },
+          {
+            "path": "scripts/office/helpers/pptx_theme.py",
+            "sha256": "ebb54c56e9c13807f5f98f0cae22d47cdd0162da8525eaa664e3f2c8c8d6bb03",
+            "size_bytes": 3510
+          },
+          {
+            "path": "scripts/office/soffice.py",
+            "sha256": "df2c8d7249c132a4512d744482e4b5ed0ecbe885f0bcfb1295e7e6a7ced0432c",
+            "size_bytes": 5927
+          },
+          {
+            "path": "scripts/office/validate.py",
+            "sha256": "346a4c89d92fff55e610f11efda48c30228815b29bdb10b987e48f7af70acf1e",
+            "size_bytes": 6142
+          },
+          {
+            "path": "scripts/office/validators/__init__.py",
+            "sha256": "83e0f035c5abea238d3f2c3968afbd511ed022b527b7c9cb60a9434cc34ff987",
+            "size_bytes": 336
+          },
+          {
+            "path": "scripts/office/validators/base.py",
+            "sha256": "f818ea28c793ba42960fa4498265e2632a62c86f7b5d6aff6fa89dacc02d59ea",
+            "size_bytes": 33756
+          },
+          {
+            "path": "scripts/office/validators/docx.py",
+            "sha256": "93d3444c0ef3f043d21a2285c46d2cda478426b930dc33dcf3b11265935517b5",
+            "size_bytes": 17482
+          },
+          {
+            "path": "scripts/office/validators/pptx.py",
+            "sha256": "17eadad2b7a8374ccbe4cda45693bcd6a36f9d61a7d60f9c9ceef9464dec8299",
+            "size_bytes": 15966
+          },
+          {
+            "path": "scripts/office/validators/redlining.py",
+            "sha256": "ed50d0885eee4b9c387f546b059bcaed64086815880a5167336244f93e305123",
+            "size_bytes": 11231
+          }
+        ],
+        "skipped_files": [
+          {
+            "path": "LICENSE.txt",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "scripts/office/schemas/ISO-IEC29500-4_2016/dml-chart.xsd",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "scripts/office/schemas/ISO-IEC29500-4_2016/dml-chartDrawing.xsd",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "scripts/office/schemas/ISO-IEC29500-4_2016/dml-diagram.xsd",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "scripts/office/schemas/ISO-IEC29500-4_2016/dml-lockedCanvas.xsd",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "scripts/office/schemas/ISO-IEC29500-4_2016/dml-main.xsd",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "scripts/office/schemas/ISO-IEC29500-4_2016/dml-picture.xsd",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "scripts/office/schemas/ISO-IEC29500-4_2016/dml-spreadsheetDrawing.xsd",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "scripts/office/schemas/ISO-IEC29500-4_2016/dml-wordprocessingDrawing.xsd",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "scripts/office/schemas/ISO-IEC29500-4_2016/pml.xsd",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-additionalCharacteristics.xsd",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-bibliography.xsd",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-commonSimpleTypes.xsd",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-customXmlDataProperties.xsd",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-customXmlSchemaProperties.xsd",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-documentPropertiesCustom.xsd",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-documentPropertiesExtended.xsd",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-documentPropertiesVariantTypes.xsd",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-math.xsd",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "scripts/office/schemas/ISO-IEC29500-4_2016/shared-relationshipReference.xsd",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "scripts/office/schemas/ISO-IEC29500-4_2016/sml.xsd",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "scripts/office/schemas/ISO-IEC29500-4_2016/vml-main.xsd",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "scripts/office/schemas/ISO-IEC29500-4_2016/vml-officeDrawing.xsd",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "scripts/office/schemas/ISO-IEC29500-4_2016/vml-presentationDrawing.xsd",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "scripts/office/schemas/ISO-IEC29500-4_2016/vml-spreadsheetDrawing.xsd",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "scripts/office/schemas/ISO-IEC29500-4_2016/vml-wordprocessingDrawing.xsd",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "scripts/office/schemas/ISO-IEC29500-4_2016/wml.xsd",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "scripts/office/schemas/ISO-IEC29500-4_2016/xml.xsd",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "scripts/office/schemas/ecma/fouth-edition/opc-contentTypes.xsd",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "scripts/office/schemas/ecma/fouth-edition/opc-coreProperties.xsd",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "scripts/office/schemas/ecma/fouth-edition/opc-digSig.xsd",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "scripts/office/schemas/ecma/fouth-edition/opc-relationships.xsd",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "scripts/office/schemas/mce/mc.xsd",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "scripts/office/schemas/microsoft/wml-2010.xsd",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "scripts/office/schemas/microsoft/wml-2012.xsd",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "scripts/office/schemas/microsoft/wml-2018.xsd",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "scripts/office/schemas/microsoft/wml-cex-2018.xsd",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "scripts/office/schemas/microsoft/wml-cid-2016.xsd",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "scripts/office/schemas/microsoft/wml-sdtdatahash-2020.xsd",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "scripts/office/schemas/microsoft/wml-symex-2015.xsd",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "scripts/templates/comments.xml",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "scripts/templates/commentsExtended.xml",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "scripts/templates/commentsExtensible.xml",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "scripts/templates/commentsIds.xml",
+            "reason": "unsupported_file"
+          },
+          {
+            "path": "scripts/templates/people.xml",
+            "reason": "unsupported_file"
+          }
+        ],
+        "coverage": "incomplete",
+        "validation_rule_ids": [],
+        "evidence": [
+          {
+            "type": "shell_execution",
+            "resource": null,
+            "source_file": "SKILL.md",
+            "source_line": 39
+          }
+        ]
+      }
+    }
+  ]
+}

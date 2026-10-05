@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from skillgate.discovery import discover_paths, discover_preinstall_paths
+from skillgate.discovery import discover_paths, discover_preinstall_paths, referenced_scripts
 from skillgate.scan import scan_paths, scan_repository
 
 
@@ -121,6 +121,19 @@ def test_preinstall_discovery_extends_only_skill_bundles(tmp_path: Path) -> None
         "nested/second/SKILL.md",
         "skills/first/SKILL.md",
     ]
+
+
+def test_local_script_references_require_complete_filename_extensions(tmp_path: Path) -> None:
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    for name in ["run.sh", "evals.js", "app.js", "output.ps1"]:
+        (scripts / name).write_text("Static input.\n", encoding="utf-8")
+    source = tmp_path / "SKILL.md"
+    content = (
+        "Create scripts/evals.json, scripts/app.js.map, and scripts/output.ps1xml.\n"
+        "Run scripts/run.sh.\n"
+    )
+    assert referenced_scripts(tmp_path, source, content) == [scripts / "run.sh"]
 
 
 def test_preinstall_discovery_does_not_follow_directory_symlinks(tmp_path: Path) -> None:
