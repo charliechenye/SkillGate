@@ -195,3 +195,34 @@ def test_xml_namespace_attributes_do_not_mask_other_xml_urls() -> None:
         FileContent(path="helper.py", file_type="script", text=text)
     )
     assert {item.resource for item in result.capabilities} == {"upload.example.invalid"}
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        'command = "curl https://example.invalid/path"',
+        "command = 'curl https://example.invalid/path'",
+        "command = `curl https://example.invalid/path`",
+    ],
+)
+def test_shell_string_delimiters_keep_network_host(text: str) -> None:
+    result = NetworkEgressRule().analyze(FileContent("helper.js", "script", text))
+
+    assert {item.resource for item in result.capabilities} == {"example.invalid"}
+
+
+def test_escaped_shell_delimiter_keeps_network_host() -> None:
+    text = r'command = "curl \"https://example.invalid/path\""'
+
+    result = NetworkEgressRule().analyze(FileContent("helper.js", "script", text))
+
+    assert {item.resource for item in result.capabilities} == {"example.invalid"}
+
+
+def test_unterminated_escaped_shell_string_keeps_unknown_network_evidence() -> None:
+    text = '"curl ' + r"\a" * 1000
+
+    result = NetworkEgressRule().analyze(FileContent("helper.js", "script", text))
+
+    assert len(result.capabilities) == 1
+    assert result.capabilities[0].resource is None

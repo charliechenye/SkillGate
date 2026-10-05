@@ -65,7 +65,7 @@ NODE_FS_TARGET_RE = re.compile(
 TEE_TARGET_RE = re.compile(r"""(?i)\btee(?:\s+-a)?\s+(?P<target>[^\s|;&]+)""")
 REDIRECT_TARGET_RE = re.compile(r"""(?<![0-9])>\s*(?P<target>[A-Za-z0-9_./-]+)""")
 CAT_REDIRECT_TARGET_RE = re.compile(r"""(?i)cat\s+>\s*(?P<target>[^\s|;&]+)""")
-SHELL_STRING_RE = re.compile(r"""(['"`])(?P<command>(?:\\.|(?!\1).)*?)\1""")
+SHELL_STRING_RE = re.compile(r"""(['"`])(?P<command>(?:\\.|(?!\1)[^\\\n])*)\1""")
 POWERSHELL_WRITE_TARGET_RE = re.compile(
     r"""(?ix)\b(?:Out-File|Set-Content|Add-Content|New-Item)\b"""
     r""".*?-(?:FilePath|Path)\s+['"]?(?P<target>[A-Za-z0-9_./\\:-]+)['"]?"""
