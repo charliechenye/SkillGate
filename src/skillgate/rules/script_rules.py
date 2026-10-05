@@ -79,6 +79,16 @@ NETWORK_CALL_TARGET_RE = re.compile(
 NETWORK_COMMAND_RE = re.compile(
     r"""(?i)\b(?P<command>curl|wget|Invoke-WebRequest|Invoke-RestMethod|Start-BitsTransfer)\b"""
 )
+CURL_PROXY_OPTIONS = {
+    "-x",
+    "--proxy",
+    "--preproxy",
+    "--socks4",
+    "--socks4a",
+    "--socks5",
+    "--socks5-hostname",
+}
+CURL_PEER_OPTIONS = CURL_PROXY_OPTIONS | {"--connect-to", "--resolve"}
 NETWORK_OPTION_VALUES = {
     "-H",
     "--header",
@@ -106,10 +116,7 @@ NETWORK_OPTION_VALUES = {
     "--cookie",
     "-c",
     "--cookie-jar",
-    "-x",
-    "--proxy",
-    "--connect-to",
-    "--resolve",
+    "--noproxy",
     "--cacert",
     "--cert",
     "--key",
@@ -270,6 +277,7 @@ def _command_hosts(args: str, command: str) -> list[str | None]:
         return [None]
     hosts: list[str | None] = []
     skip_value = False
+    peer_option: str | None = None
     option_values = NETWORK_OPTION_VALUES | ({"-O"} if command.lower() == "wget" else set())
     powershell = command.lower() not in {"curl", "wget"}
     if powershell:
@@ -277,14 +285,26 @@ def _command_hosts(args: str, command: str) -> list[str | None]:
     for token in tokens:
         if token and token[0] in "|;&<>":
             break
+        if peer_option is not None:
+            hosts.extend(_connection_hosts(peer_option, token))
+            peer_option = None
+            continue
         if skip_value:
             skip_value = False
             continue
-        option, _, value = token.partition("=")
+        option, separator, value = token.partition("=")
+        if command.lower() == "curl" and token.startswith("-x") and token not in {"-x", "-x="}:
+            option, separator, value = "-x", "=", token[2:].removeprefix("=")
         if powershell:
             option = option.lower()
+        if command.lower() == "curl" and option in CURL_PEER_OPTIONS:
+            if separator:
+                hosts.extend(_connection_hosts(option, value))
+            else:
+                peer_option = option
+            continue
         if option in option_values:
-            skip_value = not bool(value)
+            skip_value = not bool(separator)
             continue
         if option.lower() in {"--url", "-uri", "-source"}:
             if value:
@@ -295,7 +315,28 @@ def _command_hosts(args: str, command: str) -> list[str | None]:
         host = host_from_token(token)
         if host is not None or "://" in token or token.startswith(("$", "@")):
             hosts.append(host)
+    if peer_option is not None:
+        hosts.append(None)
     return hosts or [None]
+
+
+def _connection_hosts(option: str, value: str) -> list[str | None]:
+    if option in CURL_PROXY_OPTIONS:
+        if not value:
+            return []
+        return [host_from_token(value if "://" in value else f"http://{value}")]
+    if option == "--connect-to":
+        match = re.fullmatch(
+            r"(?:\[[^\]]+\]|[^:]*):[0-9]*:(?P<host>\[[^\]]+\]|[^:]*):[0-9]*", value
+        )
+        if match is None:
+            return [None]
+        host = match["host"]
+        return [host_from_token(f"https://{host}")] if host else []
+    match = re.fullmatch(r"\+?(?:\[[^\]]+\]|[^:]+):[0-9]+:(?P<hosts>.+)", value)
+    if match is None:
+        return [None]
+    return [host_from_token(f"https://{host}") for host in match["hosts"].split(",")]
 
 
 def host_from_token(token: str) -> str | None:

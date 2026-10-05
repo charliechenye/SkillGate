@@ -76,7 +76,7 @@ def test_cli_fixtures_summary_json() -> None:
     assert result.exit_code == 0
     data = json.loads(result.output)
     assert data["summary"]["failed"] == 0
-    assert data["summary"]["fixtures"] == 36
+    assert data["summary"]["fixtures"] == 37
     assert all(item["status"] == "pass" for item in data["fixtures"])
 
 
