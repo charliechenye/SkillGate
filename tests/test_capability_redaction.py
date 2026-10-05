@@ -62,9 +62,32 @@ def test_nested_capability_details_are_redacted_without_changing_shape() -> None
         ('SERVICE_CREDENTIALS="credential value"', "SERVICE_CREDENTIALS=<redacted>"),
         ("GITHUB_TOKEN : abc", "GITHUB_TOKEN=<redacted>"),
         (
+            r"GITHUB_TOKEN=abc\ def curl https://example.invalid/data",
+            "GITHUB_TOKEN=<redacted> curl https://example.invalid/data",
+        ),
+        (r"API_KEY=one\ two\ three command", "API_KEY=<redacted> command"),
+        ('TOKEN=abc" def"ghi curl', "TOKEN=<redacted> curl"),
+        ("TOKEN='abc def'ghi curl", "TOKEN=<redacted> curl"),
+        ("TOKEN=abc'def ghi' curl", "TOKEN=<redacted> curl"),
+        ('TOKEN="abc def"ghi curl', "TOKEN=<redacted> curl"),
+        (
             'GITHUB_TOKEN="abc def" curl https://example.invalid/data',
             "GITHUB_TOKEN=<redacted> curl https://example.invalid/data",
         ),
+        ("TOKEN=abc;curl https://example.invalid", "TOKEN=<redacted>;curl https://example.invalid"),
+        (
+            "TOKEN=abc&&curl https://example.invalid",
+            "TOKEN=<redacted>&&curl https://example.invalid",
+        ),
+        (
+            "TOKEN=abc||curl https://example.invalid",
+            "TOKEN=<redacted>||curl https://example.invalid",
+        ),
+        ("TOKEN=abc|curl https://example.invalid", "TOKEN=<redacted>|curl https://example.invalid"),
+        ("TOKEN=abc&curl https://example.invalid", "TOKEN=<redacted>&curl https://example.invalid"),
+        ("TOKEN=abc>file", "TOKEN=<redacted>>file"),
+        ("TOKEN=abc>>file", "TOKEN=<redacted>>>file"),
+        ("TOKEN=abc<file", "TOKEN=<redacted><file"),
     ],
 )
 def test_secret_assignment_redaction_consumes_complete_values(command: str, expected: str) -> None:
@@ -80,6 +103,13 @@ def test_secret_assignment_redaction_handles_escaped_quotes() -> None:
     capability = make_capability("shell_execution", "helper.sh", 1, command=command)
 
     assert capability.details["command"] == "TOKEN=<redacted> curl https://example.invalid/data"
+
+
+@pytest.mark.parametrize("command", ['TOKEN="abc def', "TOKEN='abc def"])
+def test_unterminated_secret_quotes_are_redacted_without_crashing(command: str) -> None:
+    capability = make_capability("shell_execution", "helper.sh", 1, command=command)
+
+    assert capability.details["command"] == "TOKEN=<redacted>"
 
 
 @pytest.mark.parametrize(

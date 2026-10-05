@@ -34,6 +34,7 @@ SECRET_ASSIGNMENT_START_RE = re.compile(
     r"(?i)(?<![A-Z0-9_])(?P<name>[A-Z_][A-Z0-9_]*)[ \t]*[:=][ \t]*"
 )
 SECRET_NAME_PARTS = frozenset({"TOKEN", "SECRET", "KEY", "PASSWORD", "CREDENTIALS"})
+SHELL_WORD_OPERATORS = frozenset(";&|<>")
 
 
 def _is_secret_assignment_name(name: str) -> bool:
@@ -43,21 +44,36 @@ def _is_secret_assignment_name(name: str) -> bool:
 def _assignment_value_end(text: str, start: int) -> int | None:
     if start >= len(text):
         return None
-    quote = text[start]
-    if quote in {'"', "'"}:
-        index = start + 1
-        while index < len(text):
-            if text[index] == "\\":
-                index += 2
-            elif text[index] == quote:
-                return index + 1
-            else:
-                index += 1
-        return len(text)
-    if text[start].isspace() or text[start] in {'"', "'"}:
+    if text[start].isspace() or text[start] in SHELL_WORD_OPERATORS:
         return None
+
     index = start
-    while index < len(text) and not text[index].isspace() and text[index] not in {'"', "'"}:
+    state = "unquoted"
+    while index < len(text):
+        character = text[index]
+        if state == "unquoted":
+            if character.isspace() or character in SHELL_WORD_OPERATORS:
+                return index
+            if character == "\\":
+                if index + 1 >= len(text):
+                    return len(text)
+                index += 2
+                continue
+            if character == "'":
+                state = "single"
+            elif character == '"':
+                state = "double"
+        elif state == "single":
+            if character == "'":
+                state = "unquoted"
+        else:
+            if character == "\\":
+                if index + 1 >= len(text):
+                    return len(text)
+                index += 2
+                continue
+            if character == '"':
+                state = "unquoted"
         index += 1
     return index
 
