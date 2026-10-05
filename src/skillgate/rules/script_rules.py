@@ -47,15 +47,17 @@ SECRET_RE = re.compile(
     r"ANTHROPIC_API_KEY|AZURE_CLIENT_SECRET|GOOGLE_APPLICATION_CREDENTIALS|"
     r"~/.ssh/|~/.aws/|(?:^|[\s'\"/])\.env(?:$|[\s'\"/]))"
 )
+PY_WRITE_MODE = r"""['"][rwaxbt+]*[wax+][rwaxbt+]*['"]"""
 WRITE_RE = re.compile(
     r"(?i)(?:\b(?:write|overwrite)\b|(?<![.\w])append\b(?!\s*\()|"
-    r"open\s*\([^)]*['\"][wa]['\"]|"
+    rf"\bopen\s*\(\s*[^,\n)]+,\s*(?:mode\s*=\s*)?{PY_WRITE_MODE}|"
     r"Path\s*\([^)]*\)\.write_(?:text|bytes)\s*\(|"
     r"fs\.(?:promises\.)?(?:writeFile|appendFile|createWriteStream)|"
     r"\b(?:Out-File|Set-Content|Add-Content|New-Item)\b|\btee\b)"
 )
 PY_OPEN_TARGET_RE = re.compile(
-    r"""open\s*\(\s*['"](?P<target>[^'"]+)['"]\s*,\s*['"][^'"]*[wa][^'"]*['"]"""
+    r"""open\s*\(\s*(?:file\s*=\s*)?['"](?P<target>[^'"]+)['"]\s*,\s*"""
+    rf"(?:mode\s*=\s*)?{PY_WRITE_MODE}"
 )
 PATH_WRITE_TARGET_RE = re.compile(
     r"""Path\s*\(\s*['"](?P<target>[^'"]+)['"]\s*\)\.write_(?:text|bytes)\s*\("""

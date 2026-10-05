@@ -82,7 +82,8 @@ RULE_DOCS: tuple[RuleDoc, ...] = (
         severity="medium",
         capability="filesystem_write",
         description=(
-            "Detects likely filesystem writes in scripts and instructions. "
+            "Detects likely filesystem writes in scripts and instructions, including Python "
+            "binary, append, exclusive creation, and update modes (w/a/x/+). "
             "Collection append methods, source comparisons, Markdown blockquote markers, "
             "and installer argument placeholders are not write evidence. Fenced code uses "
             "its declared language. Python and JavaScript/TypeScript redirects require "

@@ -4,8 +4,8 @@
 
 - Scanner version: `0.1.5`
 - Fixture root: `fixtures/benchmark`
-- Fixtures: 37
-- Passed: 37
+- Fixtures: 38
+- Passed: 38
 - Failed: 0
 
 ## Rule Coverage
@@ -17,7 +17,7 @@
 | SG003 | 27 | 27 | covered |
 | SG004 | 2 | 2 | covered |
 | SG005 | 7 | 7 | covered |
-| SG006 | 7 | 7 | covered |
+| SG006 | 8 | 8 | covered |
 | SG007 | 3 | 3 | covered |
 | SG008 | 1 | 1 | covered |
 | SG009 | 12 | 12 | covered |
@@ -68,6 +68,7 @@
 | `34-request-target-and-redirect` | **pass** | `SG003, SG006` | `SG003, SG006` | no |
 | `35-command-secret-redaction` | **pass** | `SG003, SG005` | `SG003, SG005` | no |
 | `36-xml-parser-alias` | **pass** | `SG003` | `SG003` | no |
+| `37-python-write-modes` | **pass** | `SG006` | `SG006` | no |
 | `40-network-connection-peers` | **pass** | `SG003` | `SG003` | no |
 
 ## Reproduce
