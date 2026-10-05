@@ -56,17 +56,17 @@ WRITE_RE = re.compile(
     r"\b(?:Out-File|Set-Content|Add-Content|New-Item)\b|\btee\b)"
 )
 PY_OPEN_TARGET_RE = re.compile(
-    r"""open\s*\(\s*(?:file\s*=\s*)?['"](?P<target>[^'"]+)['"]\s*,\s*"""
+    r"""\bopen\s*\(\s*(?:file\s*=\s*)?(?P<target>.+?)\s*,\s*"""
     rf"(?:mode\s*=\s*)?{PY_WRITE_MODE}"
 )
 PATH_WRITE_TARGET_RE = re.compile(
-    r"""Path\s*\(\s*['"](?P<target>[^'"]+)['"]\s*\)\.write_(?:text|bytes)\s*\("""
+    r"""\bPath\s*\(\s*(?P<target>.*?)\s*\)\.write_(?:text|bytes)\s*\("""
 )
 NODE_FS_TARGET_RE = re.compile(
     r"""fs\.(?:promises\.)?(?:writeFile|appendFile|createWriteStream)\s*"""
-    r"""\(\s*['"](?P<target>[^'"]+)['"]"""
+    r"""\(\s*"""
 )
-TEE_TARGET_RE = re.compile(r"""(?i)\btee(?:\s+-a)?\s+(?P<target>[^\s|;&]+)""")
+TEE_TARGET_RE = re.compile(r"""(?i)\btee\s+(?P<args>[^|;&<>\n]+)""")
 REDIRECT_TARGET_RE = re.compile(
     r"""(?<![<=>])>{1,2}(?![=>])\s*(?P<target>"[^"\n]*"|'[^'\n]*'|`[^`\n]*`|[^\s|;&<>`]+)"""
 )
@@ -365,30 +365,59 @@ def host_from_token(token: str) -> str | None:
     return None
 
 
-def extract_write_target(line: str, fallback_match: re.Match[str]) -> str | None:
-    for pattern in [
-        PY_OPEN_TARGET_RE,
-        PATH_WRITE_TARGET_RE,
-        NODE_FS_TARGET_RE,
-    ]:
-        match = pattern.search(line)
-        if match:
-            return match.group("target").strip("'\"")
-    match = POWERSHELL_WRITE_TARGET_RE.search(line) or TEE_TARGET_RE.search(line) or fallback_match
-    target = match.groupdict().get("target")
-    if not target or target.startswith("-") or any(char in target for char in "$%{}*`"):
+def _file_target(value: object) -> str | None:
+    if not isinstance(value, str) or not value or "\x00" in value:
         return None
-    return target.strip("'\"")
+    # Parent traversal depends on runtime directories and symlinks. Never
+    # approve it by matching a literal prefix against a directory allowlist.
+    if ".." in value.replace("\\", "/").split("/"):
+        return None
+    return value
 
 
-def write_match(file: FileContent, text: str, *, markdown: bool = False) -> re.Match[str] | None:
-    match = WRITE_RE.search(text)
-    if match:
-        return match
+def _python_file_target(expression: str) -> str | None:
+    try:
+        value = ast.literal_eval(expression)
+    except (SyntaxError, ValueError, TypeError, RecursionError):
+        return None
+    return _file_target(value)
+
+
+def _shell_file_target(token: str) -> str | None:
+    if token.startswith("-") or any(char in token for char in "$%{}*`\\"):
+        return None
+    return _file_target(token.strip("'\""))
+
+
+def extract_write_targets(
+    file: FileContent, text: str, *, markdown: bool = False
+) -> list[str | None]:
+    targets: list[str | None] = []
+    for pattern in [PY_OPEN_TARGET_RE, PATH_WRITE_TARGET_RE]:
+        targets.extend(_python_file_target(match["target"]) for match in pattern.finditer(text))
+    for call in NODE_FS_TARGET_RE.finditer(text):
+        literal = SHELL_STRING_RE.match(text, call.end())
+        complete = literal is not None and text[literal.end() :].lstrip().startswith((",", ")"))
+        value = literal["command"] if complete else None
+        if value is not None and ("\\" in value or (literal[1] == "`" and "${" in value)):
+            value = None
+        targets.append(_file_target(value))
+
     candidates = [text]
     if PurePosixPath(file.path).suffix.lower() in SOURCE_LANGUAGE_SUFFIXES:
         candidates = process_shell_strings(text, PurePosixPath(file.path).suffix.lower())
     for candidate in candidates:
+        targets.extend(
+            _shell_file_target(match["target"])
+            for match in POWERSHELL_WRITE_TARGET_RE.finditer(candidate)
+        )
+        for match in TEE_TARGET_RE.finditer(candidate):
+            try:
+                tokens = shlex.split(match["args"])
+            except ValueError:
+                targets.append(None)
+                continue
+            targets.extend(_shell_file_target(token) for token in tokens if token != "-a")
         placeholders = (
             list(ANGLE_PLACEHOLDER_RE.finditer(candidate))
             if markdown or file.file_type == "markdown"
@@ -407,8 +436,10 @@ def write_match(file: FileContent, text: str, *, markdown: bool = False) -> re.M
                 for item in placeholders
             ):
                 continue
-            return match
-    return None
+            targets.append(_shell_file_target(match["target"]))
+    if not targets and WRITE_RE.search(text):
+        targets.append(None)
+    return list(dict.fromkeys(targets))
 
 
 def process_shell_strings(text: str, suffix: str) -> list[str]:
@@ -906,34 +937,11 @@ class FilesystemWriteRule:
     def analyze(self, file: FileContent) -> RuleResult:
         result = RuleResult()
         sections = script_sections(file)
-        physical = [
-            (section, offset + number, line)
+        views = [
+            (section, offset + number, line, line)
             for offset, section in sections
             for number, line in enumerate(section.text.splitlines(), start=1)
         ]
-        for section, number, line in physical:
-            match = write_match(section, line, markdown=file.file_type == "markdown")
-            if not match:
-                continue
-            target = extract_write_target(line, match)
-            result.findings.append(
-                make_finding(
-                    rule_id=self.rule_id,
-                    title=self.title,
-                    description="The file appears to write to the filesystem.",
-                    severity="medium",
-                    capability="filesystem_write",
-                    file_path=file.path,
-                    line_number=number,
-                    evidence=f"Target: {target}" if target else line,
-                    remediation="Constrain writes to policy-approved paths.",
-                )
-            )
-            result.capabilities.append(
-                make_capability(
-                    "filesystem_write", file.path, number, resource=target, command=line.strip()
-                )
-            )
         spans = [
             (offset, section, span)
             for offset, section in sections
@@ -947,30 +955,31 @@ class FilesystemWriteRule:
                 commands = process_shell_strings(span.text, PurePosixPath(section.path).suffix)
                 if not any(REDIRECT_TARGET_RE.search(command) for command in commands):
                     continue
-            match = write_match(section, span.text, markdown=file.file_type == "markdown")
-            if not match:
-                continue
-            target = extract_write_target(span.text, match)
-            result.findings.append(
-                make_finding(
-                    rule_id=self.rule_id,
-                    title=self.title,
-                    description="The file appears to write to the filesystem.",
-                    severity="medium",
-                    capability="filesystem_write",
-                    file_path=file.path,
-                    line_number=offset + span.start_line,
-                    evidence=f"Target: {target}" if target else span.evidence,
-                    remediation="Constrain writes to policy-approved paths.",
+            views.append((section, offset + span.start_line, span.text, span.evidence))
+        for section, number, text, evidence in views:
+            for target in extract_write_targets(
+                section, text, markdown=file.file_type == "markdown"
+            ):
+                result.findings.append(
+                    make_finding(
+                        rule_id=self.rule_id,
+                        title=self.title,
+                        description="The file appears to write to the filesystem.",
+                        severity="medium",
+                        capability="filesystem_write",
+                        file_path=file.path,
+                        line_number=number,
+                        evidence=f"Target: {target}" if target else evidence,
+                        remediation="Constrain writes to policy-approved paths.",
+                    )
                 )
-            )
-            result.capabilities.append(
-                make_capability(
-                    "filesystem_write",
-                    file.path,
-                    offset + span.start_line,
-                    resource=target,
-                    command=span.evidence.strip(),
+                result.capabilities.append(
+                    make_capability(
+                        "filesystem_write",
+                        file.path,
+                        number,
+                        resource=target,
+                        command=evidence.strip(),
+                    )
                 )
-            )
         return result

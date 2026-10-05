@@ -89,7 +89,9 @@ RULE_DOCS: tuple[RuleDoc, ...] = (
             "its declared language. Python and JavaScript/TypeScript redirects require "
             "shell command strings, including explicit shell executables; ordinary argv "
             "data is not redirection. Adjacent input/output redirects remain visible. "
-            "Uncertain shell targets stay unknown; literal file API paths are preserved."
+            "Every observed target on a line is reported. Python literal paths are decoded; "
+            "computed paths, uncertain escapes, and parent traversal stay unknown. "
+            "Ordinary literal file API paths are preserved."
         ),
         examples=("open('file', 'w')", "fs.writeFile(...)", "cat > output.txt"),
         remediation="Constrain writes to policy-approved paths.",
