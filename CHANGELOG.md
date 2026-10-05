@@ -4,11 +4,15 @@
 
 ### Added
 
+- Add ten pinned public skill acceptance samples, license and file digests,
+  an explicit opt-in network evaluator, and maintainer-pilot instructions.
 - Add explicit pre-install review coverage and an opt-in `--require-complete`
   gate, separate from finding severity, while retaining Review Packet v2.
 
 ### Fixed
 
+- Match complete script filename extensions, so example paths such as
+  `evals/evals.json` do not become missing `evals/evals.js` download targets.
 - Align local and GitHub pre-install skill review by scanning bundled Markdown
   and supported scripts below discovered `SKILL.md` directories, including
   unlinked files, while preserving ordinary scanner and baseline discovery.

@@ -142,6 +142,19 @@ def test_github_skill_review_preserves_missing_local_path_errors(monkeypatch) ->
         fetch_github_sparse(SOURCE)
 
 
+def test_github_skill_review_does_not_truncate_non_script_extensions(monkeypatch) -> None:
+    files, fetched = mock_skill_repository(monkeypatch)
+    files[f"{SKILL_PATH}/SKILL.md"] += (
+        "Create `evals/evals.json`, `assets/app.js.map`, and `reports/output.ps1xml`.\n"
+    )
+    sparse = fetch_github_sparse(SOURCE)
+    try:
+        assert not any("evals/evals.js" in path for path in fetched)
+        assert sparse.missing_references == []
+    finally:
+        sparse.cleanup()
+
+
 def test_github_skill_review_follows_existing_bare_filenames(monkeypatch) -> None:
     files, fetched = mock_skill_repository(monkeypatch)
     files[f"{SKILL_PATH}/SKILL.md"] += "Inspect `standalone.sh`.\n"
