@@ -4,7 +4,8 @@ import hashlib
 import json
 import os
 import re
-from pathlib import Path
+from collections.abc import Iterable
+from pathlib import Path, PurePosixPath
 
 from skillgate.models import ScannedFile
 
@@ -209,6 +210,34 @@ def discover_paths(root: Path) -> list[Path]:
         discovered.update(mcp_app_asset_paths(root, discovered))
     except OSError:
         pass
+    return sorted(discovered, key=lambda item: relative_path(root, item))
+
+
+def supporting_skill_paths(paths: Iterable[str]) -> list[str]:
+    """Select bundled Markdown and supported scripts below discovered skills."""
+    candidates = {PurePosixPath(path) for path in paths if not is_excluded(PurePosixPath(path))}
+    skill_roots = {path.parent for path in candidates if path.name == "SKILL.md"}
+    return sorted(
+        path.as_posix()
+        for path in candidates
+        if path.suffix.lower() in SCRIPT_EXTENSIONS | {".md"}
+        and any(parent in skill_roots for parent in path.parents)
+    )
+
+
+def discover_preinstall_paths(root: Path) -> list[Path]:
+    """Extend local pre-install discovery with the shared skill-bundle scope."""
+    root = root.resolve()
+    discovered = set(discover_paths(root))
+    paths: list[str] = []
+
+    def onerror(error: OSError) -> None:
+        raise error
+
+    for dirpath, dirnames, filenames in os.walk(root, onerror=onerror):
+        dirnames[:] = sorted(name for name in dirnames if name not in EXCLUDED_DIRS)
+        paths.extend((Path(dirpath) / name).relative_to(root).as_posix() for name in filenames)
+    discovered.update(root / path for path in supporting_skill_paths(paths))
     return sorted(discovered, key=lambda item: relative_path(root, item))
 
 

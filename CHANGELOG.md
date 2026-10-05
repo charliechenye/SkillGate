@@ -9,6 +9,9 @@
 
 ### Fixed
 
+- Align local and GitHub pre-install skill review by scanning bundled Markdown
+  and supported scripts below discovered `SKILL.md` directories, including
+  unlinked files, while preserving ordinary scanner and baseline discovery.
 - Require further review for empty, unsupported, or incomplete coverage even
   when no findings are produced. Account for local discovery omissions, MCPB
   unscanned members and entry points, and MCP Apps gaps; display zero counts.

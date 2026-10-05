@@ -45,6 +45,12 @@ selection. Every downloaded file is included in the static scan. Other file
 types remain in the skipped-file manifest; this is not complete coverage of
 arbitrary binaries or formats.
 
+Local `review preinstall PATH` uses the same selection for Markdown and
+supported scripts below discovered `SKILL.md` directories, including unlinked
+files. Ordinary `scan`, inventory, policy, and baseline discovery retain their
+existing scope. Review a directory to include its bundled files; an explicitly
+supplied file selects that file only.
+
 Bare names such as `Next.js` or `skills.sh` are treated as script references
 only when they match a file in the repository. Explicit local paths such as
 `scripts/install.sh` still produce an incomplete-scan error when missing.

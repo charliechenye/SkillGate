@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 import yaml
@@ -62,13 +63,55 @@ def test_github_skill_review_scans_bundled_files_without_execution(monkeypatch, 
     assert [item["path"] for item in report["scanned_files"]] == [
         "SKILL.md",
         "references/guide.md",
+        "references/unlinked.md",
+        "scripts/audit.py",
         "scripts/bootstrap.sh",
     ]
     assert sorted(fetched) == [
         f"{SKILL_PATH}/SKILL.md",
         f"{SKILL_PATH}/references/guide.md",
+        f"{SKILL_PATH}/references/unlinked.md",
+        f"{SKILL_PATH}/scripts/audit.py",
         f"{SKILL_PATH}/scripts/bootstrap.sh",
     ]
+
+
+def test_local_and_github_skill_review_select_the_same_bundled_files(
+    monkeypatch, tmp_path: Path
+) -> None:
+    files, _fetched = mock_skill_repository(monkeypatch)
+    local_root = tmp_path / "review-demo"
+    for remote_path, content in files.items():
+        if not remote_path.startswith(f"{SKILL_PATH}/"):
+            continue
+        path = local_root / remote_path.removeprefix(f"{SKILL_PATH}/")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+
+    packets = []
+    for source in [str(local_root), SOURCE]:
+        result = runner.invoke(app, ["review", "preinstall", source, "--format", "json"])
+        assert result.exit_code == 0, result.output
+        packets.append(json.loads(result.output))
+    local, github = packets
+    assert local["source_manifest"]["scanned_files"] == github["source_manifest"]["scanned_files"]
+    assert len(local["source_manifest"]["scanned_files"]) == 5
+    assert local["capabilities"] == github["capabilities"]
+    assert local["findings"] == github["findings"]
+    assert local["skills"]["findings"] == github["skills"]["findings"] == []
+    assert local["metadata"]["coverage"]["status"] == "incomplete"
+    assert local["source_manifest"]["skipped_files"] == [
+        {"path": "opaque.bin", "reason": "not_selected"}
+    ]
+
+    (local_root / "opaque.bin").unlink()
+    del files[f"{SKILL_PATH}/opaque.bin"]
+    for source in [str(local_root), SOURCE]:
+        result = runner.invoke(
+            app, ["review", "preinstall", source, "--require-complete", "--format", "json"]
+        )
+        assert result.exit_code == 0, result.output
+        assert json.loads(result.output)["metadata"]["coverage"]["status"] == "complete"
 
 
 @pytest.mark.parametrize("nested", [False, True])
