@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Fixed
+
+- Create missing output directories for `review summary` Markdown and JSON
+  files, including GitHub Action summary outputs. In `v0.1.5`, create nested
+  summary output directories before invoking the command or Action.
+
 ## 0.1.5 - Explicit review coverage
 
 Released 2026-10-04.

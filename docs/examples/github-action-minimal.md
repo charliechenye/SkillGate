@@ -4,6 +4,10 @@ These examples use the stable `charliechenye/SkillGate@v0` Action tag. Teams
 that require immutable Action references should pin a full commit SHA instead.
 SkillGate generates SARIF when `sarif-output` is supplied.
 
+The examples write to the existing repository root. In `v0.1.5`, create any
+nested directories before using them for `summary-output` or `json-output`.
+Automatic directory creation for these summary outputs is an unreleased fix.
+
 For pull requests, retain SARIF as an artifact so intentional demo and test
 findings remain reviewable without creating a blocking Code Scanning status.
 Publish SARIF to Code Scanning on protected branches or manual runs, or use the
