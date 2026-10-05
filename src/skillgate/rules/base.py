@@ -40,6 +40,18 @@ def redact_evidence(evidence: str) -> str:
     return evidence.strip()[:1000]
 
 
+def redact_details(value: object) -> object:
+    if isinstance(value, str):
+        return SECRET_ASSIGNMENT_RE.sub(r"\1=<redacted>", value)
+    if isinstance(value, dict):
+        return {key: redact_details(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [redact_details(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(redact_details(item) for item in value)
+    return value
+
+
 def finding_id(rule_id: str, path: str, line_number: int | None, evidence: str | None) -> str:
     seed = f"{rule_id}|{path}|{line_number or 0}|{evidence or ''}".encode()
     return f"{rule_id}-{hashlib.sha256(seed).hexdigest()[:12]}"
@@ -84,5 +96,7 @@ def make_capability(
         resource=resource,
         source_file=source_file,
         source_line=source_line,
-        details={key: details[key] for key in sorted(details) if details[key] is not None},
+        details={
+            key: redact_details(details[key]) for key in sorted(details) if details[key] is not None
+        },
     )
