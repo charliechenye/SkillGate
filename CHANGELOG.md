@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.1.5 - Explicit review coverage
+
+Released 2026-10-04.
+
 ### Added
 
 - Add ten pinned public skill acceptance samples, license and file digests,
@@ -19,6 +23,12 @@
 - Require further review for empty, unsupported, or incomplete coverage even
   when no findings are produced. Account for local discovery omissions, MCPB
   unscanned members and entry points, and MCP Apps gaps; display zero counts.
+
+### Changed
+
+- Bump Python and private Node wrapper metadata to `0.1.5`. GitHub tags and
+  checksummed release assets remain the supported distribution paths; `v0`
+  promotion follows versioned asset and installation verification.
 
 ## 0.1.4 - GitHub skill review and release hardening
 

@@ -3,8 +3,8 @@
 - Source: `<local>/05-remote-download-execute`
 - Kind: `local`
 - Decision: **review_required**
-- Tool version: `0.1.4`
-- Packet digest: `sha256:2c5bcccd2b47c17af8b34f3789723eb44c60d990b1a28a0c07e5ccd7e2b762e4`
+- Tool version: `0.1.5`
+- Packet digest: `sha256:8c3bb102b03a652672d023d55be27cd8aeb2c7ced0b8e09a9b0c070dd70ef2aa`
 
 ## Decision Summary
 

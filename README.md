@@ -9,7 +9,7 @@
 ![No runtime execution](https://img.shields.io/badge/runtime-no%20execution-green)
 ![Policy as code](https://img.shields.io/badge/policy-as%20code-purple)
 
-Current release: `v0.1.4` · Stable compatibility channel: `v0`
+Current release: `v0.1.5` · Stable compatibility channel: `v0`
 
 ![SkillGate social preview: static trust checks for AI-agent skills and MCP configurations](docs/assets/repo_image.png)
 
@@ -57,8 +57,7 @@ skillgate review schema --output skillgate-review.schema.json
 
 Coverage appears in `metadata.coverage` as `complete`, `incomplete`, `empty`,
 or `unsupported`. Zero findings with missing coverage requires further review.
-This coverage extension and `--require-complete` are unreleased; they are
-available on the development branch and are not included in `v0.1.4`.
+Coverage and `--require-complete` are available since `v0.1.5`.
 For an opt-in CI gate, combine coverage and finding thresholds:
 
 ```bash
@@ -221,7 +220,7 @@ Teams that require maximum reproducibility should pin the full commit SHA in
 install commands and GitHub Action references.
 
 GitHub installs require Python 3.11 or newer and `git` on the customer machine.
-PyPI publication is deferred for `0.1.4`. When it is intentionally revisited,
+PyPI publication is deferred for `0.1.5`. When it is intentionally revisited,
 the planned distribution name is `openevalgate-skillgate`:
 
 ```bash

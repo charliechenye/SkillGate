@@ -30,8 +30,7 @@ skillgate review schema --output skillgate-review.schema.json
 
 ### Review Coverage And Exit Codes
 
-This coverage extension and `--require-complete` are unreleased. Use a checkout
-of the development branch to try them; `v0.1.4` does not include them.
+Review coverage and `--require-complete` are available since `v0.1.5`.
 
 The packet's `metadata.coverage` records a status, scope, and deterministic
 reason list. Markdown includes the same coverage status and skipped paths.
