@@ -76,6 +76,13 @@ def evaluate_sample(sample: dict) -> dict:
                 )
                 for probe in expected["evidence"]
             ),
+            "absent_evidence": all(
+                not any(
+                    all(model_to_data(capability).get(key) == value for key, value in probe.items())
+                    for capability in remote.capabilities
+                )
+                for probe in expected.get("absent_evidence", [])
+            ),
         }
         return {
             "id": sample["id"],

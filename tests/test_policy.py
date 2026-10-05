@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import date
+from pathlib import Path
 
 import pytest
 import yaml
@@ -12,6 +13,55 @@ from skillgate.identity import finding_fingerprint
 from skillgate.policy import evaluate_policy, load_policy
 from skillgate.policy_schema import POLICY_JSON_SCHEMA
 from skillgate.scan import scan_repository
+
+
+@pytest.mark.parametrize(
+    ("filename", "text", "blocked"),
+    [
+        (
+            "SKILL.md",
+            'curl -H "Referer: https://allowed.example.invalid" https://upload.example.invalid/data\n',
+            True,
+        ),
+        (
+            "SKILL.md",
+            "curl https://allowed.example.invalid https://upload.example.invalid/data\n",
+            True,
+        ),
+        ("SKILL.md", "curl https://[HOST]/setup\n", True),
+        (
+            "helper.py",
+            'NS = {"api": "https://upload.example.invalid/data"}\nurlopen(NS["api"])\n',
+            True,
+        ),
+        (
+            "helper.py",
+            'requests.get(endpoint, headers={"Origin": "https://allowed.example.invalid"})\n',
+            True,
+        ),
+        ("helper.py", "requests.get('https://allowed.example.invalid')\n", False),
+    ],
+)
+def test_noise_filters_cannot_bypass_host_and_write_allowlists(
+    tmp_path: Path,
+    filename: str,
+    text: str,
+    blocked: bool,
+) -> None:
+    (tmp_path / "SKILL.md").write_text("Review `helper.py`.\n")
+    (tmp_path / filename).write_text(text)
+    report = scan_repository(tmp_path, format_aware=True)
+    result = evaluate_policy(
+        report,
+        {
+            "version": 1,
+            "policy": {
+                "network": {"allow": ["allowed.example.invalid"]},
+                "filesystem": {"write": []},
+            },
+        },
+    )
+    assert result.blocked is blocked
 
 
 def test_policy_reexports_waiver_helpers_for_compatibility() -> None:

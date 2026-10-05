@@ -7,6 +7,11 @@
 - Create missing output directories through the common report writer, including
   pre-install Markdown/JSON packets, scan reports, schemas, and review summaries.
   In `v0.1.5`, create nested output directories before invoking these commands.
+- Bind network hosts to request destinations instead of header/body URLs. Report
+  multiple literal destinations separately; keep dynamic and malformed URLs
+  unknown without aborting review. Variable names alone never suppress URLs.
+- Reduce `SG003` noise from XML identifiers with explicit XML consumers and
+  ordinary `got` prose. Retain request calls and uncertain consumers.
 
 ## 0.1.5 - Explicit review coverage
 
