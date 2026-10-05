@@ -30,19 +30,65 @@ class Rule(Protocol):
     def analyze(self, file: FileContent) -> RuleResult: ...
 
 
-SECRET_ASSIGNMENT_RE = re.compile(
-    r"(?i)\b([A-Z0-9_]*(?:TOKEN|SECRET|KEY|PASSWORD|CREDENTIALS)[A-Z0-9_]*)\s*[:=]\s*['\"]?[^'\"\s]+"
+SECRET_ASSIGNMENT_START_RE = re.compile(
+    r"(?i)(?<![A-Z0-9_])(?P<name>[A-Z_][A-Z0-9_]*)[ \t]*[:=][ \t]*"
 )
+SECRET_NAME_PARTS = frozenset({"TOKEN", "SECRET", "KEY", "PASSWORD", "CREDENTIALS"})
+
+
+def _is_secret_assignment_name(name: str) -> bool:
+    return any(part in SECRET_NAME_PARTS for part in name.upper().split("_"))
+
+
+def _assignment_value_end(text: str, start: int) -> int | None:
+    if start >= len(text):
+        return None
+    quote = text[start]
+    if quote in {'"', "'"}:
+        index = start + 1
+        while index < len(text):
+            if text[index] == "\\":
+                index += 2
+            elif text[index] == quote:
+                return index + 1
+            else:
+                index += 1
+        return len(text)
+    if text[start].isspace() or text[start] in {'"', "'"}:
+        return None
+    index = start
+    while index < len(text) and not text[index].isspace() and text[index] not in {'"', "'"}:
+        index += 1
+    return index
+
+
+def _redact_secret_assignments(text: str) -> str:
+    pieces: list[str] = []
+    cursor = 0
+    covered_until = 0
+    for match in SECRET_ASSIGNMENT_START_RE.finditer(text):
+        if match.start() < covered_until:
+            continue
+        if not _is_secret_assignment_name(match["name"]):
+            continue
+        value_end = _assignment_value_end(text, match.end())
+        if value_end is None:
+            continue
+        pieces.append(text[cursor : match.start()])
+        pieces.append(f"{match['name']}=<redacted>")
+        cursor = value_end
+        covered_until = value_end
+    return "".join((*pieces, text[cursor:]))
 
 
 def redact_evidence(evidence: str) -> str:
-    evidence = SECRET_ASSIGNMENT_RE.sub(r"\1=<redacted>", evidence)
+    evidence = _redact_secret_assignments(evidence)
     return evidence.strip()[:1000]
 
 
 def redact_details(value: object) -> object:
     if isinstance(value, str):
-        return SECRET_ASSIGNMENT_RE.sub(r"\1=<redacted>", value)
+        return _redact_secret_assignments(value)
     if isinstance(value, dict):
         return {key: redact_details(item) for key, item in value.items()}
     if isinstance(value, list):
