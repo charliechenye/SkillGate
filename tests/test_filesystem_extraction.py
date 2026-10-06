@@ -54,6 +54,41 @@ def test_python_read_modes_do_not_add_writes(arguments: str) -> None:
     assert result.capabilities == []
 
 
+@pytest.mark.parametrize(
+    "call",
+    [
+        'child_process.exec("echo hello > " + output)',
+        'child_process.execSync("echo hello > " + output)',
+        "child_process.exec(`echo hello > ${output}`)",
+        'child_process.spawn("echo", ["hello > " + output], {shell: true})',
+        'child_process.spawnSync("echo", ["hello > " + output], {shell: true})',
+    ],
+)
+def test_javascript_dynamic_shell_redirect_keeps_unknown_write(call: str) -> None:
+    result = FilesystemWriteRule().analyze(FileContent("helper.js", "script", call))
+
+    assert {item.resource for item in result.capabilities} == {None}
+
+
+def test_javascript_spawn_argv_data_is_not_a_shell_redirect() -> None:
+    text = 'child_process.spawn("echo", ["hello > " + output])'
+
+    assert (
+        FilesystemWriteRule().analyze(FileContent("helper.js", "script", text)).capabilities == []
+    )
+
+
+def test_javascript_dynamic_shell_redirect_cannot_bypass_filesystem_policy(tmp_path) -> None:
+    (tmp_path / "SKILL.md").write_text("Review `helper.js`.\n", encoding="utf-8")
+    (tmp_path / "helper.js").write_text(
+        'child_process.exec("echo hello > " + output)\n', encoding="utf-8"
+    )
+
+    report = scan_repository(tmp_path)
+
+    assert evaluate_policy(report, {"version": 1, "policy": {"filesystem": {"write": []}}}).blocked
+
+
 @pytest.mark.parametrize("format_aware", [False, True])
 def test_write_modes_cannot_bypass_filesystem_policy(format_aware: bool) -> None:
     report = scan_repository(FIXTURES / "37-python-write-modes", format_aware=format_aware)

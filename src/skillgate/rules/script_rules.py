@@ -492,31 +492,48 @@ def python_shell_strings(text: str) -> list[tuple[int, int, str]]:
     return commands
 
 
+def _javascript_shell_fragments(expression: str) -> list[str]:
+    literals = list(SHELL_STRING_RE.finditer(expression))
+    if not literals:
+        return []
+    fragments = []
+    for index, literal in enumerate(literals):
+        previous_end = literals[index - 1].end() if index else 0
+        next_start = literals[index + 1].start() if index + 1 < len(literals) else len(expression)
+        fragment = literal["command"]
+        if re.search(r"\+\s*$", expression[previous_end : literal.start()]):
+            fragment = "${unknown}" + fragment
+        if re.match(r"\s*\+", expression[literal.end() : next_start]):
+            fragment += "${unknown}"
+        fragments.append(fragment)
+    return fragments
+
+
 def process_shell_strings(text: str, suffix: str) -> list[str]:
     if suffix == ".py":
         return [command for _start, _end, command in python_shell_strings(text)]
     commands = []
     for call in PROCESS_CALL_RE.finditer(text):
-        literal = SHELL_STRING_RE.match(
-            text, call.end() + len(text[call.end() :]) - len(text[call.end() :].lstrip())
-        )
-        if not literal:
+        tail = text[call.end() :]
+        fragments = _javascript_shell_fragments(tail)
+        if not fragments:
             continue
+        literal = SHELL_STRING_RE.search(tail)
+        if literal is None:
+            continue
+        command = fragments[0]
         name = call[0].split("(")[0].strip()
+        after_first = tail[literal.end() :]
         if name in {"exec", "execSync", "system"}:
-            commands.append(literal["command"])
+            commands.append(command)
         elif name in {"spawn", "spawnSync"}:
-            if re.search(r"\bshell\s*:\s*true\b", text[literal.end() :]):
+            args = re.match(r"\s*,\s*\[(?P<argv>.*?)\]", after_first, re.DOTALL)
+            argv = [command] + [item["command"] for item in SHELL_STRING_RE.finditer(after_first)]
+            if re.search(r"\bshell\s*:\s*true\b", after_first):
                 # Node joins argv into the shell command when shell=true.
-                args = re.match(r"\s*,\s*\[(?P<argv>.*?)\]", text[literal.end() :], re.DOTALL)
-                commands.append(literal["command"])
+                commands.append(command)
                 if args:
-                    commands.extend(
-                        item["command"] for item in SHELL_STRING_RE.finditer(args["argv"])
-                    )
-            argv = [literal["command"]] + [
-                item["command"] for item in SHELL_STRING_RE.finditer(text[literal.end() :])
-            ]
+                    commands.extend(_javascript_shell_fragments(args["argv"]))
             commands.extend(_explicit_shell_command(argv))
     return commands
 
