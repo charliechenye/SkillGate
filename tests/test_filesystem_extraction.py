@@ -110,11 +110,53 @@ def test_javascript_call_boundary_respects_parenthesis_in_string() -> None:
     assert {item.resource for item in result.capabilities} == {"output.txt"}
 
 
-def test_javascript_dynamic_shell_redirect_cannot_bypass_filesystem_policy(tmp_path) -> None:
-    (tmp_path / "SKILL.md").write_text("Review `helper.js`.\n", encoding="utf-8")
-    (tmp_path / "helper.js").write_text(
-        'child_process.exec("echo hello > " + output)\n', encoding="utf-8"
+@pytest.mark.parametrize(
+    ("text", "target"),
+    [
+        ('child_process.exec(("echo hello > output.txt"))', "output.txt"),
+        ('child_process.exec((("echo hello > output.txt")))', "output.txt"),
+        ('child_process.exec(("echo hello > " + output))', None),
+        ("child_process.exec((`echo hello > ${output}`))", None),
+        (
+            'child_process.spawn("echo", (["hello > " + output]), {shell: true})',
+            None,
+        ),
+    ],
+)
+def test_javascript_grouped_shell_expressions_keep_write_evidence(
+    text: str, target: str | None
+) -> None:
+    result = FilesystemWriteRule().analyze(FileContent("helper.js", "script", text))
+
+    assert {item.resource for item in result.capabilities} == {target}
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        'child_process.exec((buildCommand("echo hello > harmless.txt")))',
+        'child_process.exec((command));\nconst example = "echo hello > harmless.txt";',
+        'child_process.spawn("echo", (["hello > " + output]))',
+    ],
+)
+def test_javascript_grouping_does_not_expand_unsupported_commands(text: str) -> None:
+    assert (
+        FilesystemWriteRule().analyze(FileContent("helper.js", "script", text)).capabilities == []
     )
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        'child_process.exec("echo hello > " + output)',
+        'child_process.exec(("echo hello > " + output))',
+    ],
+)
+def test_javascript_dynamic_shell_redirect_cannot_bypass_filesystem_policy(
+    tmp_path, command: str
+) -> None:
+    (tmp_path / "SKILL.md").write_text("Review `helper.js`.\n", encoding="utf-8")
+    (tmp_path / "helper.js").write_text(command + "\n", encoding="utf-8")
 
     report = scan_repository(tmp_path)
 

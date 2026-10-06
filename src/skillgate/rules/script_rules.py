@@ -513,6 +513,44 @@ def _javascript_shell_fragments(expression: str) -> list[str]:
     return fragments
 
 
+def _javascript_matching_close(text: str, open_index: int) -> int | None:
+    pairs = {")": "(", "]": "[", "}": "{"}
+    stack = [text[open_index]]
+    quote: str | None = None
+    escaped = False
+    for index in range(open_index + 1, len(text)):
+        char = text[index]
+        if quote is not None:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+            continue
+        if char in "'\"`":
+            quote = char
+        elif char in "([{":
+            stack.append(char)
+        elif char in pairs:
+            if not stack or stack[-1] != pairs[char]:
+                return None
+            stack.pop()
+            if not stack:
+                return index
+    return None
+
+
+def _strip_javascript_grouping(expression: str) -> str:
+    expression = expression.strip()
+    while expression.startswith("("):
+        close = _javascript_matching_close(expression, 0)
+        if close != len(expression) - 1:
+            break
+        expression = expression[1:close].strip()
+    return expression
+
+
 def _javascript_call_arguments(text: str, open_index: int) -> list[str] | None:
     pairs = {")": "(", "]": "[", "}": "{"}
     stack = ["("]
@@ -548,6 +586,7 @@ def _javascript_call_arguments(text: str, open_index: int) -> list[str] | None:
 
 
 def _javascript_argument_fragments(expression: str) -> list[str]:
+    expression = _strip_javascript_grouping(expression)
     array = re.fullmatch(r"\s*\[(?P<items>.*)\]\s*", expression, re.DOTALL)
     return _javascript_shell_fragments(array["items"] if array else expression)
 
