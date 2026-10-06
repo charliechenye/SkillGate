@@ -78,6 +78,38 @@ def test_javascript_spawn_argv_data_is_not_a_shell_redirect() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        'child_process.exec(command);\nconst example = "echo hello > harmless.txt";',
+        'child_process.exec(command);\ndoSomething("echo hello > harmless.txt");',
+        'child_process.spawn(command, args);\nconst example = "echo hello > harmless.txt";',
+        'child_process.spawn("echo", ["value > limit"]);\nconst config = {shell: true};',
+        'child_process.exec(buildCommand("echo hello > harmless.txt"))',
+    ],
+)
+def test_javascript_process_calls_do_not_consume_unrelated_strings(text: str) -> None:
+    assert (
+        FilesystemWriteRule().analyze(FileContent("helper.js", "script", text)).capabilities == []
+    )
+
+
+def test_javascript_literal_shell_write_stays_bound_to_call() -> None:
+    text = 'child_process.exec("echo hello > output.txt");\nconst unrelated = "something";'
+
+    result = FilesystemWriteRule().analyze(FileContent("helper.js", "script", text))
+
+    assert {item.resource for item in result.capabilities} == {"output.txt"}
+
+
+def test_javascript_call_boundary_respects_parenthesis_in_string() -> None:
+    text = "child_process.exec(\"echo ')' > output.txt\")"
+
+    result = FilesystemWriteRule().analyze(FileContent("helper.js", "script", text))
+
+    assert {item.resource for item in result.capabilities} == {"output.txt"}
+
+
 def test_javascript_dynamic_shell_redirect_cannot_bypass_filesystem_policy(tmp_path) -> None:
     (tmp_path / "SKILL.md").write_text("Review `helper.js`.\n", encoding="utf-8")
     (tmp_path / "helper.js").write_text(

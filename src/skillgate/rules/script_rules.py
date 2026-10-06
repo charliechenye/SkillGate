@@ -496,10 +496,14 @@ def _javascript_shell_fragments(expression: str) -> list[str]:
     literals = list(SHELL_STRING_RE.finditer(expression))
     if not literals:
         return []
+    if any(char in expression[: literals[0].start()] for char in "()[]{}"):
+        return []
     fragments = []
     for index, literal in enumerate(literals):
         previous_end = literals[index - 1].end() if index else 0
         next_start = literals[index + 1].start() if index + 1 < len(literals) else len(expression)
+        if any(char in expression[previous_end : literal.start()] for char in "()[]{}"):
+            continue
         fragment = literal["command"]
         if re.search(r"\+\s*$", expression[previous_end : literal.start()]):
             fragment = "${unknown}" + fragment
@@ -509,31 +513,73 @@ def _javascript_shell_fragments(expression: str) -> list[str]:
     return fragments
 
 
+def _javascript_call_arguments(text: str, open_index: int) -> list[str] | None:
+    pairs = {")": "(", "]": "[", "}": "{"}
+    stack = ["("]
+    arguments: list[str] = []
+    start = open_index + 1
+    quote: str | None = None
+    escaped = False
+    for index in range(start, len(text)):
+        char = text[index]
+        if quote is not None:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+            continue
+        if char in "'\"`":
+            quote = char
+        elif char in "([{":
+            stack.append(char)
+        elif char in pairs:
+            if not stack or stack[-1] != pairs[char]:
+                return None
+            stack.pop()
+            if not stack:
+                arguments.append(text[start:index])
+                return arguments
+        elif char == "," and len(stack) == 1:
+            arguments.append(text[start:index])
+            start = index + 1
+    return None
+
+
+def _javascript_argument_fragments(expression: str) -> list[str]:
+    array = re.fullmatch(r"\s*\[(?P<items>.*)\]\s*", expression, re.DOTALL)
+    return _javascript_shell_fragments(array["items"] if array else expression)
+
+
 def process_shell_strings(text: str, suffix: str) -> list[str]:
     if suffix == ".py":
         return [command for _start, _end, command in python_shell_strings(text)]
     commands = []
     for call in PROCESS_CALL_RE.finditer(text):
-        tail = text[call.end() :]
-        fragments = _javascript_shell_fragments(tail)
-        if not fragments:
+        arguments = _javascript_call_arguments(text, call.end() - 1)
+        if not arguments:
             continue
-        literal = SHELL_STRING_RE.search(tail)
-        if literal is None:
-            continue
-        command = fragments[0]
         name = call[0].split("(")[0].strip()
-        after_first = tail[literal.end() :]
+        executable = _javascript_argument_fragments(arguments[0])
+        if not executable:
+            continue
         if name in {"exec", "execSync", "system"}:
-            commands.append(command)
+            commands.extend(executable)
         elif name in {"spawn", "spawnSync"}:
-            args = re.match(r"\s*,\s*\[(?P<argv>.*?)\]", after_first, re.DOTALL)
-            argv = [command] + [item["command"] for item in SHELL_STRING_RE.finditer(after_first)]
-            if re.search(r"\bshell\s*:\s*true\b", after_first):
+            argv = executable + [
+                fragment
+                for argument in arguments[1:]
+                for fragment in _javascript_argument_fragments(argument)
+            ]
+            shell_true = any(
+                re.search(r"\bshell\s*:\s*true\b", argument) for argument in arguments[2:]
+            )
+            if shell_true:
                 # Node joins argv into the shell command when shell=true.
-                commands.append(command)
-                if args:
-                    commands.extend(_javascript_shell_fragments(args["argv"]))
+                commands.extend(executable)
+                if len(arguments) > 1:
+                    commands.extend(_javascript_argument_fragments(arguments[1]))
             commands.extend(_explicit_shell_command(argv))
     return commands
 
