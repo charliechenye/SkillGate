@@ -19,7 +19,7 @@ def test_collection_comparison_namespace_and_placeholder_syntax_stays_clean(
 
 
 @pytest.mark.parametrize("assignment", ["NS", "XML_NAMESPACES", "nsmap: dict[str, str]"])
-def test_namespace_masking_preserves_identical_request_url_and_source_lines(
+def test_unproven_namespace_receiver_keeps_namespace_and_request_evidence(
     assignment: str,
 ) -> None:
     file = FileContent(
@@ -34,7 +34,7 @@ def test_namespace_masking_preserves_identical_request_url_and_source_lines(
     )
     result = NetworkEgressRule().analyze(file)
 
-    assert {item.source_line for item in result.capabilities} == {3}
+    assert {item.source_line for item in result.capabilities} == {1, 3}
     assert {item.resource for item in result.capabilities} == {"xml.example.invalid"}
 
 

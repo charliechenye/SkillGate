@@ -6,7 +6,7 @@ from conftest import FIXTURES
 from skillgate.policy import evaluate_policy
 from skillgate.rules.base import FileContent
 from skillgate.rules.script_rules import NetworkEgressRule
-from skillgate.scan import scan_repository
+from skillgate.scan import scan_paths, scan_repository
 
 
 @pytest.mark.parametrize(
@@ -46,6 +46,50 @@ def test_import_bound_xml_parsers_remain_identifier_consumers(binding: str, call
     text = f'{binding}\nURI = "https://xml.example.invalid/document"\n{call}\n'
     result = NetworkEgressRule().analyze(FileContent("helper.py", "script", text))
     assert result.capabilities == []
+
+
+@pytest.mark.parametrize("method", ["findall", "xpath"])
+def test_generic_xml_looking_receiver_keeps_namespace_url(method: str) -> None:
+    text = (
+        'NS = {"doc": "https://upload.example.invalid/data"}\n'
+        f'client.{method}("doc:item", namespaces=NS)\n'
+    )
+    result = NetworkEgressRule().analyze(FileContent("helper.py", "script", text))
+
+    assert "upload.example.invalid" in {item.resource for item in result.capabilities}
+
+
+@pytest.mark.parametrize("attribute", ["Type", "xmlns:doc"])
+def test_generic_set_attribute_receiver_keeps_uri(attribute: str) -> None:
+    text = f'URI = "https://upload.example.invalid/data"\nclient.setAttribute("{attribute}", URI)\n'
+    result = NetworkEgressRule().analyze(FileContent("helper.py", "script", text))
+
+    assert "upload.example.invalid" in {item.resource for item in result.capabilities}
+
+
+def test_generic_get_attribute_receiver_keeps_uri() -> None:
+    text = (
+        'URI = "https://upload.example.invalid/data"\n'
+        'if client.getAttribute("Type") in URI:\n'
+        "    pass\n"
+    )
+    result = NetworkEgressRule().analyze(FileContent("helper.py", "script", text))
+
+    assert "upload.example.invalid" in {item.resource for item in result.capabilities}
+
+
+def test_generic_xml_looking_receiver_cannot_bypass_network_policy(tmp_path) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / "helper.py").write_text(
+        'NS = {"doc": "https://upload.example.invalid/data"}\n'
+        'client.findall("doc:item", namespaces=NS)\n',
+        encoding="utf-8",
+    )
+
+    report = scan_paths(root, [root / "helper.py"])
+
+    assert evaluate_policy(report, {"version": 1, "policy": {"network": {"allow": []}}}).blocked
 
 
 @pytest.mark.parametrize("format_aware", [False, True])

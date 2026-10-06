@@ -20,6 +20,16 @@ XML_PARSERS = {
     "defusedxml.ElementTree.fromstring",
     "defusedxml.ElementTree.XML",
 }
+XML_RECEIVER_CONSTRUCTORS = XML_PARSERS - {
+    "xml.etree.ElementTree.register_namespace",
+    "lxml.etree.register_namespace",
+} | {
+    "xml.etree.ElementTree.Element",
+    "xml.etree.ElementTree.ElementTree",
+    "xml.etree.ElementTree.SubElement",
+    "lxml.etree.Element",
+    "lxml.etree.SubElement",
+}
 
 
 def _dotted_name(node: ast.AST) -> str:
@@ -68,10 +78,39 @@ def without_xml_identifiers(text: str) -> str:
     parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
     imports = _import_bindings(tree)
 
-    def is_xml_parser(node: ast.AST) -> bool:
+    def imported_symbol_matches(node: ast.AST, symbols: set[str]) -> bool:
         name, dot, suffix = _dotted_name(node).partition(".")
         imported = imports.get(name)
-        return imported is not None and imported + dot + suffix in XML_PARSERS
+        return imported is not None and imported + dot + suffix in symbols
+
+    def is_xml_parser(node: ast.AST) -> bool:
+        return imported_symbol_matches(node, XML_PARSERS)
+
+    def is_xml_receiver_constructor(node: ast.AST) -> bool:
+        return imported_symbol_matches(node, XML_RECEIVER_CONSTRUCTORS)
+
+    stores: defaultdict[str, int] = defaultdict(int)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store | ast.Del):
+            stores[node.id] += 1
+        elif isinstance(node, ast.arg):
+            stores[node.arg] += 1
+
+    xml_receiver_names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign | ast.AnnAssign):
+            value = node.value
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            if not isinstance(value, ast.Call) or not is_xml_receiver_constructor(value.func):
+                continue
+            for target in targets:
+                if isinstance(target, ast.Name) and stores[target.id] == 1:
+                    xml_receiver_names.add(target.id)
+
+    def is_known_xml_receiver(node: ast.AST) -> bool:
+        return (isinstance(node, ast.Name) and node.id in xml_receiver_names) or (
+            isinstance(node, ast.Call) and is_xml_receiver_constructor(node.func)
+        )
 
     loads: dict[str, list[ast.Name]] = defaultdict(list)
     for node in ast.walk(tree):
@@ -142,6 +181,7 @@ def without_xml_identifiers(text: str) -> str:
                 and isinstance(call, ast.Call)
                 and isinstance(call.func, ast.Attribute)
                 and call.func.attr in {"find", "findall", "findtext", "xpath", "iterfind"}
+                and is_known_xml_receiver(call.func.value)
             )
         if isinstance(parent, ast.Call):
             name = (
@@ -154,13 +194,15 @@ def without_xml_identifiers(text: str) -> str:
             if name == "setAttribute" and len(parent.args) == 2 and node is parent.args[1]:
                 attribute = parent.args[0]
                 return (
-                    isinstance(attribute, ast.Constant)
+                    isinstance(parent.func, ast.Attribute)
+                    and is_known_xml_receiver(parent.func.value)
+                    and isinstance(attribute, ast.Constant)
                     and isinstance(attribute.value, str)
                     and (attribute.value == "Type" or attribute.value.startswith("xmlns"))
                 )
             if (
-                name == "join"
-                and isinstance(parent.func, ast.Attribute)
+                isinstance(parent.func, ast.Attribute)
+                and parent.func.attr == "join"
                 and isinstance(parent.func.value, ast.Constant)
                 and node in parent.args
             ):
@@ -174,6 +216,7 @@ def without_xml_identifiers(text: str) -> str:
                 and isinstance(left, ast.Call)
                 and isinstance(left.func, ast.Attribute)
                 and left.func.attr == "getAttribute"
+                and is_known_xml_receiver(left.func.value)
                 and len(left.args) == 1
                 and isinstance(left.args[0], ast.Constant)
                 and left.args[0].value == "Type"
