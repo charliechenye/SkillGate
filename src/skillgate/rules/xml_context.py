@@ -30,6 +30,7 @@ XML_RECEIVER_CONSTRUCTORS = XML_PARSERS - {
     "lxml.etree.Element",
     "lxml.etree.SubElement",
 }
+XML_RECEIVER_METHODS = {"createElement", "createElementNS"}
 
 
 def _dotted_name(node: ast.AST) -> str:
@@ -96,21 +97,38 @@ def without_xml_identifiers(text: str) -> str:
         elif isinstance(node, ast.arg):
             stores[node.arg] += 1
 
+    assignments = [node for node in ast.walk(tree) if isinstance(node, ast.Assign | ast.AnnAssign)]
     xml_receiver_names: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Assign | ast.AnnAssign):
-            value = node.value
-            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
-            if not isinstance(value, ast.Call) or not is_xml_receiver_constructor(value.func):
-                continue
-            for target in targets:
-                if isinstance(target, ast.Name) and stores[target.id] == 1:
-                    xml_receiver_names.add(target.id)
 
     def is_known_xml_receiver(node: ast.AST) -> bool:
         return (isinstance(node, ast.Name) and node.id in xml_receiver_names) or (
             isinstance(node, ast.Call) and is_xml_receiver_constructor(node.func)
         )
+
+    changed = True
+    while changed:
+        changed = False
+        for node in assignments:
+            value = node.value
+            if not isinstance(value, ast.Call):
+                continue
+            known_constructor = is_xml_receiver_constructor(value.func)
+            known_factory = (
+                isinstance(value.func, ast.Attribute)
+                and value.func.attr in XML_RECEIVER_METHODS
+                and is_known_xml_receiver(value.func.value)
+            )
+            if not known_constructor and not known_factory:
+                continue
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            for target in targets:
+                if (
+                    isinstance(target, ast.Name)
+                    and stores[target.id] == 1
+                    and target.id not in xml_receiver_names
+                ):
+                    xml_receiver_names.add(target.id)
+                    changed = True
 
     loads: dict[str, list[ast.Name]] = defaultdict(list)
     for node in ast.walk(tree):

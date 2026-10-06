@@ -92,6 +92,51 @@ def test_generic_xml_looking_receiver_cannot_bypass_network_policy(tmp_path) -> 
     assert evaluate_policy(report, {"version": 1, "policy": {"network": {"allow": []}}}).blocked
 
 
+@pytest.mark.parametrize(
+    "factory",
+    [
+        'document.createElement("Relationship")',
+        'document.createElementNS("urn:test", "Relationship")',
+    ],
+)
+def test_proven_xml_factory_result_suppresses_identifier(factory: str) -> None:
+    text = (
+        "import xml.dom.minidom\n"
+        'URI = "https://xml.example.invalid/relationships/comments"\n'
+        'document = xml.dom.minidom.parseString("<root/>")\n'
+        f"relationship = {factory}\n"
+        'relationship.setAttribute("Type", URI)\n'
+    )
+    result = NetworkEgressRule().analyze(FileContent("helper.py", "script", text))
+
+    assert result.capabilities == []
+
+
+def test_generic_xml_factory_receiver_keeps_uri() -> None:
+    text = (
+        'URI = "https://upload.example.invalid/data"\n'
+        'relationship = client.createElement("Relationship")\n'
+        'relationship.setAttribute("Type", URI)\n'
+    )
+    result = NetworkEgressRule().analyze(FileContent("helper.py", "script", text))
+
+    assert "upload.example.invalid" in {item.resource for item in result.capabilities}
+
+
+def test_reassigned_xml_factory_result_keeps_uri() -> None:
+    text = (
+        "import xml.dom.minidom\n"
+        'URI = "https://upload.example.invalid/data"\n'
+        'document = xml.dom.minidom.parseString("<root/>")\n'
+        'relationship = document.createElement("Relationship")\n'
+        "relationship = client\n"
+        'relationship.setAttribute("Type", URI)\n'
+    )
+    result = NetworkEgressRule().analyze(FileContent("helper.py", "script", text))
+
+    assert "upload.example.invalid" in {item.resource for item in result.capabilities}
+
+
 @pytest.mark.parametrize("format_aware", [False, True])
 def test_aliased_network_call_is_blocked_by_network_policy(format_aware: bool) -> None:
     report = scan_repository(FIXTURES / "36-xml-parser-alias", format_aware=format_aware)
