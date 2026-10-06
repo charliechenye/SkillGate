@@ -2,7 +2,8 @@
 
 `catalog.json` records ten public Agent Skills at immutable commits, with
 license locations and digests, expected supported-file hashes, explicit skipped
-paths, validation results, and selected static evidence. It stores metadata;
+paths, validation results, selected static evidence, and known signals that must
+remain absent after rule fixes. It stores metadata;
 upstream source and license text are not vendored.
 
 These samples cover instruction-only skills, delegated Markdown, unlinked
@@ -30,6 +31,13 @@ The ordinary test suite remains offline. It verifies the catalog contract and
 the acceptance tool with authored input. Reduced layout and filename fixtures
 live in `fixtures/github-review`; changes to real observations should also get
 a focused offline regression when they alter scanner behavior.
+
+`expected.evidence` records capabilities that must remain visible;
+`expected.absent_evidence` records known misclassifications that must stay absent.
+Each probe matches its listed capability fields. Six negative probes cover the
+reproduced list appends, comparison, namespace map, installer placeholder, and
+error-message prose. These are selected regression expectations, not complete
+human-reviewed labels for each artifact.
 
 Codex inspected the source evidence and selected probes. Independent human
 adjudication is pending. Finding counts describe current behavior and include

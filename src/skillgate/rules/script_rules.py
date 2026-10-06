@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import ast
 import re
 import shlex
+import textwrap
 from collections import Counter
 from pathlib import PurePosixPath
 from urllib.parse import urlparse
@@ -45,27 +47,35 @@ SECRET_RE = re.compile(
     r"ANTHROPIC_API_KEY|AZURE_CLIENT_SECRET|GOOGLE_APPLICATION_CREDENTIALS|"
     r"~/.ssh/|~/.aws/|(?:^|[\s'\"/])\.env(?:$|[\s'\"/]))"
 )
+PY_WRITE_MODE = r"""['"][rwaxbt+]*[wax+][rwaxbt+]*['"]"""
 WRITE_RE = re.compile(
-    r"(?i)(?:\b(?:write|append|overwrite)\b|open\s*\([^)]*['\"][wa]['\"]|"
+    r"(?i)(?:\b(?:write|overwrite)\b|(?<![.\w])append\b(?!\s*\()|"
+    rf"\bopen\s*\(\s*[^,\n)]+,\s*(?:mode\s*=\s*)?{PY_WRITE_MODE}|"
     r"Path\s*\([^)]*\)\.write_(?:text|bytes)\s*\(|"
     r"fs\.(?:promises\.)?(?:writeFile|appendFile|createWriteStream)|"
-    r"\b(?:Out-File|Set-Content|Add-Content|New-Item)\b|\btee\b|"
-    r"cat\s+>\s*([^\s]+)|>\s*([A-Za-z0-9_./-]+))"
+    r"\b(?:Out-File|Set-Content|Add-Content|New-Item)\b|\btee\b)"
 )
 PY_OPEN_TARGET_RE = re.compile(
-    r"""open\s*\(\s*['"](?P<target>[^'"]+)['"]\s*,\s*['"][^'"]*[wa][^'"]*['"]"""
+    r"""\bopen\s*\(\s*(?:file\s*=\s*)?(?P<target>.+?)\s*,\s*"""
+    rf"(?:mode\s*=\s*)?{PY_WRITE_MODE}"
 )
 PATH_WRITE_TARGET_RE = re.compile(
-    r"""Path\s*\(\s*['"](?P<target>[^'"]+)['"]\s*\)\.write_(?:text|bytes)\s*\("""
+    r"""\bPath\s*\(\s*(?P<target>.*?)\s*\)\.write_(?:text|bytes)\s*\("""
 )
 NODE_FS_TARGET_RE = re.compile(
     r"""fs\.(?:promises\.)?(?:writeFile|appendFile|createWriteStream)\s*"""
-    r"""\(\s*['"](?P<target>[^'"]+)['"]"""
+    r"""\(\s*"""
 )
-TEE_TARGET_RE = re.compile(r"""(?i)\btee(?:\s+-a)?\s+(?P<target>[^\s|;&]+)""")
-REDIRECT_TARGET_RE = re.compile(r"""(?<![0-9])>\s*(?P<target>[A-Za-z0-9_./-]+)""")
-CAT_REDIRECT_TARGET_RE = re.compile(r"""(?i)cat\s+>\s*(?P<target>[^\s|;&]+)""")
+TEE_TARGET_RE = re.compile(r"""(?i)\btee\s+(?P<args>[^|;&<>\n]+)""")
+REDIRECT_TARGET_RE = re.compile(
+    r"""(?<![<=>])>{1,2}(?![=>])\s*(?P<target>"[^"\n]*"|'[^'\n]*'|`[^`\n]*`|[^\s|;&<>`]+)"""
+)
 SHELL_STRING_RE = re.compile(r"""(['"`])(?P<command>(?:\\.|(?!\1)[^\\\n])*)\1""")
+PROCESS_CALL_RE = re.compile(
+    r"\b(?:exec|execSync|spawn|spawnSync|run|call|check_call|check_output|Popen|system)\s*\("
+)
+ANGLE_PLACEHOLDER_RE = re.compile(r"<[^<>\s]+>")
+SOURCE_LANGUAGE_SUFFIXES = {".py", ".js", ".ts", ".mjs", ".cjs", ".html", ".xml"}
 POWERSHELL_WRITE_TARGET_RE = re.compile(
     r"""(?ix)\b(?:Out-File|Set-Content|Add-Content|New-Item)\b"""
     r""".*?-(?:FilePath|Path)\s+['"]?(?P<target>[A-Za-z0-9_./\\:-]+)['"]?"""
@@ -355,20 +365,300 @@ def host_from_token(token: str) -> str | None:
     return None
 
 
-def extract_write_target(line: str, fallback_match: re.Match[str]) -> str | None:
-    for pattern in [
-        PY_OPEN_TARGET_RE,
-        PATH_WRITE_TARGET_RE,
-        NODE_FS_TARGET_RE,
-        CAT_REDIRECT_TARGET_RE,
-        POWERSHELL_WRITE_TARGET_RE,
-        TEE_TARGET_RE,
-        REDIRECT_TARGET_RE,
-    ]:
-        match = pattern.search(line)
-        if match:
-            return match.group("target").strip("'\"")
-    return next((group for group in fallback_match.groups() if group), None)
+def _file_target(value: object) -> str | None:
+    if not isinstance(value, str) or not value or "\x00" in value:
+        return None
+    # Parent traversal depends on runtime directories and symlinks. Never
+    # approve it by matching a literal prefix against a directory allowlist.
+    if ".." in value.replace("\\", "/").split("/"):
+        return None
+    return value
+
+
+def _python_file_target(expression: str) -> str | None:
+    try:
+        value = ast.literal_eval(expression)
+    except (SyntaxError, ValueError, TypeError, RecursionError):
+        return None
+    return _file_target(value)
+
+
+def _shell_file_target(token: str) -> str | None:
+    if token.startswith("-") or any(char in token for char in "$%{}*`\\"):
+        return None
+    return _file_target(token.strip("'\""))
+
+
+def extract_write_targets(
+    file: FileContent, text: str, *, markdown: bool = False
+) -> list[str | None]:
+    targets: list[str | None] = []
+    for pattern in [PY_OPEN_TARGET_RE, PATH_WRITE_TARGET_RE]:
+        targets.extend(_python_file_target(match["target"]) for match in pattern.finditer(text))
+    for call in NODE_FS_TARGET_RE.finditer(text):
+        literal = SHELL_STRING_RE.match(text, call.end())
+        complete = literal is not None and text[literal.end() :].lstrip().startswith((",", ")"))
+        value = literal["command"] if complete else None
+        if value is not None and ("\\" in value or (literal[1] == "`" and "${" in value)):
+            value = None
+        targets.append(_file_target(value))
+
+    candidates = [text]
+    if PurePosixPath(file.path).suffix.lower() in SOURCE_LANGUAGE_SUFFIXES:
+        candidates = process_shell_strings(text, PurePosixPath(file.path).suffix.lower())
+    for candidate in candidates:
+        targets.extend(
+            _shell_file_target(match["target"])
+            for match in POWERSHELL_WRITE_TARGET_RE.finditer(candidate)
+        )
+        for match in TEE_TARGET_RE.finditer(candidate):
+            try:
+                tokens = shlex.split(match["args"])
+            except ValueError:
+                targets.append(None)
+                continue
+            targets.extend(_shell_file_target(token) for token in tokens if token != "-a")
+        placeholders = (
+            list(ANGLE_PLACEHOLDER_RE.finditer(candidate))
+            if markdown or file.file_type == "markdown"
+            else []
+        )
+        for match in REDIRECT_TARGET_RE.finditer(candidate):
+            if any(
+                item.start() <= match.start() < item.end()
+                and (item.start() == 0 or candidate[item.start() - 1].isspace())
+                and (
+                    not candidate[item.end() :].strip()
+                    or candidate[item.end() :].lstrip().startswith("-")
+                    or candidate[item.end() :].startswith(("`", "]"))
+                )
+                and re.search(r"\b(?:npx|npm|pnpm|yarn|uvx|skills)\b", candidate[: item.start()])
+                for item in placeholders
+            ):
+                continue
+            targets.append(_shell_file_target(match["target"]))
+    if not targets and WRITE_RE.search(text):
+        targets.append(None)
+    return list(dict.fromkeys(targets))
+
+
+def python_shell_strings(text: str) -> list[tuple[int, int, str]]:
+    try:
+        tree = ast.parse(textwrap.dedent(text))
+    except (SyntaxError, ValueError, RecursionError):
+        return []
+    commands = []
+    for call in ast.walk(tree):
+        if not isinstance(call, ast.Call):
+            continue
+        name = (
+            call.func.attr if isinstance(call.func, ast.Attribute) else getattr(call.func, "id", "")
+        )
+        if name not in {
+            "run",
+            "call",
+            "check_call",
+            "check_output",
+            "Popen",
+            "system",
+            "getoutput",
+            "getstatusoutput",
+        }:
+            continue
+        shell = next((item.value for item in call.keywords if item.arg == "shell"), None)
+        uses_shell = name in {"system", "getoutput", "getstatusoutput"} or (
+            shell is not None and not (isinstance(shell, ast.Constant) and not shell.value)
+        )
+        argument = (
+            call.args[0]
+            if call.args
+            else next((item.value for item in call.keywords if item.arg == "args"), None)
+        )
+        if argument is None:
+            continue
+        call_commands = []
+        command = _python_command_string(argument)
+        if command is not None:
+            if uses_shell:
+                call_commands.append(command)
+        elif isinstance(argument, ast.List | ast.Tuple):
+            argv = [_python_command_string(item) for item in argument.elts]
+            if argv and uses_shell and argv[0]:
+                call_commands.append(argv[0])
+            call_commands.extend(_explicit_shell_command(argv))
+        commands.extend(
+            (call.lineno, call.end_lineno or call.lineno, command) for command in call_commands
+        )
+    return commands
+
+
+def _javascript_shell_fragments(expression: str) -> list[str]:
+    literals = list(SHELL_STRING_RE.finditer(expression))
+    if not literals:
+        return []
+    if any(char in expression[: literals[0].start()] for char in "()[]{}"):
+        return []
+    fragments = []
+    for index, literal in enumerate(literals):
+        previous_end = literals[index - 1].end() if index else 0
+        next_start = literals[index + 1].start() if index + 1 < len(literals) else len(expression)
+        if any(char in expression[previous_end : literal.start()] for char in "()[]{}"):
+            continue
+        fragment = literal["command"]
+        if re.search(r"\+\s*$", expression[previous_end : literal.start()]):
+            fragment = "${unknown}" + fragment
+        if re.match(r"\s*\+", expression[literal.end() : next_start]):
+            fragment += "${unknown}"
+        fragments.append(fragment)
+    return fragments
+
+
+def _javascript_matching_close(text: str, open_index: int) -> int | None:
+    pairs = {")": "(", "]": "[", "}": "{"}
+    stack = [text[open_index]]
+    quote: str | None = None
+    escaped = False
+    for index in range(open_index + 1, len(text)):
+        char = text[index]
+        if quote is not None:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+            continue
+        if char in "'\"`":
+            quote = char
+        elif char in "([{":
+            stack.append(char)
+        elif char in pairs:
+            if not stack or stack[-1] != pairs[char]:
+                return None
+            stack.pop()
+            if not stack:
+                return index
+    return None
+
+
+def _strip_javascript_grouping(expression: str) -> str:
+    expression = expression.strip()
+    while expression.startswith("("):
+        close = _javascript_matching_close(expression, 0)
+        if close != len(expression) - 1:
+            break
+        expression = expression[1:close].strip()
+    return expression
+
+
+def _javascript_call_arguments(text: str, open_index: int) -> list[str] | None:
+    pairs = {")": "(", "]": "[", "}": "{"}
+    stack = ["("]
+    arguments: list[str] = []
+    start = open_index + 1
+    quote: str | None = None
+    escaped = False
+    for index in range(start, len(text)):
+        char = text[index]
+        if quote is not None:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+            continue
+        if char in "'\"`":
+            quote = char
+        elif char in "([{":
+            stack.append(char)
+        elif char in pairs:
+            if not stack or stack[-1] != pairs[char]:
+                return None
+            stack.pop()
+            if not stack:
+                arguments.append(text[start:index])
+                return arguments
+        elif char == "," and len(stack) == 1:
+            arguments.append(text[start:index])
+            start = index + 1
+    return None
+
+
+def _javascript_argument_fragments(expression: str) -> list[str]:
+    expression = _strip_javascript_grouping(expression)
+    array = re.fullmatch(r"\s*\[(?P<items>.*)\]\s*", expression, re.DOTALL)
+    return _javascript_shell_fragments(array["items"] if array else expression)
+
+
+def process_shell_strings(text: str, suffix: str) -> list[str]:
+    if suffix == ".py":
+        return [command for _start, _end, command in python_shell_strings(text)]
+    commands = []
+    for call in PROCESS_CALL_RE.finditer(text):
+        arguments = _javascript_call_arguments(text, call.end() - 1)
+        if not arguments:
+            continue
+        name = call[0].split("(")[0].strip()
+        executable = _javascript_argument_fragments(arguments[0])
+        if not executable:
+            continue
+        if name in {"exec", "execSync", "system"}:
+            commands.extend(executable)
+        elif name in {"spawn", "spawnSync"}:
+            argv = executable + [
+                fragment
+                for argument in arguments[1:]
+                for fragment in _javascript_argument_fragments(argument)
+            ]
+            shell_true = any(
+                re.search(r"\bshell\s*:\s*true\b", argument) for argument in arguments[2:]
+            )
+            if shell_true:
+                # Node joins argv into the shell command when shell=true.
+                commands.extend(executable)
+                if len(arguments) > 1:
+                    commands.extend(_javascript_argument_fragments(arguments[1]))
+            commands.extend(_explicit_shell_command(argv))
+    return commands
+
+
+def _python_command_string(node: ast.AST, depth: int = 0) -> str | None:
+    if depth >= 32:
+        return None
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.JoinedStr):
+        return "".join(
+            value.value if isinstance(value, ast.Constant) else "${unknown}"
+            for value in node.values
+        )
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add | ast.Mod):
+        left = _python_command_string(node.left, depth + 1)
+        if left is not None:
+            if isinstance(node.op, ast.Mod):
+                return left
+            right = _python_command_string(node.right, depth + 1)
+            return left + ("${unknown}" if right is None else right)
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "format"
+    ):
+        return _python_command_string(node.func.value, depth + 1)
+    return None
+
+
+def _explicit_shell_command(argv: list[str | None]) -> list[str]:
+    if not argv or not argv[0]:
+        return []
+    executable = PurePosixPath(argv[0].replace("\\", "/")).name.lower()
+    if executable not in {"bash", "sh", "zsh", "cmd", "cmd.exe", "powershell", "pwsh"}:
+        return []
+    for index, argument in enumerate(argv[:-1]):
+        if argument in {"-c", "-lc", "/c", "-Command", "-command"} and argv[index + 1]:
+            return [argv[index + 1]]
+    return []
 
 
 def normalize_file_target(value: str) -> str:
@@ -421,7 +711,13 @@ class ShellExecutionRule:
 
     def analyze(self, file: FileContent) -> RuleResult:
         result = RuleResult()
-        for number, line, _match in line_matches(file.text, SHELL_RE):
+        sections = script_sections(file)
+        physical = [
+            (offset + number, line, match)
+            for offset, section in sections
+            for number, line, match in line_matches(section.text, SHELL_RE)
+        ]
+        for number, line, _match in physical:
             severity: Severity = (
                 "high" if DESTRUCTIVE_RE.search(line) or REMOTE_EXEC_RE.search(line) else "medium"
             )
@@ -441,7 +737,8 @@ class ShellExecutionRule:
             result.capabilities.append(
                 make_capability("shell_execution", file.path, number, command=line.strip())
             )
-        for span, _match in logical_matches(file, SHELL_RE):
+        logical = logical_matches(file, SHELL_RE)
+        for span, _match in logical:
             severity: Severity = (
                 "high"
                 if DESTRUCTIVE_RE.search(span.text) or REMOTE_EXEC_RE.search(span.text)
@@ -747,48 +1044,64 @@ class FilesystemWriteRule:
 
     def analyze(self, file: FileContent) -> RuleResult:
         result = RuleResult()
-        for number, line, match in line_matches(file.text, WRITE_RE):
-            target = extract_write_target(line, match)
-            result.findings.append(
-                make_finding(
-                    rule_id=self.rule_id,
-                    title=self.title,
-                    description="The file appears to write to the filesystem.",
-                    severity="medium",
-                    capability="filesystem_write",
-                    file_path=file.path,
-                    line_number=number,
-                    evidence=f"Target: {target}" if target else line,
-                    remediation="Constrain writes to policy-approved paths.",
+        sections = script_sections(file)
+        views = [
+            (section, offset + number, line, line)
+            for offset, section in sections
+            for number, line in enumerate(section.text.splitlines(), start=1)
+        ]
+        spans = [
+            (offset, section, span)
+            for offset, section in sections
+            if file.format_aware
+            for span in iter_logical_spans(section.text, section.file_type)
+        ]
+        for offset, section, span in spans:
+            if file.file_type == "markdown" and section.file_type == "script":
+                # Fences did not previously add logical source spans. Add only
+                # shell strings here; prose-like argv data must not gain writes.
+                commands = process_shell_strings(span.text, PurePosixPath(section.path).suffix)
+                if not any(REDIRECT_TARGET_RE.search(command) for command in commands):
+                    continue
+            views.append((section, offset + span.start_line, span.text, span.evidence))
+        for offset, section in sections:
+            if PurePosixPath(section.path).suffix.lower() != ".py":
+                continue
+            lines = section.text.splitlines()
+            for start, end, command in python_shell_strings(section.text):
+                if end > start and not file.format_aware:
+                    continue
+                evidence = "\n".join(lines[start - 1 : end])
+                shell_section = FileContent(section.path + ".sh", "script", command)
+                views.append((shell_section, offset + start, command, evidence))
+        seen: set[tuple[int, str | None]] = set()
+        for section, number, text, evidence in views:
+            for target in extract_write_targets(
+                section, text, markdown=file.file_type == "markdown"
+            ):
+                if (number, target) in seen:
+                    continue
+                seen.add((number, target))
+                result.findings.append(
+                    make_finding(
+                        rule_id=self.rule_id,
+                        title=self.title,
+                        description="The file appears to write to the filesystem.",
+                        severity="medium",
+                        capability="filesystem_write",
+                        file_path=file.path,
+                        line_number=number,
+                        evidence=f"Target: {target}" if target else evidence,
+                        remediation="Constrain writes to policy-approved paths.",
+                    )
                 )
-            )
-            result.capabilities.append(
-                make_capability(
-                    "filesystem_write", file.path, number, resource=target, command=line.strip()
+                result.capabilities.append(
+                    make_capability(
+                        "filesystem_write",
+                        file.path,
+                        number,
+                        resource=target,
+                        command=evidence.strip(),
+                    )
                 )
-            )
-        for span, match in logical_matches(file, WRITE_RE):
-            target = extract_write_target(span.text, match)
-            result.findings.append(
-                make_finding(
-                    rule_id=self.rule_id,
-                    title=self.title,
-                    description="The file appears to write to the filesystem.",
-                    severity="medium",
-                    capability="filesystem_write",
-                    file_path=file.path,
-                    line_number=span.start_line,
-                    evidence=f"Target: {target}" if target else span.evidence,
-                    remediation="Constrain writes to policy-approved paths.",
-                )
-            )
-            result.capabilities.append(
-                make_capability(
-                    "filesystem_write",
-                    file.path,
-                    span.start_line,
-                    resource=target,
-                    command=span.evidence.strip(),
-                )
-            )
         return result

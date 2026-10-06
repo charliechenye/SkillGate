@@ -1,4 +1,8 @@
-# Network noise negative
+# Capability syntax negatives
 
-XML namespace identifiers with an explicit XML consumer and ordinary got prose
-should produce no network signal. This authored fixture is a regression case.
+Repository-authored reductions of the six pinned public skill noise cases.
+Collection appends, source comparisons, XML namespace and relationship identifiers
+with explicit XML consumers, installer placeholders, Markdown blockquotes,
+language fences, HTML markup, and ordinary error-message prose should produce
+no findings in this fixture.
+The scanner only reads these files.
