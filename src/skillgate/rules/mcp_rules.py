@@ -4,7 +4,6 @@ import json
 import re
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import urlparse
 
 from skillgate.mcp_apps import (
     inventory_mcp_apps,
@@ -19,9 +18,8 @@ from skillgate.mcp_compatibility import (
 )
 from skillgate.models import Severity
 from skillgate.rules.base import FileContent, RuleResult, make_capability, make_finding
-from skillgate.rules.script_rules import host_from_token
+from skillgate.rules.script_rules import URL_RE, host_from_token
 
-URL_RE = re.compile(r"https?://[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]+")
 PLACEHOLDER_RE = re.compile(r"\$\{([^}]+)\}")
 SHELL_COMMANDS = {"bash", "sh", "zsh", "powershell", "pwsh", "cmd.exe"}
 SECRET_NAME_RE = re.compile(r"(?i)(TOKEN|SECRET|KEY|PASSWORD|CREDENTIALS)")
@@ -54,7 +52,7 @@ def host_from_value(value: object) -> str | None:
         return None
     match = URL_RE.search(value)
     if match:
-        return urlparse(match.group(0)).hostname
+        return host_from_token(match.group(0))
     return host_from_token(value)
 
 
@@ -77,7 +75,7 @@ def collect_string_values(value: object) -> list[str]:
 def hosts_from_value(value: object) -> list[str]:
     hosts = []
     for item in collect_string_values(value):
-        url_hosts = [urlparse(match.group(0)).hostname for match in URL_RE.finditer(item)]
+        url_hosts = [host_from_token(match.group(0)) for match in URL_RE.finditer(item)]
         hosts.extend(host for host in url_hosts if host)
         if not url_hosts:
             for token in item.split():

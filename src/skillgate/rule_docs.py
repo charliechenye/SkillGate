@@ -40,7 +40,18 @@ RULE_DOCS: tuple[RuleDoc, ...] = (
         title="Network egress detected",
         severity="medium",
         capability="network_egress",
-        description="Detects common network access patterns and extracts hosts when possible.",
+        description=(
+            "Detects common network access patterns and extracts hosts when possible. "
+            "Requires a call for the got client; ordinary 'got' prose is not network evidence. "
+            "Request destinations take precedence over header and body URLs; multiple "
+            "literal destinations are reported separately. Invalid or dynamic targets stay "
+            "unknown. curl proxy, connect-to, and resolve peers are reported alongside the "
+            "request host; allowlists must cover these declared connection addresses too. "
+            "Python XML namespace and relationship identifiers require explicit "
+            "XML consumers; parser functions must have unambiguous XML library imports. "
+            "Variable names alone never suppress URLs. XML xmlns attributes "
+            "are identifiers. Ambiguous consumers and unparseable Python retain evidence."
+        ),
         examples=("curl https://example.com", "requests.get(...)", "fetch(...)"),
         remediation="Allowlist expected hosts or remove unexpected network access.",
     ),

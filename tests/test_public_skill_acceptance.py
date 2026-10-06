@@ -23,14 +23,18 @@ def test_public_skill_catalog_uses_pinned_sources_and_records_licenses() -> None
         assert sample["expected"]["files"]
 
 
-@pytest.mark.parametrize("changed_hash", [False, True])
+@pytest.mark.parametrize(
+    ("changed_hash", "unexpected_network"), [(False, False), (True, False), (False, True)]
+)
 def test_public_acceptance_detects_changed_input_and_cleans_materialized_files(
-    tmp_path: Path, monkeypatch, changed_hash: bool
+    tmp_path: Path, monkeypatch, changed_hash: bool, unexpected_network: bool
 ) -> None:
     cleanup = tmp_path / "materialized"
     root = cleanup / "test-skill"
     root.mkdir(parents=True)
     content = b"---\nname: test-skill\ndescription: Static acceptance fixture.\n---\n"
+    if unexpected_network:
+        content += b"curl https://unexpected.example.invalid\n"
     (root / "SKILL.md").write_bytes(content)
     license_text = "Authored acceptance license fixture.\n"
     sample = {
@@ -52,6 +56,7 @@ def test_public_acceptance_detects_changed_input_and_cleans_materialized_files(
             "coverage": "complete",
             "validation_rule_ids": [],
             "evidence": [],
+            "absent_evidence": [{"type": "network_egress"}],
         },
     }
     sparse = SparseFetchResult(
@@ -66,8 +71,9 @@ def test_public_acceptance_detects_changed_input_and_cleans_materialized_files(
 
     result = evaluate_sample(sample)
 
-    assert result["passed"] is not changed_hash
+    assert result["passed"] is not (changed_hash or unexpected_network)
     assert result["checks"]["files"] is not changed_hash
+    assert result["checks"]["absent_evidence"] is not unexpected_network
     assert result["checks"]["materialized_local_parity"] is True
     assert result["coverage_gate_expected_exit"] == 0
     assert not cleanup.exists()

@@ -71,6 +71,32 @@ def test_preinstall_creates_missing_output_directories(tmp_path: Path, outputs: 
         assert json.loads(sidecar.read_text())["metadata"]["coverage"]["status"] == "complete"
 
 
+@pytest.mark.parametrize("filename", ["SKILL.md", ".mcp.json"])
+def test_preinstall_template_url_returns_review_packet_with_unknown_host(
+    tmp_path: Path,
+    filename: str,
+) -> None:
+    source = tmp_path / filename
+    source.write_text(
+        "curl https://[HOST]/setup\n"
+        if filename == "SKILL.md"
+        else json.dumps({"mcpServers": {"api": {"url": "https://[HOST]/setup"}}}),
+    )
+    result = runner.invoke(app, ["review", "preinstall", str(source), "--format", "json"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["reviewer"]["decision"] == "review_required"
+    assert any(
+        item["rule_id"] == "SG003"
+        for group in payload["findings"]["groups"].values()
+        for item in group
+    )
+    assert any(
+        item["type"] == "network_egress" and item["resource"] == "<unknown>"
+        for item in payload["capabilities"]
+    )
+
+
 def test_preinstall_mcpb_review_uses_bundle_metadata(tmp_path) -> None:
     bundle = tmp_path / "reviewable.mcpb"
     build_demo_mcpb(bundle)

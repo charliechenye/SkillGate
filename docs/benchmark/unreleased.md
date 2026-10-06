@@ -4,8 +4,8 @@
 
 - Scanner version: `0.1.5`
 - Fixture root: `fixtures/benchmark`
-- Fixtures: 32
-- Passed: 32
+- Fixtures: 37
+- Passed: 37
 - Failed: 0
 
 ## Rule Coverage
@@ -14,7 +14,7 @@
 | --- | ---: | ---: | --- |
 | SG001 | 7 | 7 | covered |
 | SG002 | 2 | 2 | covered |
-| SG003 | 23 | 23 | covered |
+| SG003 | 27 | 27 | covered |
 | SG004 | 2 | 2 | covered |
 | SG005 | 7 | 7 | covered |
 | SG006 | 5 | 5 | covered |
@@ -63,7 +63,12 @@
 | `29-mcp-protocol-transition` | **pass** | `SG003, SG009` | `SG003, SG009` | no |
 | `30-public-pattern-mcp-apps-static-adapter` | **pass** | `SG011` | `SG011` | yes |
 | `31-mcp-tasks-capability` | **pass** | `SG003, SG009` | `SG003, SG009` | no |
+| `32-capability-noise-negative` | **pass** | `none` | `none` | no |
+| `33-capability-syntax-positive` | **pass** | `SG003` | `SG003` | no |
+| `34-request-target-and-redirect` | **pass** | `SG003` | `SG003` | no |
 | `35-command-secret-redaction` | **pass** | `SG003, SG005` | `SG003, SG005` | no |
+| `36-xml-parser-alias` | **pass** | `SG003` | `SG003` | no |
+| `40-network-connection-peers` | **pass** | `SG003` | `SG003` | no |
 
 ## Reproduce
 
