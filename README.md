@@ -148,6 +148,9 @@ Connections are explicit opt-ins:
 
 Nothing in a local SkillGate invocation uploads findings automatically.
 
+Scan output redacts secret assignments found in capability detail strings,
+including nested command metadata, while retaining secret names for review.
+
 For a copyable first repository, use the
 [pre-install starter](examples/preinstall-starter/README.md) and its
 [review-only Action workflow](docs/starter-repository.md).
