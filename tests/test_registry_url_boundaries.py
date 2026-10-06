@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import http.client
 import json
 from pathlib import Path
 
@@ -113,3 +114,12 @@ def test_valid_registry_index_url_is_fetched(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
     assert fetch_registry_index("https://registry.example.invalid/servers") == {"servers": []}
     assert len(requested) == 1
+
+
+def test_invalid_http_request_url_is_normalized(monkeypatch: pytest.MonkeyPatch) -> None:
+    def invalid_url(*_args, **_kwargs):
+        raise http.client.InvalidURL("URL can't contain control characters")
+
+    monkeypatch.setattr("urllib.request.urlopen", invalid_url)
+    with pytest.raises(RegistryMetadataError, match="invalid registry URL"):
+        fetch_registry_index("https://registry.example.invalid/a b")

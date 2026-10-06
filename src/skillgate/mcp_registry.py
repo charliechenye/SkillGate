@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import http.client
 import ipaddress
 import json
 import re
@@ -728,6 +729,8 @@ def fetch_registry_index(url: str) -> dict[str, Any]:
     try:
         with urllib.request.urlopen(request, timeout=30) as response:
             data = json.loads(response.read().decode("utf-8"))
+    except http.client.InvalidURL as exc:
+        raise RegistryMetadataError(f"invalid registry URL: {url}") from exc
     except urllib.error.HTTPError as exc:
         raise RegistryMetadataError(f"registry request failed with HTTP {exc.code}: {url}") from exc
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import http.client
 import json
 
 import pytest
@@ -125,6 +126,36 @@ def test_cli_mcp_registry_compare_rejects_invalid_registry_url(
             "io.example.compare",
             "--registry-url",
             registry_url,
+        ],
+    )
+    assert result.exit_code == 2
+    assert "invalid registry URL" in result.output
+    assert "Traceback" not in result.output
+
+
+def test_cli_mcp_registry_compare_normalizes_http_invalid_url(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    (tmp_path / "mcp-registry.json").write_text(
+        json.dumps({"server": {"name": "io.example.compare", "version": "0.1.0"}}),
+        encoding="utf-8",
+    )
+
+    def invalid_url(*_args, **_kwargs):
+        raise http.client.InvalidURL("URL can't contain control characters")
+
+    monkeypatch.setattr("urllib.request.urlopen", invalid_url)
+    result = runner.invoke(
+        app,
+        [
+            "mcp",
+            "registry",
+            "compare",
+            str(tmp_path),
+            "--server",
+            "io.example.compare",
+            "--registry-url",
+            "https://registry.example.invalid/a b",
         ],
     )
     assert result.exit_code == 2
