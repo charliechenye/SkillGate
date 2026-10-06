@@ -712,7 +712,19 @@ def fetch_registry_index(url: str) -> dict[str, Any]:
         if parsed.netloc and not path.drive:
             path = Path(f"//{parsed.netloc}{path.as_posix()}")
         return load_registry_index_file(path)
-    request = urllib.request.Request(url, headers={"Accept": "application/json"})
+    if parsed.scheme not in {"http", "https"}:
+        raise RegistryMetadataError(f"invalid registry URL: {url}")
+    try:
+        hostname = parsed.hostname
+        _ = parsed.port
+    except ValueError as exc:
+        raise RegistryMetadataError(f"invalid registry URL: {url}") from exc
+    if not hostname or host_from_token(url) is None:
+        raise RegistryMetadataError(f"invalid registry URL: {url}")
+    try:
+        request = urllib.request.Request(url, headers={"Accept": "application/json"})
+    except ValueError as exc:
+        raise RegistryMetadataError(f"invalid registry URL: {url}") from exc
     try:
         with urllib.request.urlopen(request, timeout=30) as response:
             data = json.loads(response.read().decode("utf-8"))

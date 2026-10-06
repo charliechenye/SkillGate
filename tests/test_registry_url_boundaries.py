@@ -73,10 +73,43 @@ def test_registry_host_classification_is_safe(url: str, private: bool) -> None:
     assert host_is_local_or_private(url) is private
 
 
-def test_invalid_registry_index_url_reports_input_error(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://[HOST]/servers",
+        "https://{HOST}/servers",
+        "https://api.example.invalid:invalid/servers",
+        "ftp://registry.example.invalid/servers",
+    ],
+)
+def test_invalid_registry_index_url_reports_input_error(
+    monkeypatch: pytest.MonkeyPatch, url: str
+) -> None:
     def unexpected_request(*_args, **_kwargs):
         pytest.fail("Invalid registry URLs must fail before a network request")
 
     monkeypatch.setattr("urllib.request.urlopen", unexpected_request)
     with pytest.raises(RegistryMetadataError, match="invalid registry URL"):
-        fetch_registry_index("https://[HOST]/servers")
+        fetch_registry_index(url)
+
+
+def test_valid_registry_index_url_is_fetched(monkeypatch: pytest.MonkeyPatch) -> None:
+    class Response:
+        def __enter__(self) -> Response:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return b'{"servers": []}'
+
+    requested: list[tuple[object, int]] = []
+
+    def fake_urlopen(request: object, timeout: int) -> Response:
+        requested.append((request, timeout))
+        return Response()
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    assert fetch_registry_index("https://registry.example.invalid/servers") == {"servers": []}
+    assert len(requested) == 1

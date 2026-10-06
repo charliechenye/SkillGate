@@ -95,6 +95,43 @@ def test_cli_mcp_registry_compare_fetch_error_exits_2(monkeypatch: pytest.Monkey
     assert "registry unavailable" in result.output
 
 
+@pytest.mark.parametrize(
+    "registry_url",
+    [
+        "https://{HOST}/servers",
+        "https://api.example.invalid:invalid/servers",
+    ],
+)
+def test_cli_mcp_registry_compare_rejects_invalid_registry_url(
+    monkeypatch: pytest.MonkeyPatch, tmp_path, registry_url: str
+) -> None:
+    (tmp_path / "mcp-registry.json").write_text(
+        json.dumps({"server": {"name": "io.example.compare", "version": "0.1.0"}}),
+        encoding="utf-8",
+    )
+
+    def unexpected_request(*_args, **_kwargs):
+        pytest.fail("Invalid registry URLs must fail before a network request")
+
+    monkeypatch.setattr("urllib.request.urlopen", unexpected_request)
+    result = runner.invoke(
+        app,
+        [
+            "mcp",
+            "registry",
+            "compare",
+            str(tmp_path),
+            "--server",
+            "io.example.compare",
+            "--registry-url",
+            registry_url,
+        ],
+    )
+    assert result.exit_code == 2
+    assert "invalid registry URL" in result.output
+    assert "Traceback" not in result.output
+
+
 def test_cli_mcp_registry_compare_fixture_reports_sg013() -> None:
     result = runner.invoke(
         app,
