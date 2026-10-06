@@ -1030,11 +1030,8 @@ def review_summary(
         sarif_artifact=sarif_artifact,
         json_artifact=json_artifact or (str(json_output) if json_output else None),
     )
-    for target in (output, json_output):
-        if target:
-            target.parent.mkdir(parents=True, exist_ok=True)
     if json_output:
-        json_output.write_text(stable_json(payload), encoding="utf-8")
+        write_or_print(stable_json(payload), json_output, console)
     content = stable_json(payload) if output_format == "json" else render_review_markdown(payload)
     write_or_print(content, output, console)
 
