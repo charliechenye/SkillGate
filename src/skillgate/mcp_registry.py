@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import http.client
 import ipaddress
 import json
 import re
@@ -27,6 +28,7 @@ from skillgate.mcp_compatibility import (
 from skillgate.models import SCHEMA_VERSION, Capability, Finding, ScanReport
 from skillgate.rules.base import FileContent, make_capability, make_finding
 from skillgate.rules.mcp_rules import URL_RE, collect_string_values
+from skillgate.rules.script_rules import host_from_token
 
 REGISTRY_RULE_IDS = {"SG011", "SG012"}
 DEFAULT_REGISTRY_URL = "https://registry.modelcontextprotocol.io/v0/servers"
@@ -263,8 +265,7 @@ def schema_field_names(value: object) -> list[str]:
 
 
 def host_is_local_or_private(url: str) -> bool:
-    parsed = urlparse(url)
-    host = parsed.hostname
+    host = host_from_token(url)
     if not host:
         return False
     lowered = host.lower()
@@ -344,13 +345,11 @@ def app_surface_findings(
     serialized = json.dumps(data, sort_keys=True)
     if not MID_SESSION_TOOL_RE.search(serialized):
         return [], []
-    origins = sorted(
-        set(
-            urlparse(match.group(0)).hostname or match.group(0)
-            for match in URL_RE.finditer(serialized)
-        )
-    )
+    hosts = [host_from_token(match.group(0)) for match in URL_RE.finditer(serialized)]
+    origins = sorted({host for host in hosts if host is not None})
     details = {"origins": origins, "surface": "mcp_app_metadata"}
+    if None in hosts:
+        details["unknown_origin_count"] = hosts.count(None)
     finding = make_finding(
         rule_id="SG011",
         title="MCP app tool surface metadata detected",
@@ -384,7 +383,7 @@ def transport_findings(server: RegistryServer) -> tuple[list[Finding], list[Capa
                 rule_id="SG012",
                 title=title,
                 description=(
-                    "Declared MCP transport metadata uses a known dangerous transport shape."
+                    "Declared MCP transport metadata uses a risky or unresolved transport shape."
                 ),
                 severity=severity,  # type: ignore[arg-type]
                 capability="mcp_transport_risk",
@@ -413,14 +412,23 @@ def transport_findings(server: RegistryServer) -> tuple[list[Finding], list[Capa
             name for name in header_names(remote.get("headers")) if SECRET_HEADER_RE.search(name)
         ]
         if isinstance(url, str):
-            if host_is_local_or_private(url):
+            host = host_from_token(url)
+            private = host_is_local_or_private(url)
+            if host is None:
+                add(
+                    "MCP remote transport endpoint is unknown",
+                    "medium",
+                    f"Remote {index}: unresolved endpoint",
+                    {"url": url, "transport_type": remote_type, "endpoint_status": "unknown"},
+                )
+            elif private:
                 add(
                     "MCP remote transport bridges to local or private network",
                     "high",
                     f"Remote {index}: {url}",
                     {"url": url, "transport_type": remote_type},
                 )
-            if not remote_has_auth(remote) and not host_is_local_or_private(url):
+            elif not remote_has_auth(remote):
                 add(
                     "MCP remote transport does not declare authentication",
                     "medium",
@@ -696,16 +704,33 @@ def fetch_registry_index(url: str) -> dict[str, Any]:
     local_path = Path(url)
     if local_path.exists():
         return load_registry_index_file(local_path)
-    parsed = urlparse(url)
+    try:
+        parsed = urlparse(url)
+    except ValueError as exc:
+        raise RegistryMetadataError(f"invalid registry URL: {url}") from exc
     if parsed.scheme == "file":
         path = Path(unquote(parsed.path))
         if parsed.netloc and not path.drive:
             path = Path(f"//{parsed.netloc}{path.as_posix()}")
         return load_registry_index_file(path)
-    request = urllib.request.Request(url, headers={"Accept": "application/json"})
+    if parsed.scheme not in {"http", "https"}:
+        raise RegistryMetadataError(f"invalid registry URL: {url}")
+    try:
+        hostname = parsed.hostname
+        _ = parsed.port
+    except ValueError as exc:
+        raise RegistryMetadataError(f"invalid registry URL: {url}") from exc
+    if not hostname or host_from_token(url) is None:
+        raise RegistryMetadataError(f"invalid registry URL: {url}")
+    try:
+        request = urllib.request.Request(url, headers={"Accept": "application/json"})
+    except ValueError as exc:
+        raise RegistryMetadataError(f"invalid registry URL: {url}") from exc
     try:
         with urllib.request.urlopen(request, timeout=30) as response:
             data = json.loads(response.read().decode("utf-8"))
+    except http.client.InvalidURL as exc:
+        raise RegistryMetadataError(f"invalid registry URL: {url}") from exc
     except urllib.error.HTTPError as exc:
         raise RegistryMetadataError(f"registry request failed with HTTP {exc.code}: {url}") from exc
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:

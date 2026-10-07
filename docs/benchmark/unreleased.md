@@ -4,8 +4,8 @@
 
 - Scanner version: `0.1.5`
 - Fixture root: `fixtures/benchmark`
-- Fixtures: 40
-- Passed: 40
+- Fixtures: 41
+- Passed: 41
 - Failed: 0
 
 ## Rule Coverage
@@ -14,7 +14,7 @@
 | --- | ---: | ---: | --- |
 | SG001 | 9 | 9 | covered |
 | SG002 | 2 | 2 | covered |
-| SG003 | 27 | 27 | covered |
+| SG003 | 28 | 28 | covered |
 | SG004 | 2 | 2 | covered |
 | SG005 | 7 | 7 | covered |
 | SG006 | 10 | 10 | covered |
@@ -22,8 +22,8 @@
 | SG008 | 1 | 1 | covered |
 | SG009 | 12 | 12 | covered |
 | SG010 | 1 | 1 | covered |
-| SG011 | 3 | 3 | covered |
-| SG012 | 2 | 2 | covered |
+| SG011 | 4 | 4 | covered |
+| SG012 | 3 | 3 | covered |
 | SG013 | 0 | 0 | not covered |
 | SG014 | 0 | 0 | not covered |
 | SG015 | 0 | 0 | not covered |
@@ -72,6 +72,7 @@
 | `38-file-target-binding` | **pass** | `SG006` | `SG006` | no |
 | `39-python-shell-context` | **pass** | `SG001, SG006` | `SG001, SG006` | no |
 | `40-network-connection-peers` | **pass** | `SG003` | `SG003` | no |
+| `41-registry-template-urls` | **pass** | `SG003, SG011, SG012` | `SG003, SG011, SG012` | no |
 
 ## Reproduce
 
